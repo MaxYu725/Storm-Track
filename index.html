@@ -1,0 +1,2485 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>香港天氣｜HKO × CMA × JMA × CWA 熱帶氣旋路徑 v3.0</title>
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="theme-color" content="#000000">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌀</text></svg>">
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        ::-webkit-scrollbar { display: none; }
+
+        :root {
+            --bg: #000;
+            --panel: rgba(0, 0, 0, 0.95);
+            --text: #fff;
+            --sub: #aaa;
+            --muted: #6c6c6c;
+            --accent: #1ba1e2;
+            --border: #333;
+            --hko: #fff;
+            --cma: #ff4b55;
+            --jma: #00d8ff;
+            --cwa: #ffea00;
+            --consensus: #7fe7ff;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif;
+            overscroll-behavior: none;
+        }
+
+        button, input, select { font: inherit; }
+        .hidden { display: none !important; }
+
+        #app-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            padding-top: 14px;
+        }
+
+        .header-top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 28px;
+            padding-right: 20px;
+            margin-bottom: 4px;
+        }
+
+        .app-title {
+            margin-left: 24px;
+            color: var(--sub);
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .global-controls { display: flex; gap: 7px; }
+
+        .metro-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 32px;
+            height: 28px;
+            padding: 0 9px;
+            border: 1px solid var(--border);
+            border-radius: 0;
+            background: transparent;
+            color: var(--sub);
+            cursor: pointer;
+        }
+        .metro-btn:hover { border-color: #777; color: #fff; }
+        .metro-btn:active, .metro-btn.active { background: #fff; color: #000; }
+
+        .pivot-headers {
+            display: flex;
+            align-items: flex-end;
+            gap: 20px;
+            min-height: 62px;
+            padding: 0 24px 8px;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .pivot-header {
+            flex-shrink: 0;
+            margin: 0;
+            color: var(--text);
+            font-size: clamp(2.3rem, 7vw, 3.5rem);
+            font-weight: 300;
+            letter-spacing: -1.5px;
+            line-height: 1;
+            text-transform: lowercase;
+        }
+
+        .storm-summary {
+            min-width: 0;
+            padding-bottom: 4px;
+            overflow: hidden;
+            color: var(--sub);
+            font-size: 0.85rem;
+            font-weight: 300;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .pivot-content-wrapper {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        #map-container, #storm-map {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        #storm-map { z-index: 1; background: #050505; }
+        #storm-map.measure-active { cursor: crosshair; }
+
+        .no-storm-overlay,
+        .error-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 800;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            background: rgba(0, 0, 0, 0.78);
+            text-align: center;
+        }
+
+        .overlay-title {
+            margin-bottom: 12px;
+            font-size: 1.5rem;
+            font-weight: 300;
+        }
+        .overlay-subtitle {
+            max-width: 620px;
+            margin-bottom: 20px;
+            color: var(--sub);
+            font-size: 0.92rem;
+            line-height: 1.55;
+        }
+
+        .metro-fab {
+            position: absolute;
+            right: 24px;
+            bottom: 24px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 48px;
+            height: 48px;
+            border: 2px solid #fff;
+            border-radius: 0;
+            background: #000;
+            color: #fff;
+            box-shadow: 0 5px 16px rgba(0, 0, 0, 0.55);
+            cursor: pointer;
+        }
+        .metro-fab:active { background: #333; }
+
+        .storm-panel {
+            position: absolute;
+            top: 0;
+            right: 0;
+            z-index: 1100;
+            display: flex;
+            flex-direction: column;
+            width: 330px;
+            height: 100%;
+            padding: 20px;
+            overflow-y: auto;
+            border-left: 2px solid var(--border);
+            background: var(--panel);
+            transform: translateX(100%);
+            transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .storm-panel.open { transform: translateX(0); }
+
+        .panel-close {
+            align-self: flex-end;
+            margin-bottom: 8px;
+            font-size: 2rem;
+            font-weight: 100;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .panel-title {
+            margin: 15px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+            color: var(--accent);
+            font-size: 1rem;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+        }
+
+        .toggle-row, .legend-row, .select-row {
+            display: flex;
+            align-items: center;
+            min-height: 30px;
+            margin-bottom: 7px;
+            font-size: 0.9rem;
+            font-weight: 300;
+        }
+        .toggle-row { cursor: pointer; }
+        .toggle-row input {
+            width: 18px;
+            height: 18px;
+            margin: 0 11px 0 0;
+            accent-color: var(--accent);
+        }
+        .source-indicator {
+            width: 24px;
+            height: 3px;
+            margin-left: auto;
+        }
+        .select-row { justify-content: space-between; gap: 12px; }
+        .metro-select {
+            min-width: 118px;
+            height: 30px;
+            padding: 0 7px;
+            border: 1px solid #444;
+            border-radius: 0;
+            background: #111;
+            color: #fff;
+            outline: none;
+        }
+
+        .legend-color {
+            width: 13px;
+            height: 13px;
+            margin-right: 11px;
+            border: 1px solid #fff;
+            border-radius: 50%;
+        }
+        .legend-line {
+            width: 30px;
+            height: 0;
+            margin-right: 11px;
+            border-top: 2px solid #fff;
+        }
+
+        .panel-storm-card {
+            position: relative;
+            margin-bottom: 10px;
+            padding: 11px 12px;
+            border-left: 3px solid var(--accent);
+            background: #101010;
+            cursor: pointer;
+        }
+        .panel-storm-card:hover { background: #171717; }
+        .panel-storm-name { padding-right: 50px; font-weight: 600; }
+        .panel-storm-meta {
+            margin-top: 5px;
+            color: var(--sub);
+            font-size: 0.8rem;
+            line-height: 1.5;
+        }
+        .card-focus {
+            position: absolute;
+            top: 9px;
+            right: 9px;
+            height: 25px;
+            padding: 0 7px;
+            border: 1px solid #444;
+            background: transparent;
+            color: #aaa;
+            cursor: pointer;
+        }
+        .card-focus:hover { border-color: #fff; color: #fff; }
+        .source-mini {
+            display: inline-block;
+            margin: 6px 5px 0 0;
+            padding: 1px 5px;
+            border: 1px solid #444;
+            font-size: 0.68rem;
+            letter-spacing: .4px;
+        }
+
+        #engine-status {
+            margin-top: auto;
+            padding-top: 22px;
+            color: var(--muted);
+            font-size: 0.77rem;
+            line-height: 1.55;
+        }
+
+        #top-progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 10000;
+            width: 100%;
+            height: 4px;
+            overflow: hidden;
+            background: #000;
+        }
+        .metro-dot {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--accent);
+            opacity: 0;
+            animation: metro-indeterminate 2.5s infinite;
+        }
+        .metro-dot:nth-child(2) { animation-delay: 0.15s; }
+        .metro-dot:nth-child(3) { animation-delay: 0.3s; }
+        .metro-dot:nth-child(4) { animation-delay: 0.45s; }
+        .metro-dot:nth-child(5) { animation-delay: 0.6s; }
+        @keyframes metro-indeterminate {
+            0% { transform: translateX(-10vw); opacity: 1; animation-timing-function: cubic-bezier(0.01, 0.6, 1, 0.4); }
+            35% { transform: translateX(45vw); animation-timing-function: linear; }
+            65% { transform: translateX(55vw); animation-timing-function: cubic-bezier(0, 0.4, 0.99, 0.4); }
+            100% { transform: translateX(110vw); opacity: 1; }
+        }
+
+        .map-hud {
+            position: absolute;
+            z-index: 750;
+            pointer-events: none;
+        }
+        #source-badges {
+            top: 12px;
+            pointer-events: auto;
+            right: 12px;
+            display: flex;
+            gap: 6px;
+        }
+        .source-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 7px;
+            border: 1px solid #444;
+            background: rgba(0, 0, 0, .78);
+            color: #aaa;
+            font-size: .7rem;
+            font-family: inherit;
+            letter-spacing: .5px;
+            cursor: pointer;
+        }
+        .source-badge::before {
+            content: "";
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #666;
+        }
+        .source-badge.ok { color: #fff; }
+        .source-badge.ok::before { background: #43d17a; }
+        .source-badge.loading::before { background: #f0a000; }
+        .source-badge.empty::before { background: #888; }
+        .source-badge.error::before { background: #e51400; }
+
+        #coordinate-readout {
+            left: 10px;
+            bottom: 10px;
+            padding: 3px 6px;
+            border: 1px solid #333;
+            background: rgba(0, 0, 0, .72);
+            color: #aaa;
+            font-size: .68rem;
+            font-variant-numeric: tabular-nums;
+        }
+        #measure-hint {
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 6px 10px;
+            border: 1px solid #666;
+            background: rgba(0,0,0,.86);
+            color: #fff;
+            font-size: .78rem;
+        }
+        #toast {
+            left: 50%;
+            bottom: 28px;
+            transform: translateX(-50%);
+            padding: 7px 11px;
+            border: 1px solid #555;
+            background: rgba(0,0,0,.9);
+            color: #fff;
+            font-size: .78rem;
+            opacity: 0;
+            transition: opacity .2s;
+        }
+        #toast.show { opacity: 1; }
+
+        .leaflet-control-zoom a {
+            border-radius: 0 !important;
+            background: #000 !important;
+            color: #fff !important;
+            border-color: #333 !important;
+        }
+        .leaflet-control-attribution {
+            background: rgba(0, 0, 0, 0.65) !important;
+            color: #777 !important;
+        }
+        .leaflet-control-attribution a { color: #999 !important; }
+        .leaflet-popup-content-wrapper {
+            border: 1px solid var(--border);
+            border-radius: 0;
+            background: #111;
+            color: #fff;
+        }
+        .leaflet-popup-tip { background: #111; }
+        .leaflet-popup-content {
+            margin: 12px;
+            font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+        }
+        .tc-popup-title {
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #333;
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+        .tc-popup-row {
+            margin-bottom: 4px;
+            font-size: 0.86rem;
+            font-weight: 300;
+        }
+
+        .storm-node {
+            border: 2px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 6px rgba(0, 0, 0, 1);
+        }
+        .current-node {
+            position: relative;
+            border-width: 3px;
+            box-shadow: 0 0 0 5px rgba(27, 161, 226, 0.22), 0 0 12px rgba(255, 255, 255, 0.7);
+        }
+        .storm-label, .forecast-time-label {
+            padding: 3px 6px;
+            border: 1px solid #444;
+            border-radius: 0;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            box-shadow: none;
+            font-size: 0.75rem;
+            white-space: nowrap;
+        }
+        .storm-label::before, .forecast-time-label::before { display: none; }
+        .forecast-time-label { color: #ccc; font-size: .66rem; padding: 1px 4px; }
+
+        .point-hover {
+            min-width: 160px;
+            color: #fff;
+            font-size: .75rem;
+            line-height: 1.4;
+        }
+        .distance-label, .grid-label {
+            color: #999;
+            font-size: 10px;
+            text-shadow: 1px 1px 2px #000, -1px -1px 2px #000;
+            white-space: nowrap;
+        }
+        .measure-label {
+            padding: 3px 6px;
+            border: 1px solid #666;
+            background: #000;
+            color: #fff;
+            font-size: .75rem;
+            white-space: nowrap;
+        }
+        .measure-label::before { display: none; }
+
+        #comparison-panel {
+            left: 12px;
+            bottom: 36px;
+            z-index: 760;
+            width: min(430px, calc(100vw - 86px));
+            padding: 12px 13px;
+            border: 1px solid #3a3a3a;
+            background: rgba(0, 0, 0, .91);
+            color: #fff;
+            pointer-events: auto;
+            box-shadow: 0 5px 18px rgba(0,0,0,.45);
+        }
+        .comparison-head { display:flex; align-items:center; gap:8px; margin-bottom:9px; }
+        .comparison-title { flex:1; color:var(--accent); font-size:.92rem; font-weight:650; }
+        .comparison-close { border:0; background:transparent; color:#aaa; font-size:1.2rem; cursor:pointer; }
+        .comparison-controls { display:grid; grid-template-columns: 1fr auto; gap:8px 10px; align-items:center; }
+        .comparison-controls select { width:100%; }
+        .comparison-range { grid-column:1 / -1; display:flex; align-items:center; gap:9px; }
+        .comparison-range input { flex:1; accent-color:var(--accent); }
+        .comparison-hour { min-width:58px; text-align:right; color:#fff; font-variant-numeric:tabular-nums; }
+        .comparison-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin:10px 0; }
+        .metric-box { padding:7px; border:1px solid #333; background:#101010; }
+        .metric-label { color:#777; font-size:.64rem; text-transform:uppercase; letter-spacing:.4px; }
+        .metric-value { margin-top:2px; color:#fff; font-size:.88rem; font-variant-numeric:tabular-nums; }
+        .comparison-table { width:100%; border-collapse:collapse; font-size:.72rem; }
+        .comparison-table th, .comparison-table td { padding:5px 4px; border-top:1px solid #292929; text-align:left; white-space:nowrap; }
+        .comparison-table th { color:#777; font-weight:500; }
+        .comparison-table td { color:#ccc; }
+        .comparison-empty { padding:8px 0; color:#777; font-size:.78rem; }
+        .consensus-node { width:16px; height:16px; border:2px solid #fff; background:var(--consensus); transform:rotate(45deg); box-shadow:0 0 0 5px rgba(127,231,255,.16); }
+        .comparison-source-node { border:2px solid #fff; border-radius:50%; box-shadow:0 0 7px #000; }
+        .analysis-note { color:#707070; font-size:.68rem; line-height:1.45; margin-top:8px; }
+
+        @media (max-width: 640px) {
+            #app-container { padding-top: 10px; }
+            .header-top-bar { padding-right: 12px; }
+            .app-title { margin-left: 15px; font-size: 0.7rem; }
+            .pivot-headers { min-height: 54px; padding: 0 15px 7px; gap: 10px; }
+            .storm-summary { font-size: 0.75rem; }
+            .storm-panel { width: min(90vw, 340px); }
+            .metro-fab { right: 17px; bottom: 17px; }
+            #source-badges { right: 8px; top: 8px; }
+            .source-badge { padding: 3px 5px; }
+            #coordinate-readout { display: none; }
+            #comparison-panel { left:8px; bottom:72px; width:calc(100vw - 72px); max-height:52vh; overflow:auto; }
+            .comparison-metrics { grid-template-columns:1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div id="top-progress-bar" class="hidden" aria-hidden="true">
+    <div class="metro-dot"></div><div class="metro-dot"></div><div class="metro-dot"></div><div class="metro-dot"></div><div class="metro-dot"></div>
+</div>
+
+<div id="app-container">
+    <div class="header-top-bar">
+        <div class="app-title">hong kong weather</div>
+        <div class="global-controls">
+            <button class="metro-btn" onclick="WeatherApp.resetView()" title="顯示全部路徑" aria-label="顯示全部路徑">◎</button>
+            <button id="basemap-button" class="metro-btn" onclick="WeatherApp.toggleBasemap()" title="切換明暗地圖" aria-label="切換明暗地圖">◐</button>
+            <button id="measure-button" class="metro-btn" onclick="WeatherApp.toggleMeasure()" title="量度距離" aria-label="量度距離">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17L17 3l4 4L7 21H3v-4z"></path><path d="M12 8l4 4M9 11l2 2M15 5l2 2"></path></svg>
+            </button>
+            <button id="comparison-button" class="metro-btn" onclick="WeatherApp.toggleComparisonPanel()" title="預測比較分析" aria-label="預測比較分析">Σ</button>
+            <button class="metro-btn" onclick="WeatherApp.toggleFullscreen()" title="全螢幕" aria-label="全螢幕">⛶</button>
+            <button class="metro-btn" onclick="WeatherApp.refreshData()" title="同步更新 HKO、CMA、JMA 與 CWA" aria-label="更新資料">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="pivot-headers">
+        <h1 class="pivot-header">storm</h1>
+        <div id="storm-summary" class="storm-summary">HKO × CMA × JMA × CWA 熱帶氣旋路徑比較</div>
+    </div>
+
+    <div class="pivot-content-wrapper">
+        <div id="map-container">
+            <div id="storm-map"></div>
+
+            <div id="source-badges" class="map-hud">
+                <button id="badge-hko" class="source-badge loading" type="button" onclick="WeatherApp.showSourceStatus('HKO')">HKO</button>
+                <button id="badge-cma" class="source-badge loading" type="button" onclick="WeatherApp.showSourceStatus('CMA')">CMA</button>
+                <button id="badge-jma" class="source-badge loading" type="button" onclick="WeatherApp.showSourceStatus('JMA')">JMA</button>
+                <button id="badge-cwa" class="source-badge loading" type="button" onclick="WeatherApp.showSourceStatus('CWA')">CWA</button>
+            </div>
+            <div id="coordinate-readout" class="map-hud">--</div>
+            <div id="measure-hint" class="map-hud hidden">量度模式：在地圖點選起點及終點，按 Esc 結束</div>
+            <div id="toast" class="map-hud"></div>
+
+            <section id="comparison-panel" class="map-hud hidden" aria-label="多機構預測比較">
+                <div class="comparison-head">
+                    <div class="comparison-title">多機構預測比較</div>
+                    <button class="comparison-close" type="button" onclick="WeatherApp.toggleComparisonPanel(false)" aria-label="關閉">×</button>
+                </div>
+                <div class="comparison-controls">
+                    <select id="comparison-storm" class="metro-select" aria-label="選擇風暴"></select>
+                    <button class="metro-btn" type="button" onclick="WeatherApp.focusComparison()">定位</button>
+                    <div class="comparison-range">
+                        <input id="comparison-hour" type="range" min="6" max="120" step="6" value="24" aria-label="比較預報時效">
+                        <span id="comparison-hour-label" class="comparison-hour">+24h</span>
+                    </div>
+                </div>
+                <div class="comparison-metrics">
+                    <div class="metric-box"><div class="metric-label">有效來源</div><div id="metric-sources" class="metric-value">--</div></div>
+                    <div class="metric-box"><div class="metric-label">最大分歧</div><div id="metric-spread" class="metric-value">--</div></div>
+                    <div class="metric-box"><div class="metric-label">共識距港</div><div id="metric-hk" class="metric-value">--</div></div>
+                </div>
+                <div id="comparison-time" style="color:#888;font-size:.72rem;margin-bottom:5px">--</div>
+                <div id="comparison-results"></div>
+                <div class="analysis-note">共識中心為可用來源位置的幾何平均；分歧範圍只供比較，不代表官方機率預報。</div>
+            </section>
+
+            <div id="no-storm-overlay" class="no-storm-overlay hidden">
+                <div class="overlay-title">目前沒有活躍熱帶氣旋路徑</div>
+                <div class="overlay-subtitle">香港天文台、中央氣象台、日本氣象廳及台灣中央氣象署來源均未返回活躍路徑。可按右上角更新按鈕重新同步。</div>
+                <button class="metro-btn" onclick="WeatherApp.refreshData()" style="height:38px;padding:0 18px;border-color:#fff;color:#fff">重新同步</button>
+            </div>
+
+            <div id="error-overlay" class="error-overlay hidden">
+                <div class="overlay-title">未能取得風暴資料</div>
+                <div id="error-message" class="overlay-subtitle">請檢查網絡或 Cloudflare Worker。</div>
+                <button class="metro-btn" onclick="WeatherApp.refreshData()" style="height:38px;padding:0 18px;border-color:#fff;color:#fff">重試</button>
+            </div>
+
+            <button class="metro-fab" onclick="WeatherApp.toggleStormPanel()" aria-label="開啟圖例及設定">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+
+            <aside id="storm-panel" class="storm-panel" aria-label="風暴圖層設定">
+                <div class="panel-close" onclick="WeatherApp.toggleStormPanel()" aria-label="關閉">×</div>
+
+                <div class="panel-title">活躍風暴</div>
+                <div id="active-storms-container"></div>
+
+                <div class="panel-title">資料來源</div>
+                <label class="toggle-row"><input id="toggle-source-hko" type="checkbox" checked>香港天文台 HKO<div class="source-indicator" style="background:#fff"></div></label>
+                <label class="toggle-row"><input id="toggle-source-cma" type="checkbox" checked>中央氣象台 CMA<div class="source-indicator" style="background:#ff4b55"></div></label>
+                <label class="toggle-row"><input id="toggle-source-jma" type="checkbox" checked>日本氣象廳 JMA（官方 XML）<div class="source-indicator" style="background:#00d8ff"></div></label>
+                <label class="toggle-row"><input id="toggle-source-cwa" type="checkbox" checked>台灣中央氣象署 CWA（官方 API）<div class="source-indicator" style="background:#ffea00"></div></label>
+
+                <div class="panel-title">顯示圖層</div>
+                <label class="toggle-row"><input id="toggle-past" type="checkbox" checked>實測及分析路徑</label>
+                <label class="toggle-row"><input id="toggle-forecast" type="checkbox" checked>預測路徑</label>
+                <label class="toggle-row"><input id="toggle-points" type="checkbox" checked>位置資料點</label>
+                <label class="toggle-row"><input id="toggle-labels" type="checkbox">預測時間標籤</label>
+                <label class="toggle-row"><input id="toggle-cwa-probability" type="checkbox">CWA 70% 預報圓</label>
+                <label class="toggle-row"><input id="toggle-wind-radii" type="checkbox">最新分析風圈</label>
+                <label class="toggle-row"><input id="toggle-forecast-spread" type="checkbox" checked>比較時效分歧範圍</label>
+                <label class="toggle-row"><input id="toggle-rings" type="checkbox" checked>香港 400／800 公里圈</label>
+                <label class="toggle-row"><input id="toggle-grid" type="checkbox" checked>經緯度網格</label>
+                <div class="select-row">
+                    <span>預測點間隔</span>
+                    <select id="forecast-density" class="metro-select">
+                        <option value="6">每 6 小時</option>
+                        <option value="12" selected>每 12 小時</option>
+                        <option value="24">每 24 小時</option>
+                        <option value="0">所有官方點</option>
+                    </select>
+                </div>
+
+                <div class="panel-title">來源圖例</div>
+                <div class="legend-row"><div class="legend-line" style="border-top-color:#fff"></div>HKO 實測／分析</div>
+                <div class="legend-row"><div class="legend-line" style="border-top-color:#fff;border-top-style:dashed"></div>HKO 預測</div>
+                <div class="legend-row"><div class="legend-line" style="border-top-color:#ff4b55;border-top-style:dashed"></div>CMA 預測</div>
+                <div class="legend-row"><div class="legend-line" style="border-top-color:#00d8ff;border-top-style:dashed"></div>JMA 官方預測</div>
+                <div class="legend-row"><div class="legend-line" style="border-top-color:#ffea00;border-top-style:dashed"></div>CWA 官方預測</div>
+
+                <div class="panel-title">強度顏色</div>
+                <div class="legend-row"><div class="legend-color" style="background:#339933"></div>熱帶低氣壓</div>
+                <div class="legend-row"><div class="legend-color" style="background:#1ba1e2"></div>熱帶風暴</div>
+                <div class="legend-row"><div class="legend-color" style="background:#f09609"></div>強烈熱帶風暴</div>
+                <div class="legend-row"><div class="legend-color" style="background:#fa6800"></div>颱風</div>
+                <div class="legend-row"><div class="legend-color" style="background:#e671b8"></div>強颱風</div>
+                <div class="legend-row"><div class="legend-color" style="background:#e51400"></div>超強颱風</div>
+
+                <div id="engine-status">資料引擎：準備中</div>
+                <div style="margin-top:12px;color:#666;font-size:.72rem;line-height:1.45">第二階段加入多機構時效比較、分歧半徑、最近距港分析及最新風圈。CMA 使用 NMC BABJ；JMA 使用官方 VPTW；CWA 使用 W-C0034-005。</div>
+            </aside>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+const WeatherApp = (() => {
+    'use strict';
+
+    const HKO_LIST_URL = 'https://www.weather.gov.hk/wxinfo/currwx/tc_list.xml';
+    const NMC_LIST_URL = 'https://typhoon.nmc.cn/weatherservice/typhoon/jsons/list_default';
+    const JMA_FEED_URLS = [
+        'https://www.data.jma.go.jp/developer/xml/feed/extra.xml',
+        'https://www.data.jma.go.jp/developer/xml/feed/extra_l.xml'
+    ];
+    const JMA_FEED_URL = JMA_FEED_URLS[1];
+
+    // 部署 Worker v2.5 後，把地址改成自己的 Worker。
+    const WORKER_ORIGIN = 'https://storm.maxyu0725.workers.dev';
+    const PROXY_URL = `${WORKER_ORIGIN}/?url=`;
+    const CWA_API_URL = `${WORKER_ORIGIN}/api/cwa`;
+
+    const DEFAULT_VIEW = { center: [18.5, 122.0], zoom: 5 };
+    const HONG_KONG = { lat: 22.3023, lon: 114.1746 };
+    const CACHE_KEY = 'hko-cma-jma-cwa-storm-track-cache-v3.0';
+    const FETCH_TIMEOUT_MS = 16000;
+
+    const SOURCE_CONFIG = {
+        HKO: { name: '香港天文台', color: '#ffffff', dash: '7,8' },
+        CMA: { name: '中央氣象台', color: '#ff4b55', dash: '3,8' },
+        JMA: { name: '日本氣象廳官方 XML', color: '#00d8ff', dash: '10,7' },
+        CWA: { name: '台灣中央氣象署官方 API', color: '#ffea00', dash: '6,6' }
+    };
+
+    let map = null;
+    let baseStaticLayer = null;
+    let ringsLayer = null;
+    let gridLayer = null;
+    let trackLayer = null;
+    let analysisLayer = null;
+    let measureLayer = null;
+    let darkTiles = null;
+    let lightTiles = null;
+    let activeTiles = 'dark';
+    let currentStorms = [];
+    let lastFitBounds = null;
+    let requestSerial = 0;
+    let toastTimer = null;
+
+    const sourceVisible = { HKO: true, CMA: true, JMA: true, CWA: true };
+    const sourceHealth = {
+        HKO: { state: 'loading', message: '準備中' },
+        CMA: { state: 'loading', message: '準備中' },
+        JMA: { state: 'loading', message: '準備中' },
+        CWA: { state: 'loading', message: '準備中' }
+    };
+    const viewOptions = {
+        past: true,
+        forecast: true,
+        points: true,
+        labels: false,
+        cwaProbability: false,
+        windRadii: false,
+        forecastSpread: true,
+        compareHours: 24,
+        rings: true,
+        grid: true,
+        forecastHours: 12
+    };
+    const measureState = { active: false, points: [] };
+    const comparisonState = { open: false, groupKey: null, lastBounds: null };
+
+    function init() {
+        initMap();
+        bindControls();
+        refreshData();
+    }
+
+    function initMap() {
+        map = L.map('storm-map', {
+            zoomControl: true,
+            attributionControl: true,
+            minZoom: 3,
+            maxZoom: 11,
+            worldCopyJump: true,
+            preferCanvas: true
+        }).setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
+
+        darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            subdomains: 'abcd', maxZoom: 20, attribution: '&copy; OpenStreetMap &copy; CARTO'
+        }).addTo(map);
+        lightTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            subdomains: 'abcd', maxZoom: 20, attribution: '&copy; OpenStreetMap &copy; CARTO'
+        });
+
+        baseStaticLayer = L.layerGroup().addTo(map);
+        ringsLayer = L.layerGroup().addTo(map);
+        gridLayer = L.layerGroup().addTo(map);
+        trackLayer = L.layerGroup().addTo(map);
+        analysisLayer = L.layerGroup().addTo(map);
+        measureLayer = L.layerGroup().addTo(map);
+
+        const hkIcon = L.divIcon({
+            html: '<div style="width:13px;height:13px;background:#fff;border:3px solid #1ba1e2;border-radius:50%;box-shadow:0 0 7px #000"></div>',
+            className: '', iconSize: [13, 13], iconAnchor: [6.5, 6.5]
+        });
+        L.marker([HONG_KONG.lat, HONG_KONG.lon], { icon: hkIcon, interactive: false })
+            .bindTooltip('香港', { permanent: true, direction: 'right', className: 'storm-label', offset: [8, 0] })
+            .addTo(baseStaticLayer);
+
+        map.on('mousemove', event => {
+            document.getElementById('coordinate-readout').textContent = formatLatLon(event.latlng.lat, event.latlng.lng);
+        });
+        map.on('mouseout', () => {
+            document.getElementById('coordinate-readout').textContent = '--';
+        });
+        map.on('click', handleMeasureClick);
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                if (measureState.active) toggleMeasure(false);
+                document.getElementById('storm-panel').classList.remove('open');
+                if (comparisonState.open) toggleComparisonPanel(false);
+            }
+        });
+
+        renderStaticLayers();
+    }
+
+    function bindControls() {
+        const layerBindings = [
+            ['toggle-past', 'past'],
+            ['toggle-forecast', 'forecast'],
+            ['toggle-points', 'points'],
+            ['toggle-labels', 'labels'],
+            ['toggle-cwa-probability', 'cwaProbability'],
+            ['toggle-wind-radii', 'windRadii'],
+            ['toggle-forecast-spread', 'forecastSpread'],
+            ['toggle-rings', 'rings'],
+            ['toggle-grid', 'grid']
+        ];
+
+        layerBindings.forEach(([id, key]) => {
+            document.getElementById(id).addEventListener('change', event => {
+                viewOptions[key] = event.target.checked;
+                if (key === 'rings' || key === 'grid') renderStaticLayers();
+                else { renderStorms(false); if (key === 'forecastSpread') renderForecastComparison(); }
+            });
+        });
+
+        [['toggle-source-hko', 'HKO'], ['toggle-source-cma', 'CMA'], ['toggle-source-jma', 'JMA'], ['toggle-source-cwa', 'CWA']].forEach(([id, source]) => {
+            document.getElementById(id).addEventListener('change', event => {
+                sourceVisible[source] = event.target.checked;
+                renderStorms(false);
+            });
+        });
+
+        document.getElementById('forecast-density').addEventListener('change', event => {
+            viewOptions.forecastHours = Number(event.target.value);
+            renderStorms(false);
+            showToast(viewOptions.forecastHours ? `預測點改為每 ${viewOptions.forecastHours} 小時` : '顯示所有官方預測點');
+        });
+
+        document.getElementById('active-storms-container').addEventListener('click', event => {
+            const card = event.target.closest('[data-storm-key]');
+            if (!card) return;
+            focusStorm(card.dataset.stormKey);
+        });
+
+        document.getElementById('comparison-storm').addEventListener('change', event => {
+            comparisonState.groupKey = event.target.value;
+            renderForecastComparison();
+        });
+        document.getElementById('comparison-hour').addEventListener('input', event => {
+            viewOptions.compareHours = Number(event.target.value);
+            document.getElementById('comparison-hour-label').textContent = `+${viewOptions.compareHours}h`;
+            renderForecastComparison();
+        });
+    }
+
+    function renderStaticLayers() {
+        ringsLayer.clearLayers();
+        gridLayer.clearLayers();
+
+        if (viewOptions.rings) {
+            [400000, 800000].forEach((radius, index) => {
+                L.circle([HONG_KONG.lat, HONG_KONG.lon], {
+                    radius, color: '#8f8f8f', weight: 1.2, dashArray: '6,7', fill: false, interactive: false
+                }).addTo(ringsLayer);
+
+                const km = radius / 1000;
+                const labelLat = HONG_KONG.lat + (index === 0 ? 3.58 : 7.15);
+                const icon = L.divIcon({ html: `<div class="distance-label">${km} 公里</div>`, className: '', iconSize: [55, 14] });
+                L.marker([labelLat, HONG_KONG.lon], { icon, interactive: false }).addTo(ringsLayer);
+            });
+        }
+
+        if (viewOptions.grid) {
+            for (let lat = 0; lat <= 40; lat += 5) {
+                L.polyline([[lat, 100], [lat, 150]], {
+                    color: '#66717a', weight: 0.8, opacity: 0.35, dashArray: '5,7', interactive: false
+                }).addTo(gridLayer);
+            }
+            for (let lon = 100; lon <= 150; lon += 5) {
+                L.polyline([[0, lon], [40, lon]], {
+                    color: '#66717a', weight: 0.8, opacity: 0.35, dashArray: '5,7', interactive: false
+                }).addTo(gridLayer);
+            }
+        }
+    }
+
+
+    async function refreshData() {
+        const serial = ++requestSerial;
+        setLoading(true);
+        hideOverlays();
+        ['HKO', 'CMA', 'JMA', 'CWA'].forEach(source => setSourceHealth(source, 'loading', '同步中'));
+        setStatus('正在同步 HKO、CMA、JMA 與 CWA 官方資料…');
+
+        const results = await Promise.allSettled([loadHkoStorms(), loadCmaStorms(), loadJmaStorms(), loadCwaStorms()]);
+        if (serial !== requestSerial) return;
+
+        const hkoStorms = results[0].status === 'fulfilled' ? results[0].value : [];
+        const cmaStorms = results[1].status === 'fulfilled' ? results[1].value : [];
+        const jmaStorms = results[2].status === 'fulfilled' ? results[2].value : [];
+        const cwaStorms = results[3].status === 'fulfilled' ? results[3].value : [];
+
+        const healthRows = [
+            ['HKO', hkoStorms, '沒有活躍路徑', '讀取失敗'],
+            ['CMA', cmaStorms, '沒有 CMA 預測', 'NMC／CMA 讀取失敗'],
+            ['JMA', jmaStorms, '沒有 JMA VPTW 路徑', 'JMA 官方 XML 讀取失敗'],
+            ['CWA', cwaStorms, '沒有 CWA 路徑', 'CWA 官方 API 讀取失敗']
+        ];
+        healthRows.forEach(([source, storms, emptyMessage, fallbackError], index) => {
+            const result = results[index];
+            if (result.status === 'fulfilled') {
+                const suffix = source === 'JMA' ? '（官方 XML）' : source === 'CWA' ? '（官方 API）' : '';
+                setSourceHealth(source, storms.length ? 'ok' : 'empty', storms.length ? `${storms.length} 個風暴${suffix}` : emptyMessage);
+            } else {
+                setSourceHealth(source, 'error', result.reason?.message || fallbackError);
+            }
+        });
+
+        const merged = mergeStormSources([...hkoStorms, ...cmaStorms, ...jmaStorms, ...cwaStorms]);
+
+        try {
+            if (merged.length > 0) {
+                currentStorms = merged;
+                saveCache(currentStorms);
+                renderStorms(true);
+                updateStormCards();
+                updateComparisonControls();
+                renderForecastComparison();
+                setStatus(buildStatusHtml(false));
+            } else if (results.every(result => result.status === 'fulfilled')) {
+                currentStorms = [];
+                renderStorms(false);
+                updateStormCards();
+                updateComparisonControls();
+                renderForecastComparison();
+                showNoStorm();
+                setStatus(buildStatusHtml(false));
+            } else {
+                const cached = loadCache();
+                if (cached) {
+                    currentStorms = cached.storms;
+                    renderStorms(true);
+                    updateStormCards();
+                    updateComparisonControls();
+                    renderForecastComparison();
+                    showToast('部分即時來源失敗，顯示可用資料及本機快取');
+                    setStatus(buildStatusHtml(true, cached.savedAt));
+                } else {
+                    currentStorms = [];
+                    renderStorms(false);
+                    updateStormCards();
+                    updateComparisonControls();
+                    renderForecastComparison();
+                    const errors = results.filter(item => item.status === 'rejected').map(item => item.reason?.message || '未知錯誤').join('；');
+                    showError(errors || '四個來源均沒有可用資料。');
+                    setStatus(buildStatusHtml(false));
+                }
+            }
+        } finally {
+            if (serial === requestSerial) setLoading(false);
+        }
+    }
+
+    async function loadHkoStorms() {
+        const listXml = await fetchText(HKO_LIST_URL, 'xml');
+        const cycloneRefs = parseCycloneList(listXml);
+        if (cycloneRefs.length === 0) return [];
+        const settled = await Promise.allSettled(cycloneRefs.map(loadHkoCycloneTrack));
+        const storms = settled.filter(item => item.status === 'fulfilled' && item.value).map(item => item.value);
+        if (storms.length === 0) throw new Error('HKO 風暴清單存在，但路徑檔案解析失敗');
+        return storms;
+    }
+
+    async function loadHkoCycloneTrack(reference) {
+        const safeUrl = normalizeHkoUrl(reference.url);
+        const trackXml = await fetchText(safeUrl, 'xml');
+        return parseHkoTrackXml(trackXml, reference);
+    }
+
+
+    async function loadCmaStorms() {
+        const timestamp = Date.now();
+        const listUrl = `${NMC_LIST_URL}?t=${timestamp}&callback=typhoon_jsons_list_default`;
+        const listText = await fetchText(listUrl, 'json', { proxyOnly: true });
+        const listData = parseNmcJson(listText);
+        const list = Array.isArray(listData?.typhoonList) ? listData.typhoonList : [];
+        const active = list.filter(item => {
+            const state = String(item?.[7] || '').trim().toLowerCase();
+            return state === 'start' || state === 'active' || state === '1';
+        });
+        if (active.length === 0) return [];
+
+        const settled = await Promise.allSettled(active.map(async item => {
+            const id = String(item[0] || '').trim();
+            if (!id) return null;
+            const callback = `typhoon_jsons_view_${id.replace(/[^A-Za-z0-9_]/g, '_')}`;
+            const detailUrl = `https://typhoon.nmc.cn/weatherservice/typhoon/jsons/view_${encodeURIComponent(id)}?t=${Date.now()}&callback=${callback}`;
+            const detailText = await fetchText(detailUrl, 'json', { proxyOnly: true });
+            const detailData = parseNmcJson(detailText);
+            return parseNmcAgencyTrack(detailData, {
+                id,
+                nameEn: String(item[1] || '').trim(),
+                nameTc: String(item[2] || '').trim()
+            });
+        }));
+
+        const storms = settled
+            .filter(item => item.status === 'fulfilled' && item.value)
+            .map(item => item.value);
+
+        if (storms.length === 0) {
+            const detailErrors = settled
+                .filter(item => item.status === 'rejected')
+                .map(item => item.reason?.message)
+                .filter(Boolean)
+                .slice(0, 2)
+                .join('；');
+            throw new Error(detailErrors || 'NMC 活躍風暴存在，但最新歷史點沒有 BABJ 預測');
+        }
+        return storms;
+    }
+
+    async function loadCwaStorms() {
+        const text = await fetchDirectJsonText(CWA_API_URL);
+        let data;
+        try { data = JSON.parse(text); }
+        catch (error) { throw new Error(`CWA JSON 解析錯誤：${error.message}`); }
+        if (String(data?.success).toLowerCase() === 'false') throw new Error('CWA API 回報失敗');
+
+        const raw = data?.records?.TropicalCyclones?.TropicalCyclone;
+        const cyclones = asArray(raw).filter(item => item && typeof item === 'object');
+        return cyclones.map(parseCwaTrack).filter(Boolean);
+    }
+
+    function parseCwaTrack(cyclone) {
+        const positions = asArray(cyclone?.AnalysisData?.Fix).map(item => parseCwaPoint(item, false)).filter(Boolean);
+        const forecast = asArray(cyclone?.ForecastData?.Fix).map(item => parseCwaPoint(item, true)).filter(Boolean);
+        if (!positions.length && !forecast.length) return null;
+
+        const tdNo = String(cyclone.CwaTdNo || '').trim();
+        const tyNo = String(cyclone.CwaTyNo || '').trim();
+        const nameEn = String(cyclone.TyphoonName || '').trim();
+        const nameTc = String(cyclone.CwaTyphoonName || '').trim() || (tdNo ? `熱帶低氣壓 ${tdNo}` : '未命名熱帶氣旋');
+        const sourceId = `${cyclone.Year || ''}-${tyNo || tdNo || nameEn || nameTc}`;
+        const bulletinTime = forecast[0]?.baseTime || positions.at(-1)?.time || null;
+
+        return makeSourceStorm({
+            agency: 'CWA', sourceId, nameTc, nameEn, bulletinTime,
+            positions: deduplicatePoints(positions), forecast: deduplicatePoints(forecast)
+        });
+    }
+
+    function parseCwaPoint(item, isForecast) {
+        if (!item || typeof item !== 'object') return null;
+        const lon = Number.parseFloat(item.CoordinateLongitude);
+        const lat = Number.parseFloat(item.CoordinateLatitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+        const forecastHour = isForecast ? Number(item.ForecastHour) : null;
+        const baseTime = isForecast ? normalizeCwaTime(item.InitialTime) : null;
+        const time = isForecast ? addHoursIso(baseTime, forecastHour) : normalizeCwaTime(item.DateTime);
+        const maximumWind = item.MaxWindSpeed ?? null;
+        const movementPrediction = localizedText(item.MovingPrediction);
+        const stateTransfer = localizedText(item.StateTransfer);
+
+        return {
+            kind: isForecast ? 'forecast' : 'past',
+            lat, lon, time, baseTime, forecastHour,
+            maximumWind,
+            maximumGust: item.MaxGustSpeed ?? null,
+            pressure: item.Pressure ?? null,
+            intensity: classifyWindIntensity(maximumWind),
+            movingSpeed: item.MovingSpeed ?? null,
+            movingDirection: item.MovingDirection ?? null,
+            movementPrediction,
+            stateTransfer,
+            probabilityRadius: Number(item.Radius70PercentProbability) || null,
+            windRadii: parseCwaWindRadii(item),
+            interpolated: false
+        };
+    }
+
+    function parseCwaWindRadii(item) {
+        const definitions = [
+            ['15 m/s 風圈', item?.Circle15ms],
+            ['25 m/s 風圈', item?.Circle25ms]
+        ];
+        return definitions.map(([level, circle]) => {
+            if (!circle || typeof circle !== 'object') return null;
+            const scalar = Number(circle.Radius) || 0;
+            const values = { NE: scalar, SE: scalar, SW: scalar, NW: scalar };
+            asArray(circle?.QuadrantRadii?.Radius).forEach(entry => {
+                const dir = String(entry?.dir || '').toUpperCase();
+                const value = Number(entry?.value);
+                if (dir in values && Number.isFinite(value)) values[dir] = value;
+            });
+            return { level, ne: values.NE, se: values.SE, sw: values.SW, nw: values.NW };
+        }).filter(Boolean);
+    }
+
+    function localizedText(value) {
+        const items = asArray(value);
+        const preferred = items.find(item => String(item?.lang || '').toLowerCase().startsWith('zh')) || items[0];
+        return preferred && typeof preferred === 'object' ? String(preferred.value || '').trim() : String(preferred || '').trim();
+    }
+
+    function normalizeCwaTime(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return null;
+        const date = new Date(raw);
+        return Number.isNaN(date.getTime()) ? raw : date.toISOString();
+    }
+
+    function addHoursIso(baseTime, hours) {
+        const date = new Date(baseTime);
+        if (!baseTime || Number.isNaN(date.getTime()) || !Number.isFinite(hours)) return baseTime;
+        return new Date(date.getTime() + hours * 3600000).toISOString();
+    }
+
+    function asArray(value) {
+        if (Array.isArray(value)) return value;
+        return value == null ? [] : [value];
+    }
+
+    async function fetchDirectJsonText(url) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        try {
+            const response = await fetch(url, {
+                method: 'GET', cache: 'no-store', signal: controller.signal,
+                headers: { Accept: 'application/json' }
+            });
+            const text = await response.text();
+            if (!response.ok) {
+                let detail = '';
+                try { detail = JSON.parse(text)?.error || ''; } catch {}
+                throw new Error(`HTTP ${response.status}${detail ? `：${detail}` : ''}`);
+            }
+            if (!text || !text.includes('{')) throw new Error('伺服器沒有返回 JSON');
+            return text;
+        } catch (error) {
+            if (error?.name === 'AbortError') throw new Error('CWA 連線逾時');
+            throw new Error(`無法取得 CWA API：${error?.message || '未知錯誤'}`);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    async function loadJmaStorms() {
+        let candidates = [];
+        let lastFeedError = null;
+        for (const feedUrl of JMA_FEED_URLS) {
+            try {
+                const feedText = await fetchText(feedUrl, 'xml', { proxyOnly: true });
+                candidates = parseJmaFeedCandidates(feedText);
+                if (candidates.length > 0) break;
+            } catch (error) {
+                lastFeedError = error;
+            }
+        }
+        if (candidates.length === 0) {
+            if (lastFeedError) throw lastFeedError;
+            return [];
+        }
+
+        const settled = await Promise.allSettled(candidates.map(async candidate => {
+            const xmlText = await fetchText(normalizeJmaUrl(candidate.url), 'xml', { proxyOnly: true });
+            return parseJmaTrackXml(xmlText, candidate);
+        }));
+
+        const byEvent = new Map();
+        settled
+            .filter(item => item.status === 'fulfilled' && item.value)
+            .map(item => item.value)
+            .forEach(storm => {
+                const key = storm.sourceId || normalizeName(storm.nameEn) || storm.displayName;
+                const existing = byEvent.get(key);
+                if (!existing || parseTimeMs(storm.bulletinTime) > parseTimeMs(existing.bulletinTime)) byEvent.set(key, storm);
+            });
+
+        const storms = [...byEvent.values()];
+        if (storms.length === 0 && settled.some(item => item.status === 'rejected')) {
+            const error = settled.find(item => item.status === 'rejected')?.reason;
+            throw new Error(error?.message || 'JMA VPTW XML 解析失敗');
+        }
+        return storms;
+    }
+
+    function parseJmaFeedCandidates(xmlText) {
+        const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+        if (doc.querySelector('parsererror')) throw new Error('JMA Atom feed XML 格式錯誤');
+
+        const candidates = [];
+        const seenCodes = new Set();
+        const entries = elementsByLocalName(doc, 'entry');
+
+        for (const entry of entries) {
+            const title = textOfLocal(entry, 'title');
+            const updated = textOfLocal(entry, 'updated');
+            const link = elementsByLocalName(entry, 'link').find(node => node.getAttribute('href'));
+            const url = link?.getAttribute('href') || '';
+            const match = url.match(/_VPTW(6[0-5])_/i);
+            if (!url || !match) continue;
+            if (!title.includes('台風解析・予報情報') && !url.toUpperCase().includes('VPTW')) continue;
+            const code = `VPTW${match[1]}`.toUpperCase();
+            if (seenCodes.has(code)) continue;
+            seenCodes.add(code);
+            candidates.push({ code, title, updated, url });
+            if (candidates.length >= 6) break;
+        }
+        return candidates;
+    }
+
+    function parseJmaTrackXml(xmlText, candidate) {
+        const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+        if (doc.querySelector('parsererror')) throw new Error(`${candidate.code} XML 格式錯誤`);
+
+        const head = firstLocal(doc, 'Head') || doc;
+        const eventId = textOfLocal(head, 'EventID') || candidate.code;
+        const bulletinTime = textOfLocal(head, 'ReportDateTime') || candidate.updated || null;
+        const infos = elementsByLocalName(doc, 'MeteorologicalInfo');
+        if (infos.length === 0) return null;
+
+        // JMAXML 的名稱位於 TyphoonNamePart/Name、Number；並不存在 TyphoonName 標籤。
+        const documentNamePart = firstLocal(doc, 'TyphoonNamePart');
+        let nameEn = textOfLocal(documentNamePart, 'Name').toUpperCase();
+        let number = textOfLocal(documentNamePart, 'Number');
+        let fallbackNameTc = '';
+        const positions = [];
+        const forecast = [];
+
+        infos.forEach(info => {
+            const dateNode = firstLocal(info, 'DateTime');
+            const time = dateNode?.textContent?.trim() || null;
+            const timeType = dateNode?.getAttribute('type') || '';
+            const coordinate = selectJmaCoordinate(info, timeType);
+            if (!coordinate) return;
+
+            const namePart = firstLocal(info, 'TyphoonNamePart');
+            if (!nameEn) nameEn = textOfLocal(namePart, 'Name').toUpperCase();
+            if (!number) number = textOfLocal(namePart, 'Number');
+            if (!fallbackNameTc) {
+                const area = firstLocal(info, 'Area');
+                const areaName = textOfLocal(area, 'Name');
+                fallbackNameTc = normalizeJmaAreaName(areaName);
+            }
+
+            const maximumWind = parseJmaNumber(selectJmaWindSpeed(info));
+            const pressure = parseJmaNumber(firstLocal(info, 'Pressure'));
+            const intensityText =
+                textOfLocal(info, 'IntensityClass') ||
+                textOfLocal(info, 'StormClass') ||
+                textOfLocal(info, 'TropicalCycloneClass') ||
+                classifyWindIntensity(maximumWind);
+
+            const point = {
+                kind: isJmaAnalysisTimeType(timeType) ? 'analysis' : 'forecast',
+                lat: coordinate.lat,
+                lon: coordinate.lon,
+                time,
+                pressure,
+                maximumWind,
+                intensity: intensityText || null,
+                probabilityRadius: parseJmaForecastRadius(info),
+                interpolated: false
+            };
+
+            if (point.kind === 'analysis') positions.push(point);
+            else forecast.push(point);
+        });
+
+        const cleanPositions = deduplicatePoints(positions);
+        const cleanForecast = deduplicatePoints(forecast);
+        if (cleanPositions.length === 0 && cleanForecast.length === 0) return null;
+
+        // 有名稱時用國際名與 HKO/CMA 合併；未命名熱帶低氣壓則以 EventID 顯示，避免顯示 VPTW62。
+        const fallbackId = eventId || (number ? `T${number}` : candidate.code);
+        return makeSourceStorm({
+            agency: 'JMA',
+            sourceId: fallbackId,
+            nameTc: fallbackNameTc,
+            nameEn: nameEn || fallbackId,
+            bulletinTime,
+            positions: cleanPositions.slice(-1),
+            forecast: cleanForecast
+        });
+    }
+
+    function isJmaAnalysisTimeType(timeType) {
+        return String(timeType || '').includes('実況');
+    }
+
+    function normalizeJmaAreaName(value) {
+        const text = String(value || '').trim();
+        if (!text) return '';
+        return text
+            .replace(/熱帯低気圧/g, '熱帶低氣壓')
+            .replace(/台風第\s*(\d+)\s*号/g, '颱風第$1號');
+    }
+
+    function selectJmaWindSpeed(info) {
+        const candidates = elementsByLocalName(info, 'WindSpeed')
+            .filter(node => (node.getAttribute('type') || '').includes('最大風速'));
+        return candidates.find(node => /m\/s|メートル毎秒/i.test(node.getAttribute('unit') || ''))
+            || candidates[0]
+            || firstLocal(info, 'WindSpeed');
+    }
+
+    function selectJmaCoordinate(info, timeType) {
+        const isForecast = !isJmaAnalysisTimeType(timeType);
+
+        // 5 日預報的預測中心不在 Coordinate，而在
+        // CenterPart/ProbabilityCircle/BasePoint。v2.3 只讀 Coordinate，因此只得到実況一點。
+        if (isForecast) {
+            const circle = firstLocal(info, 'ProbabilityCircle');
+            const basePoints = circle ? elementsByLocalName(circle, 'BasePoint') : [];
+            const basePoint = pickJmaPositionNode(basePoints, true);
+            if (basePoint) return parseJmaCoordinate(basePoint.textContent, basePoint.getAttribute('type') || '');
+        }
+
+        const centerPart = firstLocal(info, 'CenterPart');
+        const coordinates = centerPart ? elementsByLocalName(centerPart, 'Coordinate') : elementsByLocalName(info, 'Coordinate');
+        const coordinate = pickJmaPositionNode(coordinates, false);
+        if (coordinate) return parseJmaCoordinate(coordinate.textContent, coordinate.getAttribute('type') || '');
+
+        // 對推定位置或未來格式變化保留雙向後備。
+        const fallbackNodes = [
+            ...elementsByLocalName(info, 'BasePoint'),
+            ...elementsByLocalName(info, 'Coordinate')
+        ];
+        const fallback = pickJmaPositionNode(fallbackNodes, isForecast);
+        return fallback ? parseJmaCoordinate(fallback.textContent, fallback.getAttribute('type') || '') : null;
+    }
+
+    function pickJmaPositionNode(nodes, preferForecastCenter) {
+        if (!Array.isArray(nodes) || nodes.length === 0) return null;
+        const isDegreeMinute = node => (node.getAttribute('type') || '').includes('度分');
+        const isCenter = node => (node.getAttribute('type') || '').includes('中心位置');
+        const preferred = nodes.find(node => isCenter(node) && !isDegreeMinute(node));
+        if (preferred) return preferred;
+        const decimal = nodes.find(node => !isDegreeMinute(node));
+        if (decimal) return decimal;
+        return nodes[0] || null;
+    }
+
+    function parseJmaCoordinate(value, type = '') {
+        const raw = String(value || '').trim().replace(/\/$/, '');
+        const match = raw.match(/^([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)$/);
+        if (!match) return null;
+
+        const convert = (token, axis) => {
+            const sign = token.startsWith('-') ? -1 : 1;
+            const body = token.slice(1);
+            if (type.includes('度分') && !body.includes('.')) {
+                const degreeDigits = axis === 'lat' ? 2 : 3;
+                const degrees = Number(body.slice(0, degreeDigits));
+                const minutes = Number(body.slice(degreeDigits));
+                return sign * (degrees + minutes / 60);
+            }
+            return sign * Number(body);
+        };
+
+        const lat = convert(match[1], 'lat');
+        const lon = convert(match[2], 'lon');
+        return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+    }
+
+    function parseJmaNumber(node) {
+        if (!node) return null;
+        const number = Number.parseFloat(String(node.textContent || '').replace(/[^0-9.+-]/g, ''));
+        return Number.isFinite(number) ? number : null;
+    }
+
+    function parseJmaForecastRadius(info) {
+        const circle = firstLocal(info, 'ProbabilityCircle');
+        if (!circle) return null;
+        const radius = firstLocal(circle, 'Radius');
+        if (!radius) return null;
+        const value = parseJmaNumber(radius);
+        if (!Number.isFinite(value)) return null;
+        const unit = (radius.getAttribute('unit') || '').toLowerCase();
+        return unit.includes('海里') || unit === 'nm' ? value * 1.852 : value;
+    }
+
+    function firstLocalByType(node, localName, typeText) {
+        return elementsByLocalName(node, localName).find(item => (item.getAttribute('type') || '').includes(typeText)) || null;
+    }
+
+    function firstLocal(node, localName) {
+        return elementsByLocalName(node, localName)[0] || null;
+    }
+
+    function elementsByLocalName(node, localName) {
+        return Array.from(node?.getElementsByTagName?.('*') || []).filter(item => item.localName === localName);
+    }
+
+    function textOfLocal(node, localName) {
+        return firstLocal(node, localName)?.textContent?.trim() || '';
+    }
+
+    function classifyWindIntensity(value) {
+        const wind = Number(value);
+        if (!Number.isFinite(wind)) return '';
+        if (wind >= 51) return '超強颱風';
+        if (wind >= 41) return '強颱風';
+        if (wind >= 33) return '颱風';
+        if (wind >= 25) return '強烈熱帶風暴';
+        if (wind >= 17) return '熱帶風暴';
+        return '熱帶低氣壓';
+    }
+
+    async function fetchText(url, expectedType, options = {}) {
+        const proxyTarget = `${PROXY_URL}${encodeURIComponent(url)}`;
+        let proxyRequired = false;
+        try {
+            const hostname = new URL(url).hostname;
+            proxyRequired = hostname === 'typhoon.nmc.cn' || hostname === 'www.data.jma.go.jp';
+        } catch {}
+
+        // NMC 沒有 CORS；JMA feed／電文亦統一經安全 Worker，避免 file:// 及跨來源問題。
+        const targets = (options.proxyOnly || proxyRequired) ? [proxyTarget] : [url, proxyTarget];
+        let lastError = null;
+
+        for (const target of targets) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+            try {
+                const response = await fetch(target, {
+                    method: 'GET', cache: 'no-store', signal: controller.signal,
+                    headers: { 'Accept': expectedType === 'xml' ? 'application/xml,text/xml,text/plain,*/*' : 'application/json,application/javascript,text/plain,*/*' }
+                });
+                const text = await response.text();
+                if (!response.ok) {
+                    let detail = '';
+                    try {
+                        const body = JSON.parse(text);
+                        detail = body.detail || body.error || '';
+                    } catch {}
+                    throw new Error(`HTTP ${response.status}${detail ? `：${detail}` : ''}`);
+                }
+                if (expectedType === 'xml') assertValidXml(text);
+                else if (!text || (!text.includes('{') && !text.includes('['))) {
+                    const preview = text.replace(/\s+/g, ' ').slice(0, 80);
+                    throw new Error(`伺服器沒有返回 JSON${preview ? `：${preview}` : ''}`);
+                }
+                return text;
+            } catch (error) {
+                lastError = error?.name === 'AbortError' ? new Error('連線逾時') : error;
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+        let filename = '資料';
+        try { filename = new URL(url).pathname.split('/').pop() || filename; } catch {}
+        throw new Error(`無法取得 ${filename}：${lastError?.message || '未知錯誤'}`);
+    }
+
+    function assertValidXml(text) {
+        if (!text || !text.trim().startsWith('<')) throw new Error('伺服器沒有返回 XML');
+        const doc = new DOMParser().parseFromString(text, 'application/xml');
+        if (doc.querySelector('parsererror')) throw new Error('XML 格式錯誤');
+    }
+
+    function parseCycloneList(xmlText) {
+        const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+        return Array.from(doc.getElementsByTagName('TropicalCyclone'))
+            .map(node => ({
+                id: textOf(node, 'TropicalCycloneID'),
+                nameTc: textOf(node, 'TropicalCycloneChineseName'),
+                nameEn: textOf(node, 'TropicalCycloneEnglishName'),
+                url: textOf(node, 'TropicalCycloneURL')
+            }))
+            .filter(item => item.url);
+    }
+
+    function parseHkoTrackXml(xmlText, reference) {
+        const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+        const report = doc.getElementsByTagName('WeatherReport')[0] || doc.documentElement;
+        const bulletinTime = textOf(doc, 'BulletinTime');
+        const reportName = textOf(report, 'TropicalCycloneName');
+
+        const past = Array.from(report.getElementsByTagName('PastInformation')).map(node => parseHkoPoint(node, 'past')).filter(Boolean);
+        const analysis = Array.from(report.getElementsByTagName('AnalysisInformation')).map(node => parseHkoPoint(node, 'analysis')).filter(Boolean);
+        const forecast = Array.from(report.getElementsByTagName('ForecastInformation')).map(node => parseHkoPoint(node, 'forecast')).filter(Boolean);
+        const positions = deduplicatePoints([...past, ...analysis]);
+        const future = deduplicatePoints(forecast);
+        if (positions.length === 0 && future.length === 0) return null;
+
+        const nameTc = reference.nameTc || '未命名熱帶氣旋';
+        const nameEn = reference.nameEn || reportName || '';
+        return makeSourceStorm({
+            agency: 'HKO', sourceId: reference.id || '', nameTc, nameEn, bulletinTime,
+            positions, forecast: future
+        });
+    }
+
+    function parseHkoPoint(node, kind) {
+        const lat = parseCoordinate(textOf(node, 'Latitude'), 'lat');
+        const lon = parseCoordinate(textOf(node, 'Longitude'), 'lon');
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        const time = textOf(node, 'Time') || null;
+        return {
+            kind, lat, lon, time,
+            intensity: textOf(node, 'Intensity') || null,
+            maximumWind: textOf(node, 'MaximumWind') || null,
+            pressure: textOf(node, 'CentralPressure') || null,
+            interpolated: !time
+        };
+    }
+
+    function parseNmcJson(text) {
+        const trimmed = String(text || '').replace(/^\uFEFF/, '').trim();
+        if (!trimmed) throw new Error('NMC 回應為空白');
+
+        // NMC 曾返回 callback(({...}))，舊版只移除一層括號會剩下 ({...}) 而解析失敗。
+        // 依序嘗試原文、JSONP 內文，以及第一個完整物件／陣列。
+        const candidates = [trimmed];
+        const firstParen = trimmed.indexOf('(');
+        const lastParen = trimmed.lastIndexOf(')');
+        if (firstParen !== -1 && lastParen > firstParen) {
+            let inner = trimmed.slice(firstParen + 1, lastParen).trim();
+            candidates.push(inner);
+            while (inner.startsWith('(') && inner.endsWith(')')) {
+                inner = inner.slice(1, -1).trim();
+                candidates.push(inner);
+            }
+        }
+
+        const objectStart = trimmed.indexOf('{');
+        const objectEnd = trimmed.lastIndexOf('}');
+        if (objectStart !== -1 && objectEnd > objectStart) candidates.push(trimmed.slice(objectStart, objectEnd + 1));
+        const arrayStart = trimmed.indexOf('[');
+        const arrayEnd = trimmed.lastIndexOf(']');
+        if (arrayStart !== -1 && arrayEnd > arrayStart) candidates.push(trimmed.slice(arrayStart, arrayEnd + 1));
+
+        let lastError = null;
+        for (const candidate of [...new Set(candidates)]) {
+            try { return JSON.parse(candidate); }
+            catch (error) { lastError = error; }
+        }
+        throw new Error(`NMC JSON／JSONP 解析錯誤：${lastError?.message || '格式不支援'}`);
+    }
+
+
+    function parseNmcAgencyTrack(detailData, reference) {
+        const stormInfo = detailData?.typhoon;
+        if (!Array.isArray(stormInfo)) return null;
+        const pastRaw = Array.isArray(stormInfo[8]) ? stormInfo[8] : [];
+        const allPositions = pastRaw.map(point => parseNmcHistoryPoint(point)).filter(Boolean);
+
+        let forecastSource = null;
+        for (let index = pastRaw.length - 1; index >= 0; index--) {
+            const container = pastRaw[index]?.[11];
+            if (!container || typeof container !== 'object' || Array.isArray(container)) continue;
+            const key = Object.keys(container).find(item => item.toUpperCase() === 'BABJ');
+            if (key && Array.isArray(container[key]) && container[key].length) {
+                forecastSource = { basePoint: pastRaw[index], points: container[key] };
+                break;
+            }
+        }
+
+        const forecast = (forecastSource?.points || []).map(point => parseNmcForecastPoint(point)).filter(Boolean);
+        if (forecast.length === 0) return null;
+
+        return makeSourceStorm({
+            agency: 'CMA',
+            sourceId: reference.id,
+            nameTc: reference.nameTc,
+            nameEn: reference.nameEn,
+            bulletinTime: normalizeNmcTime(forecastSource?.basePoint?.[1]) || allPositions.at(-1)?.time || null,
+            positions: deduplicatePoints(allPositions),
+            forecast: deduplicatePoints(forecast)
+        });
+    }
+
+
+    function parseNmcHistoryPoint(point) {
+        if (!Array.isArray(point)) return null;
+        const lon = Number.parseFloat(point[4]);
+        const lat = Number.parseFloat(point[5]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        return {
+            kind: 'past',
+            lat,
+            lon,
+            time: normalizeNmcTime(point[1]),
+            pressure: point[6] ?? null,
+            maximumWind: point[7] ?? null,
+            intensity: point[3] ?? null,
+            windRadii: parseNmcWindRadii(point[10]),
+            interpolated: false
+        };
+    }
+
+    function parseNmcForecastPoint(point) {
+        if (!Array.isArray(point)) return null;
+        const lon = Number.parseFloat(point[2]);
+        const lat = Number.parseFloat(point[3]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        return {
+            kind: 'forecast',
+            forecastHour: Number(point[0]),
+            lat,
+            lon,
+            time: addHoursToNmcBaseTime(point[1], point[0]),
+            baseTime: normalizeNmcTime(point[1]),
+            pressure: point[4] ?? null,
+            maximumWind: point[5] ?? null,
+            intensity: point[7] ?? null,
+            interpolated: false
+        };
+    }
+
+    function parseNmcWindRadii(value) {
+        if (!Array.isArray(value)) return [];
+        return value.map(item => {
+            if (!Array.isArray(item)) return null;
+            return {
+                level: String(item[0] || ''),
+                ne: Number(item[1]) || 0,
+                se: Number(item[2]) || 0,
+                sw: Number(item[3]) || 0,
+                nw: Number(item[4]) || 0
+            };
+        }).filter(Boolean);
+    }
+
+    function addHoursToNmcBaseTime(baseValue, hoursValue) {
+        const base = normalizeNmcTime(baseValue);
+        const hours = Number(hoursValue);
+        const date = new Date(base);
+        if (!base || Number.isNaN(date.getTime()) || !Number.isFinite(hours)) return base;
+        return new Date(date.getTime() + hours * 3600000).toISOString();
+    }
+
+    function normalizeNmcTime(value) {
+        const raw = String(value ?? '').trim();
+        if (!raw) return null;
+        if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+            if (/Z$|[+-]\d{2}:?\d{2}$/.test(raw)) return raw;
+            return `${raw.replace(' ', 'T')}Z`;
+        }
+        const digits = raw.replace(/\D/g, '');
+        if (digits.length >= 12) {
+            // NMC JSONP 的 yyyymmddHHMM 為 UTC；介面再以香港時區顯示。
+            return `${digits.slice(0,4)}-${digits.slice(4,6)}-${digits.slice(6,8)}T${digits.slice(8,10)}:${digits.slice(10,12)}:00Z`;
+        }
+        return raw;
+    }
+
+    function makeSourceStorm(data) {
+        const displayName = data.nameEn && normalizeName(data.nameEn) !== normalizeName(data.nameTc)
+            ? `${data.nameTc || '未命名'} (${data.nameEn})`
+            : (data.nameTc || data.nameEn || '未命名熱帶氣旋');
+        return { ...data, displayName };
+    }
+
+    function mergeStormSources(sourceStorms) {
+        const groups = [];
+        sourceStorms.forEach(storm => {
+            const keys = [storm.nameEn, storm.nameTc].map(normalizeName).filter(Boolean);
+            const specificKeys = keys.filter(key => !isGenericStormName(key));
+            let group = groups.find(item => specificKeys.some(key => item.nameKeys.has(key)));
+
+            if (!group) {
+                const current = storm.positions.at(-1) || storm.forecast[0];
+                const generic = specificKeys.length === 0;
+                if (current) {
+                    group = groups.find(item => {
+                        const other = getGroupCurrent(item);
+                        if (!other) return false;
+                        const otherSpecific = Array.from(item.nameKeys).some(key => !isGenericStormName(key));
+                        if (!generic && otherSpecific) return false;
+                        const timeGap = Math.abs(parseTimeMs(current.time) - parseTimeMs(other.time));
+                        const timeCompatible = !Number.isFinite(timeGap) || timeGap <= 18 * 3600000;
+                        return timeCompatible && haversineKm(current.lat, current.lon, other.lat, other.lon) < 260;
+                    });
+                }
+            }
+
+            if (!group) {
+                const primaryKey = specificKeys[0] || keys[0] || `${storm.agency}-${storm.sourceId}`;
+                group = {
+                    key: primaryKey,
+                    nameKeys: new Set(),
+                    displayName: storm.displayName,
+                    nameTc: storm.nameTc,
+                    nameEn: storm.nameEn,
+                    sources: {}
+                };
+                groups.push(group);
+            }
+
+            keys.forEach(key => group.nameKeys.add(key));
+            group.sources[storm.agency] = storm;
+
+            if (storm.agency === 'HKO' || (storm.agency === 'CWA' && !group.sources.HKO) || !group.displayName) {
+                group.displayName = storm.displayName;
+                group.nameTc = storm.nameTc;
+                group.nameEn = storm.nameEn;
+            }
+        });
+
+        return groups.map(group => ({ ...group, nameKeys: Array.from(group.nameKeys) }))
+            .sort((a, b) => Number(Boolean(b.sources.HKO)) - Number(Boolean(a.sources.HKO)) || a.displayName.localeCompare(b.displayName, 'zh-HK'));
+    }
+
+    function isGenericStormName(value) {
+        const text = normalizeName(value);
+        return !text || /^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TD|熱帶低氣壓|未命名熱帶氣旋|未命名)(\d+)?$/.test(text);
+    }
+
+    function getGroupCurrent(group) {
+        const source = group.sources.HKO || group.sources.CWA || group.sources.CMA || group.sources.JMA;
+        return source?.positions?.at(-1) || source?.forecast?.[0] || null;
+    }
+
+    function renderStorms(fitMap) {
+        trackLayer.clearLayers();
+        hideOverlays();
+
+        if (currentStorms.length === 0) {
+            document.getElementById('storm-summary').textContent = '目前沒有活躍熱帶氣旋路徑';
+            return;
+        }
+
+        const boundsPoints = [];
+        currentStorms.forEach(group => {
+            ['HKO', 'CMA', 'JMA', 'CWA'].forEach(agency => {
+                const source = group.sources[agency];
+                if (!source || !sourceVisible[agency]) return;
+                renderSourceTrack(group, source, boundsPoints);
+                if (viewOptions.windRadii) renderLatestWindRadii(source);
+            });
+
+            const labelSource = sourceVisible.HKO && group.sources.HKO ? group.sources.HKO
+                : (sourceVisible.CWA && group.sources.CWA ? group.sources.CWA
+                    : (sourceVisible.CMA && group.sources.CMA ? group.sources.CMA : (sourceVisible.JMA ? group.sources.JMA : null)));
+            const current = labelSource?.positions?.at(-1) || labelSource?.forecast?.[0];
+            if (current) {
+                L.circleMarker([current.lat, current.lon], { radius: 1, opacity: 0, fillOpacity: 0, interactive: false })
+                    .bindTooltip(group.displayName, {
+                        permanent: true, direction: 'right', offset: [11, 0], className: 'storm-label'
+                    }).addTo(trackLayer);
+            }
+        });
+
+        const visibleNames = currentStorms.filter(group =>
+            (sourceVisible.HKO && group.sources.HKO) || (sourceVisible.CWA && group.sources.CWA) ||
+            (sourceVisible.CMA && group.sources.CMA) || (sourceVisible.JMA && group.sources.JMA)
+        ).map(group => group.displayName);
+        document.getElementById('storm-summary').textContent = visibleNames.length ? visibleNames.join(' · ') : '所有資料來源已隱藏';
+
+        if (boundsPoints.length > 0) {
+            lastFitBounds = L.latLngBounds(boundsPoints);
+            if (fitMap) map.fitBounds(lastFitBounds.pad(0.18), { maxZoom: 6, animate: true });
+        }
+        renderForecastComparison();
+    }
+
+    function renderSourceTrack(group, source, boundsPoints) {
+        const agency = source.agency;
+        const config = SOURCE_CONFIG[agency];
+        const actual = source.positions || [];
+        const forecast = source.forecast || [];
+        const hasHko = Boolean(group.sources.HKO);
+        const actualForDisplay = agency !== 'HKO' && hasHko ? actual.slice(-1) : actual;
+        actualForDisplay.forEach(point => boundsPoints.push([point.lat, point.lon]));
+        forecast.forEach(point => boundsPoints.push([point.lat, point.lon]));
+
+        if (viewOptions.past && actualForDisplay.length >= 2) {
+            L.polyline(actualForDisplay.map(point => [point.lat, point.lon]), {
+                color: config.color, weight: agency === 'HKO' ? 2.6 : 2.1,
+                opacity: agency === 'HKO' ? .9 : .72, lineJoin: 'round', interactive: false
+            }).addTo(trackLayer);
+        }
+
+        if (viewOptions.forecast && forecast.length > 0) {
+            const line = [];
+            if (actual.length > 0) line.push([actual.at(-1).lat, actual.at(-1).lon]);
+            line.push(...forecast.map(point => [point.lat, point.lon]));
+            if (line.length >= 2) {
+                L.polyline(line, {
+                    color: config.color, weight: agency === 'HKO' ? 2.6 : 2.3,
+                    opacity: .96, dashArray: config.dash, lineJoin: 'round', interactive: false
+                }).addTo(trackLayer);
+            }
+        }
+
+        if (agency === 'CWA' && viewOptions.cwaProbability && viewOptions.forecast) {
+            forecast.filter(point => Number.isFinite(point.probabilityRadius) && point.probabilityRadius > 0).forEach(point => {
+                L.circle([point.lat, point.lon], {
+                    radius: point.probabilityRadius * 1000,
+                    color: config.color,
+                    weight: 1,
+                    opacity: .55,
+                    dashArray: '3,7',
+                    fillColor: config.color,
+                    fillOpacity: .025,
+                    interactive: false
+                }).addTo(trackLayer);
+            });
+        }
+
+        if (!viewOptions.points) return;
+
+        if (viewOptions.past && actual.length > 0) {
+            const pastMarkers = agency !== 'HKO' && hasHko
+                ? [actual.at(-1)]
+                : samplePointsByHours(actual.filter(point => !point.interpolated), 6);
+            pastMarkers.forEach(point => addPointMarker(group, source, point, point === actual.at(-1), false));
+        }
+
+        if (viewOptions.forecast && forecast.length > 0) {
+            const forecastMarkers = samplePointsByHours(forecast.filter(point => !point.interpolated), viewOptions.forecastHours);
+            forecastMarkers.forEach(point => {
+                addPointMarker(group, source, point, false, true);
+                if (viewOptions.labels && point.time) addForecastTimeLabel(source, point);
+            });
+        }
+    }
+
+    function renderLatestWindRadii(source) {
+        const point = [...(source.positions || [])].reverse().find(item => item.windRadii?.length);
+        if (!point) return;
+        point.windRadii.forEach((radii, index) => {
+            const polygon = buildQuadrantPolygon(point.lat, point.lon, radii);
+            if (polygon.length < 4) return;
+            const config = SOURCE_CONFIG[source.agency];
+            L.polygon(polygon, {
+                color: config.color,
+                weight: index === 0 ? 1.2 : 1.5,
+                opacity: index === 0 ? .45 : .65,
+                dashArray: index === 0 ? '4,7' : '2,5',
+                fillColor: config.color,
+                fillOpacity: index === 0 ? .025 : .045,
+                interactive: false
+            }).addTo(trackLayer);
+        });
+    }
+
+    function buildQuadrantPolygon(lat, lon, radii) {
+        const points = [];
+        for (let bearing = 0; bearing <= 360; bearing += 4) {
+            const normalized = bearing % 360;
+            let radius = radii.ne;
+            if (normalized >= 90 && normalized < 180) radius = radii.se;
+            else if (normalized >= 180 && normalized < 270) radius = radii.sw;
+            else if (normalized >= 270) radius = radii.nw;
+            if (!Number.isFinite(radius) || radius <= 0) continue;
+            points.push(destinationPoint(lat, lon, normalized, radius));
+        }
+        return points;
+    }
+
+    function destinationPoint(lat, lon, bearingDeg, distanceKm) {
+        const earthRadius = 6371.0088;
+        const angular = distanceKm / earthRadius;
+        const bearing = bearingDeg * Math.PI / 180;
+        const phi1 = lat * Math.PI / 180;
+        const lambda1 = lon * Math.PI / 180;
+        const phi2 = Math.asin(Math.sin(phi1) * Math.cos(angular) + Math.cos(phi1) * Math.sin(angular) * Math.cos(bearing));
+        const lambda2 = lambda1 + Math.atan2(Math.sin(bearing) * Math.sin(angular) * Math.cos(phi1), Math.cos(angular) - Math.sin(phi1) * Math.sin(phi2));
+        return [phi2 * 180 / Math.PI, ((lambda2 * 180 / Math.PI + 540) % 360) - 180];
+    }
+
+    function samplePointsByHours(points, intervalHours) {
+        if (!points.length) return [];
+        if (!intervalHours) return points;
+
+        const result = [points[0]];
+        let lastMs = parseTimeMs(points[0].time);
+        for (let index = 1; index < points.length - 1; index++) {
+            const point = points[index];
+            const pointMs = parseTimeMs(point.time);
+            if (Number.isFinite(pointMs) && Number.isFinite(lastMs)) {
+                if (pointMs - lastMs >= intervalHours * 3600000 - 60000) {
+                    result.push(point);
+                    lastMs = pointMs;
+                }
+            } else {
+                const fallbackStep = Math.max(1, Math.round(intervalHours / 3));
+                if (index % fallbackStep === 0) result.push(point);
+            }
+        }
+        if (points.length > 1 && result.at(-1) !== points.at(-1)) result.push(points.at(-1));
+        return result;
+    }
+
+    function addPointMarker(group, source, point, isCurrent, isForecast) {
+        const config = SOURCE_CONFIG[source.agency];
+        const fill = intensityColor(point.intensity);
+        const size = isCurrent ? 17 : (isForecast ? 10 : 9);
+        const glow = isCurrent ? 'current-node' : '';
+        const icon = L.divIcon({
+            html: `<div class="storm-node ${glow}" style="width:${size}px;height:${size}px;background:${fill};border-color:${config.color}"></div>`,
+            className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2]
+        });
+
+        const typeLabel = isForecast ? '預測' : (isCurrent ? '最新分析' : '實測／分析');
+        const distance = haversineKm(HONG_KONG.lat, HONG_KONG.lon, point.lat, point.lon);
+        const intensity = translateIntensity(point.intensity) || point.intensity || '未提供';
+        const timeText = point.time ? formatHkt(point.time) : '未提供';
+        const windText = formatWind(point.maximumWind);
+        const pressureText = formatPressure(point.pressure);
+
+        const popup = `
+            <div class="tc-popup-title" style="color:${config.color}">${escapeHtml(group.displayName)} · ${source.agency} ${typeLabel}</div>
+            <div class="tc-popup-row">時間：${escapeHtml(timeText)}</div>
+            <div class="tc-popup-row">位置：${formatLatLon(point.lat, point.lon)}</div>
+            <div class="tc-popup-row">強度：${escapeHtml(intensity)}</div>
+            <div class="tc-popup-row">最高持續風速：${escapeHtml(windText)}</div>
+            <div class="tc-popup-row">中心氣壓：${escapeHtml(pressureText)}</div>
+            ${point.forecastHour !== null && point.forecastHour !== undefined ? `<div class="tc-popup-row">預報時效：+${escapeHtml(point.forecastHour)} 小時</div>` : ''}
+            ${point.maximumGust ? `<div class="tc-popup-row">最大陣風：${escapeHtml(formatWind(point.maximumGust))}</div>` : ''}
+            ${point.movingDirection || point.movingSpeed ? `<div class="tc-popup-row">移動：${escapeHtml([point.movingDirection, point.movingSpeed ? `${point.movingSpeed} km/h` : ''].filter(Boolean).join(' '))}</div>` : ''}
+            ${point.movementPrediction ? `<div class="tc-popup-row">移動預測：${escapeHtml(point.movementPrediction)}</div>` : ''}
+            ${point.stateTransfer ? `<div class="tc-popup-row">強度趨勢：${escapeHtml(point.stateTransfer)}</div>` : ''}
+            ${point.probabilityRadius ? `<div class="tc-popup-row">${escapeHtml(source.agency)} 70% 預報圓半徑：約 ${Math.round(point.probabilityRadius)} 公里</div>` : ''}
+            ${point.windRadii?.length ? `<div class="tc-popup-row">風圈：${escapeHtml(formatWindRadii(point.windRadii))}</div>` : ''}
+            <div class="tc-popup-row">距離香港：約 ${Math.round(distance)} 公里</div>
+            <div class="tc-popup-row">來源：${escapeHtml(SOURCE_CONFIG[source.agency].name)}</div>`;
+
+        const hover = `<div class="point-hover"><b>${escapeHtml(source.agency)} ${typeLabel}</b><br>${escapeHtml(timeText)}<br>${escapeHtml(intensity)} · 距港 ${Math.round(distance)} km</div>`;
+        L.marker([point.lat, point.lon], { icon, keyboard: true, riseOnHover: true })
+            .bindTooltip(hover, { direction: 'top', offset: [0, -7], opacity: .95 })
+            .bindPopup(popup, { maxWidth: 310 })
+            .addTo(trackLayer);
+    }
+
+    function addForecastTimeLabel(source, point) {
+        const label = shortTimeLabel(point.time);
+        if (!label) return;
+        const icon = L.divIcon({
+            html: `<div class="forecast-time-label" style="border-color:${SOURCE_CONFIG[source.agency].color}">${escapeHtml(label)}</div>`,
+            className: '', iconSize: [58, 18], iconAnchor: [-7, 9]
+        });
+        L.marker([point.lat, point.lon], { icon, interactive: false }).addTo(trackLayer);
+    }
+
+    function updateStormCards() {
+        const container = document.getElementById('active-storms-container');
+        if (currentStorms.length === 0) {
+            container.innerHTML = '<div style="color:#777;font-size:.85rem">目前沒有活躍路徑</div>';
+            return;
+        }
+
+        container.innerHTML = currentStorms.map(group => {
+            const current = getGroupCurrent(group);
+            const sourceTags = ['HKO', 'CMA', 'JMA', 'CWA'].filter(code => group.sources[code]).map(code =>
+                `<span class="source-mini" style="border-color:${SOURCE_CONFIG[code].color};color:${SOURCE_CONFIG[code].color}">${code}</span>`
+            ).join('');
+            const source = group.sources.HKO || group.sources.CWA || group.sources.CMA || group.sources.JMA;
+            const intensity = current ? translateIntensity(current.intensity) : '未提供';
+            const nearest = calculateGroupNearestApproach(group);
+            return `<div class="panel-storm-card" data-storm-key="${escapeHtml(group.key)}">
+                <button class="card-focus" type="button">定位</button>
+                <div class="panel-storm-name">${escapeHtml(group.displayName)}</div>
+                <div>${sourceTags}</div>
+                <div class="panel-storm-meta">
+                    強度：${escapeHtml(intensity || '未提供')}<br>
+                    最新位置：${current ? formatLatLon(current.lat, current.lon) : '未提供'}<br>
+                    最近公報：${source?.bulletinTime ? escapeHtml(formatHkt(source.bulletinTime)) : '未提供'}<br>
+                    預測最近距港：${nearest ? `${Math.round(nearest.distance)} km（${escapeHtml(nearest.agency)}）` : '未提供'}
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function updateComparisonControls() {
+        const select = document.getElementById('comparison-storm');
+        const previous = comparisonState.groupKey;
+        select.innerHTML = currentStorms.map(group => `<option value="${escapeHtml(group.key)}">${escapeHtml(group.displayName)}</option>`).join('');
+        comparisonState.groupKey = currentStorms.some(group => group.key === previous) ? previous : (currentStorms[0]?.key || null);
+        if (comparisonState.groupKey) select.value = comparisonState.groupKey;
+        select.disabled = currentStorms.length === 0;
+    }
+
+    function toggleComparisonPanel(force) {
+        comparisonState.open = typeof force === 'boolean' ? force : !comparisonState.open;
+        const panel = document.getElementById('comparison-panel');
+        panel.classList.toggle('hidden', !comparisonState.open);
+        document.getElementById('comparison-button').classList.toggle('active', comparisonState.open);
+        if (comparisonState.open) {
+            updateComparisonControls();
+            renderForecastComparison();
+        } else {
+            analysisLayer.clearLayers();
+        }
+    }
+
+    function renderForecastComparison() {
+        analysisLayer.clearLayers();
+        if (!comparisonState.open || currentStorms.length === 0) return;
+        const group = currentStorms.find(item => item.key === comparisonState.groupKey) || currentStorms[0];
+        if (!group) return;
+        comparisonState.groupKey = group.key;
+        const select = document.getElementById('comparison-storm');
+        if (select.value !== group.key) select.value = group.key;
+
+        const reference = getComparisonReference(group);
+        const targetMs = reference ? reference.baseMs + viewOptions.compareHours * 3600000 : NaN;
+        document.getElementById('comparison-hour-label').textContent = `+${viewOptions.compareHours}h`;
+        document.getElementById('comparison-time').textContent = Number.isFinite(targetMs)
+            ? `比較時間：${formatHkt(new Date(targetMs).toISOString())}（基準 ${reference.agency}）`
+            : '未能建立共同比較時間';
+
+        const entries = ['HKO', 'CMA', 'JMA', 'CWA'].map(agency => {
+            const source = group.sources[agency];
+            if (!source || !sourceVisible[agency] || !Number.isFinite(targetMs)) return null;
+            const point = interpolateSourceAtTime(source, targetMs);
+            if (!point) return null;
+            const nearest = calculateSourceNearestApproach(source);
+            return { agency, source, point, nearest };
+        }).filter(Boolean);
+
+        document.getElementById('metric-sources').textContent = `${entries.length} / 4`;
+        if (entries.length === 0) {
+            document.getElementById('metric-spread').textContent = '--';
+            document.getElementById('metric-hk').textContent = '--';
+            document.getElementById('comparison-results').innerHTML = '<div class="comparison-empty">此時效沒有可比較的共同預測資料。</div>';
+            return;
+        }
+
+        const consensus = meanCoordinate(entries.map(item => item.point));
+        const spread = maximumPairwiseSpread(entries);
+        const distanceToHk = haversineKm(HONG_KONG.lat, HONG_KONG.lon, consensus.lat, consensus.lon);
+        document.getElementById('metric-spread').textContent = spread ? `${Math.round(spread.distance)} km` : '0 km';
+        document.getElementById('metric-hk').textContent = `${Math.round(distanceToHk)} km`;
+
+        const tableRows = entries.map(entry => {
+            const config = SOURCE_CONFIG[entry.agency];
+            const distance = haversineKm(HONG_KONG.lat, HONG_KONG.lon, entry.point.lat, entry.point.lon);
+            return `<tr><td style="color:${config.color}">${entry.agency}</td><td>${formatLatLon(entry.point.lat, entry.point.lon)}</td><td>${Math.round(distance)} km</td><td>${entry.nearest ? `${Math.round(entry.nearest.distance)} km` : '--'}</td></tr>`;
+        }).join('');
+        document.getElementById('comparison-results').innerHTML = `<table class="comparison-table"><thead><tr><th>來源</th><th>比較位置</th><th>距港</th><th>全程最近</th></tr></thead><tbody>${tableRows}</tbody></table>${spread ? `<div class="analysis-note">最大分歧：${spread.a} ↔ ${spread.b}，約 ${Math.round(spread.distance)} km。</div>` : ''}`;
+
+        const bounds = [];
+        entries.forEach(entry => {
+            const config = SOURCE_CONFIG[entry.agency];
+            const icon = L.divIcon({
+                html: `<div class="comparison-source-node" style="width:13px;height:13px;background:${config.color}"></div>`,
+                className: '', iconSize: [13, 13], iconAnchor: [6.5, 6.5]
+            });
+            L.marker([entry.point.lat, entry.point.lon], { icon })
+                .bindTooltip(`${entry.agency} +${viewOptions.compareHours}h`, { direction:'top', offset:[0,-7] })
+                .addTo(analysisLayer);
+            L.polyline([[entry.point.lat, entry.point.lon], [consensus.lat, consensus.lon]], {
+                color: config.color, weight: 1, opacity: .45, dashArray: '2,6', interactive: false
+            }).addTo(analysisLayer);
+            bounds.push([entry.point.lat, entry.point.lon]);
+        });
+
+        const consensusIcon = L.divIcon({ html: '<div class="consensus-node"></div>', className:'', iconSize:[16,16], iconAnchor:[8,8] });
+        L.marker([consensus.lat, consensus.lon], { icon: consensusIcon })
+            .bindPopup(`<div class="tc-popup-title" style="color:var(--consensus)">${escapeHtml(group.displayName)} 共識中心</div><div class="tc-popup-row">時效：+${viewOptions.compareHours} 小時</div><div class="tc-popup-row">位置：${formatLatLon(consensus.lat, consensus.lon)}</div><div class="tc-popup-row">距港：約 ${Math.round(distanceToHk)} 公里</div><div class="tc-popup-row">來源數：${entries.length}</div>`)
+            .addTo(analysisLayer);
+        bounds.push([consensus.lat, consensus.lon]);
+
+        if (viewOptions.forecastSpread && entries.length >= 2) {
+            const radius = Math.max(...entries.map(entry => haversineKm(consensus.lat, consensus.lon, entry.point.lat, entry.point.lon)));
+            if (radius > 0) L.circle([consensus.lat, consensus.lon], {
+                radius: radius * 1000, color:'#7fe7ff', weight:1.3, opacity:.75, dashArray:'5,7', fillColor:'#7fe7ff', fillOpacity:.035, interactive:false
+            }).addTo(analysisLayer);
+        }
+        comparisonState.lastBounds = L.latLngBounds(bounds);
+    }
+
+    function getComparisonReference(group) {
+        for (const agency of ['HKO', 'CWA', 'CMA', 'JMA']) {
+            const source = group.sources[agency];
+            if (!source) continue;
+            const base = source.forecast?.[0]?.baseTime || source.bulletinTime || source.positions?.at(-1)?.time;
+            const baseMs = parseTimeMs(base);
+            if (Number.isFinite(baseMs)) return { agency, baseMs };
+        }
+        return null;
+    }
+
+    function interpolateSourceAtTime(source, targetMs) {
+        const points = [...(source.positions || []).slice(-1), ...(source.forecast || [])]
+            .filter(point => Number.isFinite(parseTimeMs(point.time)))
+            .sort((a,b) => parseTimeMs(a.time) - parseTimeMs(b.time));
+        if (!points.length) return null;
+        const firstMs = parseTimeMs(points[0].time), lastMs = parseTimeMs(points.at(-1).time);
+        if (targetMs < firstMs - 60000 || targetMs > lastMs + 60000) return null;
+        const exact = points.find(point => Math.abs(parseTimeMs(point.time) - targetMs) <= 60000);
+        if (exact) return { ...exact };
+        for (let i = 0; i < points.length - 1; i++) {
+            const a = points[i], b = points[i+1];
+            const aMs = parseTimeMs(a.time), bMs = parseTimeMs(b.time);
+            if (targetMs > aMs && targetMs < bMs) {
+                const ratio = (targetMs - aMs) / (bMs - aMs);
+                return {
+                    lat: a.lat + (b.lat - a.lat) * ratio,
+                    lon: interpolateLongitude(a.lon, b.lon, ratio),
+                    time: new Date(targetMs).toISOString(),
+                    pressure: interpolateNumber(a.pressure, b.pressure, ratio),
+                    maximumWind: interpolateNumber(a.maximumWind, b.maximumWind, ratio),
+                    intensity: ratio < .5 ? a.intensity : b.intensity,
+                    interpolated: true
+                };
+            }
+        }
+        return null;
+    }
+
+    function interpolateLongitude(a, b, ratio) {
+        let diff = b - a;
+        if (diff > 180) diff -= 360;
+        if (diff < -180) diff += 360;
+        return ((a + diff * ratio + 540) % 360) - 180;
+    }
+
+    function interpolateNumber(a, b, ratio) {
+        const x = Number(a), y = Number(b);
+        return Number.isFinite(x) && Number.isFinite(y) ? x + (y - x) * ratio : (Number.isFinite(x) ? x : (Number.isFinite(y) ? y : null));
+    }
+
+    function meanCoordinate(points) {
+        const lat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
+        const sin = points.reduce((sum, point) => sum + Math.sin(point.lon * Math.PI / 180), 0);
+        const cos = points.reduce((sum, point) => sum + Math.cos(point.lon * Math.PI / 180), 0);
+        return { lat, lon: Math.atan2(sin / points.length, cos / points.length) * 180 / Math.PI };
+    }
+
+    function maximumPairwiseSpread(entries) {
+        let best = null;
+        for (let i = 0; i < entries.length; i++) for (let j = i + 1; j < entries.length; j++) {
+            const distance = haversineKm(entries[i].point.lat, entries[i].point.lon, entries[j].point.lat, entries[j].point.lon);
+            if (!best || distance > best.distance) best = { distance, a: entries[i].agency, b: entries[j].agency };
+        }
+        return best;
+    }
+
+    function calculateSourceNearestApproach(source) {
+        const points = [...(source.positions || []).slice(-1), ...(source.forecast || [])];
+        let best = null;
+        points.forEach(point => {
+            const distance = haversineKm(HONG_KONG.lat, HONG_KONG.lon, point.lat, point.lon);
+            if (!best || distance < best.distance) best = { distance, time:point.time, lat:point.lat, lon:point.lon };
+        });
+        return best;
+    }
+
+    function calculateGroupNearestApproach(group) {
+        let best = null;
+        ['HKO','CMA','JMA','CWA'].forEach(agency => {
+            const source = group.sources[agency];
+            if (!source) return;
+            const candidate = calculateSourceNearestApproach(source);
+            if (candidate && (!best || candidate.distance < best.distance)) best = { ...candidate, agency };
+        });
+        return best;
+    }
+
+    function focusComparison() {
+        if (comparisonState.lastBounds?.isValid()) map.fitBounds(comparisonState.lastBounds.pad(.8), { maxZoom:7, animate:true });
+    }
+
+    function focusStorm(key) {
+        const group = currentStorms.find(item => item.key === key);
+        if (!group) return;
+        const points = [];
+        Object.values(group.sources).forEach(source => {
+            if (!sourceVisible[source.agency]) return;
+            [...(source.positions || []), ...(source.forecast || [])].forEach(point => points.push([point.lat, point.lon]));
+        });
+        if (points.length) map.fitBounds(L.latLngBounds(points).pad(.18), { maxZoom: 7, animate: true });
+    }
+
+    function handleMeasureClick(event) {
+        if (!measureState.active) return;
+        if (measureState.points.length >= 2) {
+            measureState.points = [];
+            measureLayer.clearLayers();
+        }
+
+        measureState.points.push(event.latlng);
+        L.circleMarker(event.latlng, {
+            radius: 5, color: '#fff', weight: 2, fillColor: '#1ba1e2', fillOpacity: 1
+        }).addTo(measureLayer);
+
+        if (measureState.points.length === 1) {
+            showToast('已設定起點，請選擇終點');
+            return;
+        }
+
+        const [a, b] = measureState.points;
+        const distance = haversineKm(a.lat, a.lng, b.lat, b.lng);
+        const bearing = bearingDegrees(a.lat, a.lng, b.lat, b.lng);
+        L.polyline([a, b], { color: '#1ba1e2', weight: 2, dashArray: '5,6' }).addTo(measureLayer);
+        const midpoint = L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
+        L.marker(midpoint, {
+            icon: L.divIcon({
+                html: `<div class="measure-label">${distance.toFixed(distance < 100 ? 1 : 0)} km · ${Math.round(bearing)}°</div>`,
+                className: '', iconSize: [110, 20], iconAnchor: [55, 10]
+            }), interactive: false
+        }).addTo(measureLayer);
+    }
+
+    function toggleMeasure(force) {
+        measureState.active = typeof force === 'boolean' ? force : !measureState.active;
+        measureState.points = [];
+        measureLayer.clearLayers();
+        document.getElementById('storm-map').classList.toggle('measure-active', measureState.active);
+        document.getElementById('measure-button').classList.toggle('active', measureState.active);
+        document.getElementById('measure-hint').classList.toggle('hidden', !measureState.active);
+    }
+
+    function toggleBasemap() {
+        if (activeTiles === 'dark') {
+            map.removeLayer(darkTiles); lightTiles.addTo(map); activeTiles = 'light';
+            document.documentElement.style.setProperty('--panel', 'rgba(0,0,0,.92)');
+        } else {
+            map.removeLayer(lightTiles); darkTiles.addTo(map); activeTiles = 'dark';
+        }
+    }
+
+    async function toggleFullscreen() {
+        const target = document.getElementById('app-container');
+        try {
+            if (!document.fullscreenElement) await target.requestFullscreen();
+            else await document.exitFullscreen();
+            setTimeout(() => map.invalidateSize(), 150);
+        } catch (error) {
+            showToast(`全螢幕失敗：${error.message}`);
+        }
+    }
+
+    function parseCoordinate(value, axis) {
+        if (!value) return NaN;
+        const cleaned = String(value).trim().toUpperCase();
+        const number = Number.parseFloat(cleaned.replace(/[^0-9.+-]/g, ''));
+        if (!Number.isFinite(number)) return NaN;
+        if ((axis === 'lat' && cleaned.endsWith('S')) || (axis === 'lon' && cleaned.endsWith('W'))) return -number;
+        return number;
+    }
+
+    function deduplicatePoints(points) {
+        const seen = new Set();
+        return points.filter(point => {
+            const key = `${point.time || ''}|${point.lat.toFixed(3)}|${point.lon.toFixed(3)}|${point.kind}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }
+
+    function normalizeName(value) {
+        return String(value || '').toUpperCase().replace(/[^A-Z0-9\u3400-\u9fff]/g, '');
+    }
+
+    function intensityColor(value) {
+        const v = String(value || '').trim().toLowerCase();
+        if (v === 'superty') return '#e51400';
+        if (v === 'sty') return '#e671b8';
+        if (v === 'ty') return '#fa6800';
+        if (v === 'sts') return '#f09609';
+        if (v === 'ts') return '#1ba1e2';
+        if (v === 'td') return '#339933';
+        if (v.includes('super typhoon') || v.includes('超強') || v.includes('超强') || v.includes('猛烈な')) return '#e51400';
+        if (v.includes('severe typhoon') || v.includes('強颱風') || v.includes('强台风') || v.includes('非常に強い')) return '#e671b8';
+        if (v.includes('typhoon') || v.includes('颱風') || v.includes('台风') || v.includes('台風') || v === '強い') return '#fa6800';
+        if (v.includes('severe tropical storm') || v.includes('強烈熱帶風暴') || v.includes('强热带风暴') || v.includes('強い熱帯低気圧')) return '#f09609';
+        if (v.includes('tropical storm') || v.includes('熱帶風暴') || v.includes('热带风暴') || v.includes('熱帯暴風雨')) return '#1ba1e2';
+        if (v.includes('tropical depression') || v.includes('熱帶低氣壓') || v.includes('热带低压') || v.includes('熱帯低気圧')) return '#339933';
+        if (v.includes('low pressure') || v.includes('低壓區') || v.includes('低压')) return '#777';
+        if (v.includes('extratropical') || v.includes('溫帶氣旋') || v.includes('温带')) return '#aaa';
+        return '#aaa';
+    }
+
+    function translateIntensity(value) {
+        const v = String(value || '').trim();
+        const lower = v.toLowerCase();
+        if (lower === 'superty') return '超強颱風';
+        if (lower === 'sty') return '強颱風';
+        if (lower === 'ty') return '颱風';
+        if (lower === 'sts') return '強烈熱帶風暴';
+        if (lower === 'ts') return '熱帶風暴';
+        if (lower === 'td') return '熱帶低氣壓';
+        if (lower.includes('super typhoon') || v.includes('超强台风') || v.includes('猛烈な')) return '超強颱風';
+        if (lower.includes('severe typhoon') || v.includes('强台风') || v.includes('非常に強い')) return '強颱風';
+        if (lower === 'typhoon' || lower.includes(' typhoon') || v === '台风' || v === '台風' || v === '強い') return '颱風';
+        if (lower.includes('severe tropical storm') || v.includes('强热带风暴') || v.includes('強い熱帯低気圧')) return '強烈熱帶風暴';
+        if (lower.includes('tropical storm') || v.includes('热带风暴') || v.includes('熱帯暴風雨')) return '熱帶風暴';
+        if (lower.includes('tropical depression') || v.includes('热带低压') || v.includes('熱帯低気圧')) return '熱帶低氣壓';
+        if (lower.includes('low pressure area') || v.includes('低压')) return '低壓區';
+        if (lower.includes('extratropical low') || v.includes('温带')) return '溫帶氣旋';
+        return v;
+    }
+
+    function normalizeHkoUrl(rawUrl) {
+        const url = new URL(rawUrl, HKO_LIST_URL);
+        url.protocol = 'https:';
+        const allowedHosts = new Set(['www.weather.gov.hk', 'www.hko.gov.hk', 'data.weather.gov.hk']);
+        if (!allowedHosts.has(url.hostname)) throw new Error('HKO 路徑檔案網址不在允許清單');
+        if (!/^\/wxinfo\/currwx\/hko_tctrack_\d{4}\.xml$/i.test(url.pathname)) throw new Error('HKO 路徑檔案格式不符合預期');
+        return url.toString();
+    }
+
+
+    function normalizeJmaUrl(rawUrl) {
+        const url = new URL(rawUrl, JMA_FEED_URL);
+        url.protocol = 'https:';
+        if (url.hostname !== 'www.data.jma.go.jp') throw new Error('JMA 電文網址不在允許清單');
+        if (!/^\/developer\/xml\/data\/[A-Za-z0-9_.-]*VPTW6[0-5][A-Za-z0-9_.-]*\.xml$/i.test(url.pathname)) {
+            throw new Error('JMA 電文不是 VPTW60–65 台風解析／預報 XML');
+        }
+        url.search = '';
+        url.hash = '';
+        return url.toString();
+    }
+
+    function textOf(node, tagName) {
+        const item = node?.getElementsByTagName?.(tagName)?.[0];
+        return item ? item.textContent.trim() : '';
+    }
+
+    function parseTimeMs(value) {
+        if (!value) return NaN;
+        const time = new Date(value).getTime();
+        return Number.isFinite(time) ? time : NaN;
+    }
+
+    function formatHkt(value) {
+        try {
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return String(value);
+            return new Intl.DateTimeFormat('zh-HK', {
+                timeZone: 'Asia/Hong_Kong', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', hour12: false
+            }).format(date).replace(',', '');
+        } catch {
+            return String(value || '');
+        }
+    }
+
+    function shortTimeLabel(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        const parts = new Intl.DateTimeFormat('zh-HK', {
+            timeZone: 'Asia/Hong_Kong', day: '2-digit', hour: '2-digit', hour12: false
+        }).formatToParts(date).reduce((acc, item) => ({ ...acc, [item.type]: item.value }), {});
+        return `${parts.day}日 ${parts.hour}時`;
+    }
+
+    function formatNow() { return formatHkt(new Date().toISOString()); }
+
+    function formatLatLon(lat, lon) {
+        const latText = `${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}`;
+        const lonText = `${Math.abs(lon).toFixed(1)}°${lon >= 0 ? 'E' : 'W'}`;
+        return `${latText}, ${lonText}`;
+    }
+
+    function formatWind(value) {
+        if (value === null || value === undefined || value === '') return '未提供';
+        const text = String(value);
+        return /m\/s|km\/h|kt|節|米/.test(text) ? text : `${text} m/s`;
+    }
+
+    function formatPressure(value) {
+        if (value === null || value === undefined || value === '') return '未提供';
+        const text = String(value);
+        return /hpa|百帕/i.test(text) ? text : `${text} hPa`;
+    }
+
+
+    function formatWindRadii(radii) {
+        return (radii || []).map(item => {
+            const values = [item.ne, item.se, item.sw, item.nw].filter(Number.isFinite);
+            const max = values.length ? Math.max(...values) : 0;
+            return `${item.level || '風圈'} 最大約 ${max} km`;
+        }).join('；');
+    }
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+        const radius = 6371;
+        const toRad = degree => degree * Math.PI / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+        return 2 * radius * Math.asin(Math.sqrt(a));
+    }
+
+    function bearingDegrees(lat1, lon1, lat2, lon2) {
+        const toRad = degree => degree * Math.PI / 180;
+        const toDeg = radian => radian * 180 / Math.PI;
+        const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+        const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+        return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    function saveCache(storms) {
+        try {
+            localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: new Date().toISOString(), storms }));
+        } catch (error) {
+            console.warn('未能保存快取', error);
+        }
+    }
+
+    function loadCache() {
+        try {
+            const data = JSON.parse(localStorage.getItem(CACHE_KEY));
+            if (!data || !Array.isArray(data.storms) || data.storms.length === 0) return null;
+            return data;
+        } catch {
+            return null;
+        }
+    }
+
+    function showSourceStatus(source) {
+        const health = sourceHealth[source] || { state: 'unknown', message: '沒有狀態資料' };
+        document.getElementById('storm-panel').classList.add('open');
+        showToast(`${source}：${health.message}`);
+    }
+
+    function setSourceHealth(source, state, message) {
+        sourceHealth[source] = { state, message };
+        const badge = document.getElementById(`badge-${source.toLowerCase()}`);
+        badge.className = `source-badge ${state}`;
+        badge.title = message;
+    }
+
+    function buildStatusHtml(fromCache, savedAt) {
+        const rows = ['HKO', 'CMA', 'JMA', 'CWA'].map(source => {
+            const health = sourceHealth[source];
+            return `${source}：${escapeHtml(health.message)}`;
+        });
+        if (fromCache) rows.push(`快取：${formatHkt(savedAt)}`);
+        else rows.push(`同步：${formatNow()}`);
+        return `資料引擎：HKO／CMA／JMA／CWA 獨立同步<br>${rows.join('<br>')}`;
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        })[char]);
+    }
+
+    function setLoading(active) {
+        document.getElementById('top-progress-bar').classList.toggle('hidden', !active);
+    }
+    function setStatus(html) { document.getElementById('engine-status').innerHTML = html; }
+    function hideOverlays() {
+        document.getElementById('no-storm-overlay').classList.add('hidden');
+        document.getElementById('error-overlay').classList.add('hidden');
+    }
+    function showNoStorm() {
+        document.getElementById('error-overlay').classList.add('hidden');
+        document.getElementById('no-storm-overlay').classList.remove('hidden');
+    }
+    function showError(message) {
+        document.getElementById('no-storm-overlay').classList.add('hidden');
+        document.getElementById('error-message').textContent = message;
+        document.getElementById('error-overlay').classList.remove('hidden');
+    }
+    function showToast(message) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+    function toggleStormPanel() { document.getElementById('storm-panel').classList.toggle('open'); }
+    function resetView() {
+        if (lastFitBounds && currentStorms.length > 0) map.fitBounds(lastFitBounds.pad(.18), { maxZoom: 6, animate: true });
+        else map.setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom, { animate: true });
+    }
+
+    return {
+        init, refreshData, toggleStormPanel, resetView,
+        toggleBasemap, toggleFullscreen, toggleMeasure, showSourceStatus,
+        toggleComparisonPanel, focusComparison
+    };
+})();
+
+document.addEventListener('DOMContentLoaded', WeatherApp.init);
+</script>
+</body>
+</html>
