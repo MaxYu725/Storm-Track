@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>香港天氣｜HKO × CMA × JMA × CWA 熱帶氣旋路徑 v3.1 PWA</title>
+    <title>香港天氣｜HKO × CMA × JMA × CWA 熱帶氣旋路徑 v3.2 PWA</title>
 
     <meta name="application-name" content="Storm Track">
     <meta name="mobile-web-app-capable" content="yes">
@@ -409,6 +409,8 @@
         .source-badge.loading::before { background: #f0a000; }
         .source-badge.empty::before { background: #888; }
         .source-badge.error::before { background: #e51400; }
+        .source-badge.stale { color: #ffd96a; }
+        .source-badge.stale::before { background: #d7a800; box-shadow: 0 0 0 2px rgba(215,168,0,.18); }
 
         #coordinate-readout {
             left: 10px;
@@ -480,14 +482,18 @@
         }
 
         .storm-node {
-            border: 2px solid #fff;
+            border: 0;
             border-radius: 50%;
-            box-shadow: 0 0 6px rgba(0, 0, 0, 1);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, .95);
+            transition: opacity .16s ease, box-shadow .16s ease, transform .16s ease;
         }
         .current-node {
             position: relative;
-            border-width: 3px;
-            box-shadow: 0 0 0 5px rgba(27, 161, 226, 0.22), 0 0 12px rgba(255, 255, 255, 0.7);
+            box-shadow: 0 0 0 4px rgba(255,255,255,.16), 0 0 10px rgba(255,255,255,.5);
+        }
+        .storm-node.selected-node {
+            box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(0,0,0,.72), 0 0 14px rgba(255,255,255,.85);
+            transform: scale(1.08);
         }
         .storm-label, .forecast-time-label {
             padding: 3px 6px;
@@ -702,7 +708,7 @@
                 <div class="legend-row"><div class="legend-color" style="background:#e51400"></div>超強颱風</div>
 
                 <div id="engine-status">資料引擎：準備中</div>
-                <div style="margin-top:12px;color:#666;font-size:.72rem;line-height:1.45">v3.1 PWA：支援安裝、離線啟動殼、全螢幕顯示及安全區域。第二階段包括多機構時效比較、分歧半徑、最近距港分析及最新風圈。</div>
+                <div style="margin-top:12px;color:#666;font-size:.72rem;line-height:1.45">v3.2 PWA：各機構獨立非同步載入、IndexedDB 即時快取、路線點選高亮及純強度色數據點。保留多機構時效比較、分歧半徑、最近距港分析及最新風圈。</div>
             </aside>
         </div>
     </div>
@@ -728,7 +734,10 @@ const WeatherApp = (() => {
 
     const DEFAULT_VIEW = { center: [18.5, 122.0], zoom: 5 };
     const HONG_KONG = { lat: 22.3023, lon: 114.1746 };
-    const CACHE_KEY = 'hko-cma-jma-cwa-storm-track-cache-v3.1';
+    const CACHE_KEY = 'hko-cma-jma-cwa-storm-track-cache-v3.2';
+    const DB_NAME = 'storm-track-v3.2';
+    const DB_STORE = 'agency-cache';
+    const DB_VERSION = 1;
     const FETCH_TIMEOUT_MS = 16000;
 
     const SOURCE_CONFIG = {
@@ -753,6 +762,16 @@ const WeatherApp = (() => {
     let requestSerial = 0;
     let toastTimer = null;
     let deferredInstallPrompt = null;
+    let dbPromise = null;
+    let activeFetchCount = 0;
+    let userMapInteracted = false;
+    let programmaticMapMove = false;
+    let autoFitCompleted = false;
+
+    const agencyStorms = { HKO: [], CMA: [], JMA: [], CWA: [] };
+    const sourceSettled = { HKO: false, CMA: false, JMA: false, CWA: false };
+    const trackRegistry = new Map();
+    const selectionState = { stormKey: null, agency: null, marker: null };
 
     const sourceVisible = { HKO: true, CMA: true, JMA: true, CWA: true };
     const sourceHealth = {
@@ -876,11 +895,17 @@ const WeatherApp = (() => {
         map.on('mouseout', () => {
             document.getElementById('coordinate-readout').textContent = '--';
         });
-        map.on('click', handleMeasureClick);
+        map.on('dragstart', () => { userMapInteracted = true; });
+        map.on('zoomstart', () => { if (!programmaticMapMove) userMapInteracted = true; });
+        map.on('click', event => {
+            if (!measureState.active && selectionState.agency) clearTrackHighlight();
+            handleMeasureClick(event);
+        });
 
         document.addEventListener('keydown', event => {
             if (event.key === 'Escape') {
                 if (measureState.active) toggleMeasure(false);
+                if (selectionState.agency) clearTrackHighlight();
                 document.getElementById('storm-panel').classList.remove('open');
                 if (comparisonState.open) toggleComparisonPanel(false);
             }
@@ -974,78 +999,124 @@ const WeatherApp = (() => {
 
     async function refreshData() {
         const serial = ++requestSerial;
-        setLoading(true);
+        activeFetchCount = 4;
+        autoFitCompleted = false;
         hideOverlays();
-        ['HKO', 'CMA', 'JMA', 'CWA'].forEach(source => setSourceHealth(source, 'loading', '同步中'));
-        setStatus('正在同步 HKO、CMA、JMA 與 CWA 官方資料…');
+        setLoading(true);
+        ['HKO', 'CMA', 'JMA', 'CWA'].forEach(source => {
+            sourceSettled[source] = false;
+            setSourceHealth(source, 'loading', '準備同步');
+        });
+        setStatus('資料引擎：正在讀取裝置快取…');
 
-        const results = await Promise.allSettled([loadHkoStorms(), loadCmaStorms(), loadJmaStorms(), loadCwaStorms()]);
+        const cached = await loadAllAgencyCaches();
         if (serial !== requestSerial) return;
 
-        const hkoStorms = results[0].status === 'fulfilled' ? results[0].value : [];
-        const cmaStorms = results[1].status === 'fulfilled' ? results[1].value : [];
-        const jmaStorms = results[2].status === 'fulfilled' ? results[2].value : [];
-        const cwaStorms = results[3].status === 'fulfilled' ? results[3].value : [];
-
-        const healthRows = [
-            ['HKO', hkoStorms, '沒有活躍路徑', '讀取失敗'],
-            ['CMA', cmaStorms, '沒有 CMA 預測', 'NMC／CMA 讀取失敗'],
-            ['JMA', jmaStorms, '沒有 JMA VPTW 路徑', 'JMA 官方 XML 讀取失敗'],
-            ['CWA', cwaStorms, '沒有 CWA 路徑', 'CWA 官方 API 讀取失敗']
-        ];
-        healthRows.forEach(([source, storms, emptyMessage, fallbackError], index) => {
-            const result = results[index];
-            if (result.status === 'fulfilled') {
-                const suffix = source === 'JMA' ? '（官方 XML）' : source === 'CWA' ? '（官方 API）' : '';
-                setSourceHealth(source, storms.length ? 'ok' : 'empty', storms.length ? `${storms.length} 個風暴${suffix}` : emptyMessage);
+        let cachedSources = 0;
+        for (const source of ['HKO', 'CMA', 'JMA', 'CWA']) {
+            const entry = cached[source];
+            if (entry && Array.isArray(entry.storms)) {
+                agencyStorms[source] = entry.storms;
+                cachedSources += 1;
+                const countText = entry.storms.length ? `${entry.storms.length} 個風暴` : '沒有活躍路徑';
+                setSourceHealth(source, 'stale', `快取 ${countText} · ${formatHkt(entry.savedAt)} · 更新中`);
             } else {
-                setSourceHealth(source, 'error', result.reason?.message || fallbackError);
+                agencyStorms[source] = [];
+                setSourceHealth(source, 'loading', '同步中');
             }
-        });
-
-        const merged = mergeStormSources([...hkoStorms, ...cmaStorms, ...jmaStorms, ...cwaStorms]);
-
-        try {
-            if (merged.length > 0) {
-                currentStorms = merged;
-                saveCache(currentStorms);
-                renderStorms(true);
-                updateStormCards();
-                updateComparisonControls();
-                renderForecastComparison();
-                setStatus(buildStatusHtml(false));
-            } else if (results.every(result => result.status === 'fulfilled')) {
-                currentStorms = [];
-                renderStorms(false);
-                updateStormCards();
-                updateComparisonControls();
-                renderForecastComparison();
-                showNoStorm();
-                setStatus(buildStatusHtml(false));
-            } else {
-                const cached = loadCache();
-                if (cached) {
-                    currentStorms = cached.storms;
-                    renderStorms(true);
-                    updateStormCards();
-                    updateComparisonControls();
-                    renderForecastComparison();
-                    showToast('部分即時來源失敗，顯示可用資料及本機快取');
-                    setStatus(buildStatusHtml(true, cached.savedAt));
-                } else {
-                    currentStorms = [];
-                    renderStorms(false);
-                    updateStormCards();
-                    updateComparisonControls();
-                    renderForecastComparison();
-                    const errors = results.filter(item => item.status === 'rejected').map(item => item.reason?.message || '未知錯誤').join('；');
-                    showError(errors || '四個來源均沒有可用資料。');
-                    setStatus(buildStatusHtml(false));
-                }
-            }
-        } finally {
-            if (serial === requestSerial) setLoading(false);
         }
+
+        if (cachedSources > 0) {
+            rebuildFromAgencyData(true);
+            showToast('已先顯示裝置快取，官方資料在背景更新');
+        } else {
+            currentStorms = [];
+            renderStorms(false);
+            updateStormCards();
+            updateComparisonControls();
+            renderForecastComparison();
+        }
+        setStatus(buildStatusHtml());
+
+        const jobs = [
+            ['HKO', loadHkoStorms],
+            ['CMA', loadCmaStorms],
+            ['JMA', loadJmaStorms],
+            ['CWA', loadCwaStorms]
+        ];
+        jobs.forEach(([source, loader]) => syncAgency(source, loader, serial));
+    }
+
+    async function syncAgency(source, loader, serial) {
+        if (!agencyStorms[source]?.length) setSourceHealth(source, 'loading', '同步中');
+        try {
+            const storms = await loader();
+            if (serial !== requestSerial) return;
+            agencyStorms[source] = Array.isArray(storms) ? storms : [];
+            sourceSettled[source] = true;
+            const suffix = source === 'JMA' ? '（官方 XML）' : source === 'CWA' ? '（官方 API）' : '';
+            setSourceHealth(
+                source,
+                agencyStorms[source].length ? 'ok' : 'empty',
+                agencyStorms[source].length ? `${agencyStorms[source].length} 個風暴${suffix}` : noDataMessage(source)
+            );
+            saveAgencyCache(source, agencyStorms[source]).catch(error => console.warn(`${source} IndexedDB 保存失敗`, error));
+        } catch (error) {
+            if (serial !== requestSerial) return;
+            sourceSettled[source] = true;
+            const message = error?.message || `${source} 讀取失敗`;
+            if (agencyStorms[source]?.length) setSourceHealth(source, 'stale', `即時更新失敗，保留快取：${message}`);
+            else setSourceHealth(source, 'error', message);
+        } finally {
+            if (serial !== requestSerial) return;
+            activeFetchCount = Math.max(0, activeFetchCount - 1);
+            rebuildFromAgencyData(true);
+            setStatus(buildStatusHtml());
+            setLoading(activeFetchCount > 0);
+            if (activeFetchCount === 0) finalizeRefresh();
+        }
+    }
+
+    function noDataMessage(source) {
+        return {
+            HKO: '沒有活躍路徑',
+            CMA: '沒有 CMA 預測',
+            JMA: '沒有 JMA VPTW 路徑',
+            CWA: '沒有 CWA 路徑'
+        }[source] || '沒有資料';
+    }
+
+    function rebuildFromAgencyData(allowAutoFit) {
+        const merged = mergeStormSources(['HKO', 'CMA', 'JMA', 'CWA'].flatMap(source => agencyStorms[source] || []));
+        currentStorms = merged;
+        const shouldFit = Boolean(
+            allowAutoFit && merged.length > 0 && !autoFitCompleted && !userMapInteracted
+        );
+        renderStorms(shouldFit);
+        updateStormCards();
+        updateComparisonControls();
+        renderForecastComparison();
+        if (merged.length > 0) {
+            hideOverlays();
+            saveCache(merged);
+        }
+    }
+
+    function finalizeRefresh() {
+        if (currentStorms.length > 0) {
+            hideOverlays();
+            return;
+        }
+        const states = Object.values(sourceHealth).map(item => item.state);
+        if (states.every(state => state === 'empty')) {
+            showNoStorm();
+            return;
+        }
+        const errors = ['HKO', 'CMA', 'JMA', 'CWA']
+            .filter(source => ['error', 'stale'].includes(sourceHealth[source].state))
+            .map(source => `${source}：${sourceHealth[source].message}`);
+        if (errors.length) showError(errors.join('；'));
+        else showNoStorm();
     }
 
     async function loadHkoStorms() {
@@ -1804,6 +1875,7 @@ const WeatherApp = (() => {
 
     function renderStorms(fitMap) {
         trackLayer.clearLayers();
+        trackRegistry.clear();
         hideOverlays();
 
         if (currentStorms.length === 0) {
@@ -1840,8 +1912,9 @@ const WeatherApp = (() => {
 
         if (boundsPoints.length > 0) {
             lastFitBounds = L.latLngBounds(boundsPoints);
-            if (fitMap) map.fitBounds(lastFitBounds.pad(0.18), { maxZoom: 6, animate: true });
+            if (fitMap) fitMapBounds(lastFitBounds.pad(0.18), { maxZoom: 6, animate: true }, true);
         }
+        applyTrackHighlight();
         renderForecastComparison();
     }
 
@@ -1856,10 +1929,13 @@ const WeatherApp = (() => {
         forecast.forEach(point => boundsPoints.push([point.lat, point.lon]));
 
         if (viewOptions.past && actualForDisplay.length >= 2) {
-            L.polyline(actualForDisplay.map(point => [point.lat, point.lon]), {
-                color: config.color, weight: agency === 'HKO' ? 2.6 : 2.1,
-                opacity: agency === 'HKO' ? .9 : .72, lineJoin: 'round', interactive: false
+            const baseWeight = agency === 'HKO' ? 2.6 : 2.1;
+            const baseOpacity = agency === 'HKO' ? .9 : .72;
+            const lineLayer = L.polyline(actualForDisplay.map(point => [point.lat, point.lon]), {
+                color: config.color, weight: baseWeight,
+                opacity: baseOpacity, lineJoin: 'round', interactive: false
             }).addTo(trackLayer);
+            registerTrackLine(group.key, agency, lineLayer, baseWeight, baseOpacity);
         }
 
         if (viewOptions.forecast && forecast.length > 0) {
@@ -1867,10 +1943,13 @@ const WeatherApp = (() => {
             if (actual.length > 0) line.push([actual.at(-1).lat, actual.at(-1).lon]);
             line.push(...forecast.map(point => [point.lat, point.lon]));
             if (line.length >= 2) {
-                L.polyline(line, {
-                    color: config.color, weight: agency === 'HKO' ? 2.6 : 2.3,
-                    opacity: .96, dashArray: config.dash, lineJoin: 'round', interactive: false
+                const baseWeight = agency === 'HKO' ? 2.6 : 2.3;
+                const baseOpacity = .96;
+                const lineLayer = L.polyline(line, {
+                    color: config.color, weight: baseWeight,
+                    opacity: baseOpacity, dashArray: config.dash, lineJoin: 'round', interactive: false
                 }).addTo(trackLayer);
+                registerTrackLine(group.key, agency, lineLayer, baseWeight, baseOpacity);
             }
         }
 
@@ -1980,7 +2059,7 @@ const WeatherApp = (() => {
         const size = isCurrent ? 17 : (isForecast ? 10 : 9);
         const glow = isCurrent ? 'current-node' : '';
         const icon = L.divIcon({
-            html: `<div class="storm-node ${glow}" style="width:${size}px;height:${size}px;background:${fill};border-color:${config.color}"></div>`,
+            html: `<div class="storm-node ${glow}" style="width:${size}px;height:${size}px;background:${fill}"></div>`,
             className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2]
         });
 
@@ -2009,10 +2088,72 @@ const WeatherApp = (() => {
             <div class="tc-popup-row">來源：${escapeHtml(SOURCE_CONFIG[source.agency].name)}</div>`;
 
         const hover = `<div class="point-hover"><b>${escapeHtml(source.agency)} ${typeLabel}</b><br>${escapeHtml(timeText)}<br>${escapeHtml(intensity)} · 距港 ${Math.round(distance)} km</div>`;
-        L.marker([point.lat, point.lon], { icon, keyboard: true, riseOnHover: true })
+        const marker = L.marker([point.lat, point.lon], { icon, keyboard: true, riseOnHover: true })
             .bindTooltip(hover, { direction: 'top', offset: [0, -7], opacity: .95 })
             .bindPopup(popup, { maxWidth: 310 })
             .addTo(trackLayer);
+        marker.on('click', event => {
+            if (event.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+            highlightTrack(group.key, source.agency, marker);
+            marker.openPopup();
+        });
+        registerTrackMarker(group.key, source.agency, marker);
+    }
+
+    function trackRegistryKey(stormKey, agency) {
+        return `${stormKey}::${agency}`;
+    }
+
+    function ensureTrackRegistry(stormKey, agency) {
+        const key = trackRegistryKey(stormKey, agency);
+        if (!trackRegistry.has(key)) trackRegistry.set(key, { stormKey, agency, lines: [], markers: [] });
+        return trackRegistry.get(key);
+    }
+
+    function registerTrackLine(stormKey, agency, layer, baseWeight, baseOpacity) {
+        ensureTrackRegistry(stormKey, agency).lines.push({ layer, baseWeight, baseOpacity });
+    }
+
+    function registerTrackMarker(stormKey, agency, marker) {
+        ensureTrackRegistry(stormKey, agency).markers.push(marker);
+    }
+
+    function highlightTrack(stormKey, agency, marker) {
+        selectionState.stormKey = stormKey;
+        selectionState.agency = agency;
+        selectionState.marker = marker || null;
+        applyTrackHighlight();
+        showToast(`${agency} 路線已高亮；點擊地圖空白或按 Esc 取消`);
+    }
+
+    function clearTrackHighlight() {
+        selectionState.stormKey = null;
+        selectionState.agency = null;
+        selectionState.marker = null;
+        applyTrackHighlight();
+    }
+
+    function applyTrackHighlight() {
+        let active = Boolean(selectionState.agency && selectionState.stormKey);
+        if (active && !trackRegistry.has(trackRegistryKey(selectionState.stormKey, selectionState.agency))) {
+            selectionState.stormKey = null;
+            selectionState.agency = null;
+            selectionState.marker = null;
+            active = false;
+        }
+        for (const entry of trackRegistry.values()) {
+            const selected = active && entry.stormKey === selectionState.stormKey && entry.agency === selectionState.agency;
+            const faded = active && !selected;
+            entry.lines.forEach(item => item.layer.setStyle({
+                weight: selected ? item.baseWeight + 3 : (faded ? Math.max(1.2, item.baseWeight - .7) : item.baseWeight),
+                opacity: selected ? 1 : (faded ? .22 : item.baseOpacity)
+            }));
+            entry.markers.forEach(marker => {
+                marker.setOpacity(selected || !active ? 1 : .32);
+                const node = marker.getElement()?.querySelector('.storm-node');
+                node?.classList.toggle('selected-node', marker === selectionState.marker);
+            });
+        }
     }
 
     function addForecastTimeLabel(source, point) {
@@ -2242,7 +2383,7 @@ const WeatherApp = (() => {
     }
 
     function focusComparison() {
-        if (comparisonState.lastBounds?.isValid()) map.fitBounds(comparisonState.lastBounds.pad(.8), { maxZoom:7, animate:true });
+        if (comparisonState.lastBounds?.isValid()) fitMapBounds(comparisonState.lastBounds.pad(.8), { maxZoom:7, animate:true });
     }
 
     function focusStorm(key) {
@@ -2253,7 +2394,7 @@ const WeatherApp = (() => {
             if (!sourceVisible[source.agency]) return;
             [...(source.positions || []), ...(source.forecast || [])].forEach(point => points.push([point.lat, point.lon]));
         });
-        if (points.length) map.fitBounds(L.latLngBounds(points).pad(.18), { maxZoom: 7, animate: true });
+        if (points.length) fitMapBounds(L.latLngBounds(points).pad(.18), { maxZoom: 7, animate: true });
     }
 
     function handleMeasureClick(event) {
@@ -2489,18 +2630,64 @@ const WeatherApp = (() => {
         try {
             localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: new Date().toISOString(), storms }));
         } catch (error) {
-            console.warn('未能保存快取', error);
+            console.warn('未能保存合併快取', error);
         }
     }
 
-    function loadCache() {
-        try {
-            const data = JSON.parse(localStorage.getItem(CACHE_KEY));
-            if (!data || !Array.isArray(data.storms) || data.storms.length === 0) return null;
-            return data;
-        } catch {
+    function openStormDb() {
+        if (dbPromise) return dbPromise;
+        if (!('indexedDB' in window)) return Promise.resolve(null);
+        dbPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = () => {
+                const db = request.result;
+                if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'source' });
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error || new Error('IndexedDB 開啟失敗'));
+        }).catch(error => {
+            console.warn('IndexedDB 不可用', error);
             return null;
+        });
+        return dbPromise;
+    }
+
+    async function saveAgencyCache(source, storms) {
+        const payload = { source, savedAt: new Date().toISOString(), storms };
+        const db = await openStormDb();
+        if (!db) {
+            localStorage.setItem(`${CACHE_KEY}-${source}`, JSON.stringify(payload));
+            return;
         }
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(DB_STORE, 'readwrite');
+            tx.objectStore(DB_STORE).put(payload);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error || new Error('IndexedDB 寫入失敗'));
+            tx.onabort = () => reject(tx.error || new Error('IndexedDB 寫入中止'));
+        });
+    }
+
+    async function loadAgencyCache(source) {
+        const db = await openStormDb();
+        if (!db) {
+            try { return JSON.parse(localStorage.getItem(`${CACHE_KEY}-${source}`)); }
+            catch { return null; }
+        }
+        return await new Promise((resolve, reject) => {
+            const tx = db.transaction(DB_STORE, 'readonly');
+            const request = tx.objectStore(DB_STORE).get(source);
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () => reject(request.error || new Error('IndexedDB 讀取失敗'));
+        }).catch(error => {
+            console.warn(`${source} IndexedDB 讀取失敗`, error);
+            return null;
+        });
+    }
+
+    async function loadAllAgencyCaches() {
+        const entries = await Promise.all(['HKO', 'CMA', 'JMA', 'CWA'].map(async source => [source, await loadAgencyCache(source)]));
+        return Object.fromEntries(entries);
     }
 
     function showSourceStatus(source) {
@@ -2510,20 +2697,21 @@ const WeatherApp = (() => {
     }
 
     function setSourceHealth(source, state, message) {
-        sourceHealth[source] = { state, message };
+        sourceHealth[source] = { state, message, updatedAt: new Date().toISOString() };
         const badge = document.getElementById(`badge-${source.toLowerCase()}`);
         badge.className = `source-badge ${state}`;
         badge.title = message;
+        badge.setAttribute('aria-label', `${source}：${message}`);
     }
 
-    function buildStatusHtml(fromCache, savedAt) {
+    function buildStatusHtml() {
         const rows = ['HKO', 'CMA', 'JMA', 'CWA'].map(source => {
             const health = sourceHealth[source];
-            return `${source}：${escapeHtml(health.message)}`;
+            const stateLabel = { loading: '載入中', ok: '已載入', empty: '無活躍風暴', error: '失敗', stale: '快取／過期' }[health.state] || health.state;
+            return `${source}［${stateLabel}］：${escapeHtml(health.message)}`;
         });
-        if (fromCache) rows.push(`快取：${formatHkt(savedAt)}`);
-        else rows.push(`同步：${formatNow()}`);
-        return `資料引擎：HKO／CMA／JMA／CWA 獨立同步<br>${rows.join('<br>')}`;
+        rows.push(activeFetchCount > 0 ? `尚有 ${activeFetchCount} 個來源更新中` : `完成：${formatNow()}`);
+        return `資料引擎：各機構獨立 async 載入<br>${rows.join('<br>')}`;
     }
 
     function escapeHtml(value) {
@@ -2557,15 +2745,27 @@ const WeatherApp = (() => {
         toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
     }
     function toggleStormPanel() { document.getElementById('storm-panel').classList.toggle('open'); }
+    function fitMapBounds(bounds, options = {}, markAutoFit = false) {
+        programmaticMapMove = true;
+        if (markAutoFit) autoFitCompleted = true;
+        map.fitBounds(bounds, options);
+        map.once('moveend', () => { programmaticMapMove = false; });
+        setTimeout(() => { programmaticMapMove = false; }, 1200);
+    }
+
     function resetView() {
-        if (lastFitBounds && currentStorms.length > 0) map.fitBounds(lastFitBounds.pad(.18), { maxZoom: 6, animate: true });
-        else map.setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom, { animate: true });
+        if (lastFitBounds && currentStorms.length > 0) fitMapBounds(lastFitBounds.pad(.18), { maxZoom: 6, animate: true });
+        else {
+            programmaticMapMove = true;
+            map.setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom, { animate: true });
+            map.once('moveend', () => { programmaticMapMove = false; });
+        }
     }
 
     return {
         init, refreshData, toggleStormPanel, resetView,
         toggleBasemap, toggleFullscreen, toggleMeasure, showSourceStatus,
-        toggleComparisonPanel, focusComparison, installPwa
+        toggleComparisonPanel, focusComparison, installPwa, clearTrackHighlight
     };
 })();
 
