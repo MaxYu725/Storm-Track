@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>香港天氣｜HKO × CMA × JMA × CWA 熱帶氣旋路徑 v3.2 PWA</title>
+    <title>香港天氣｜HKO × CMA × JMA × CWA 熱帶氣旋路徑 v3.3 PWA</title>
 
     <meta name="application-name" content="Storm Track">
     <meta name="mobile-web-app-capable" content="yes">
@@ -563,6 +563,53 @@
         .comparison-source-node { border:2px solid #fff; border-radius:50%; box-shadow:0 0 7px #000; }
         .analysis-note { color:#707070; font-size:.68rem; line-height:1.45; margin-top:8px; }
 
+        .pivot-header { color:#555; cursor:pointer; transition:color .16s ease, opacity .16s ease; }
+        .pivot-header:hover, .pivot-header.active { color:#fff; }
+        .pivot-header:not(.active) { font-size:clamp(1.8rem, 5.4vw, 2.8rem); opacity:.86; }
+
+        #archive-panel {
+            left:12px; top:10px; bottom:12px; z-index:780;
+            width:min(390px, calc(100vw - 88px));
+            padding:13px; border:1px solid #373737;
+            background:rgba(0,0,0,.94); color:#fff; pointer-events:auto;
+            box-shadow:0 8px 25px rgba(0,0,0,.55); overflow:auto;
+        }
+        .archive-head { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+        .archive-title { flex:1; color:var(--accent); font-size:1rem; font-weight:650; }
+        .archive-subtitle { color:#777; font-size:.68rem; margin-top:1px; }
+        .archive-grid { display:grid; grid-template-columns:90px 1fr; gap:7px; margin-bottom:9px; }
+        .archive-grid .metro-select, .archive-grid input { width:100%; min-width:0; }
+        .archive-search { height:31px; border:1px solid #444; background:#0b0b0b; color:#fff; padding:0 9px; outline:none; }
+        .archive-search:focus { border-color:var(--accent); }
+        .archive-list { border:1px solid #2d2d2d; max-height:27vh; overflow:auto; background:#070707; }
+        .archive-list-empty { padding:14px 10px; color:#666; font-size:.76rem; }
+        .archive-storm { width:100%; padding:9px 10px; border:0; border-bottom:1px solid #232323; background:transparent; color:#ddd; text-align:left; cursor:pointer; }
+        .archive-storm:hover { background:#121212; }
+        .archive-storm.active { background:#161616; box-shadow:inset 3px 0 0 var(--accent); color:#fff; }
+        .archive-storm-name { font-size:.83rem; line-height:1.25; }
+        .archive-storm-meta { margin-top:3px; color:#777; font-size:.66rem; font-variant-numeric:tabular-nums; }
+        .archive-detail { margin-top:10px; padding-top:10px; border-top:1px solid #333; }
+        .archive-selected-name { color:#fff; font-size:1.05rem; font-weight:500; }
+        .archive-selected-meta { margin-top:3px; color:#858585; font-size:.7rem; line-height:1.4; }
+        .archive-agencies { display:flex; flex-wrap:wrap; gap:5px; margin:10px 0 8px; }
+        .archive-agency { height:27px; min-width:46px; padding:0 8px; border:1px solid #444; background:#090909; color:#aaa; cursor:pointer; }
+        .archive-agency.active { border-color:#fff; color:#000; background:#fff; }
+        .archive-frame-row { display:grid; grid-template-columns:34px 1fr auto; gap:8px; align-items:center; }
+        .archive-play { width:34px; height:32px; border:1px solid #777; background:#080808; color:#fff; cursor:pointer; font-size:.9rem; }
+        .archive-frame-row input[type=range] { width:100%; accent-color:var(--accent); }
+        .archive-frame-count { min-width:46px; text-align:right; color:#aaa; font-size:.68rem; font-variant-numeric:tabular-nums; }
+        .archive-frame-card { margin-top:8px; padding:9px; border:1px solid #333; background:#0c0c0c; }
+        .archive-frame-title { color:#fff; font-size:.82rem; }
+        .archive-frame-meta { margin-top:3px; color:#777; font-size:.68rem; line-height:1.45; }
+        .archive-actions { display:flex; gap:7px; margin-top:8px; }
+        .archive-actions .metro-btn { flex:1; height:31px; }
+        .archive-loading { opacity:.65; pointer-events:none; }
+        .archive-history-node { border-radius:50%; box-shadow:0 0 0 1px rgba(255,255,255,.55),0 1px 4px #000; }
+        .archive-current-node { box-shadow:0 0 0 2px #fff,0 0 0 6px rgba(255,255,255,.18),0 2px 7px #000; }
+        .archive-time-label { padding:1px 4px; border:1px solid #555; background:rgba(0,0,0,.86); color:#ddd; font-size:.62rem; white-space:nowrap; }
+        .archive-status { margin-top:8px; color:#777; font-size:.68rem; line-height:1.4; }
+        body.archive-mode #source-badges, body.archive-mode #comparison-panel, body.archive-mode .metro-fab { display:none !important; }
+
         @media (max-width: 640px) {
             #app-container { padding-top: 10px; }
             .header-top-bar { padding-right: 12px; }
@@ -576,6 +623,9 @@
             #coordinate-readout { display: none; }
             #comparison-panel { left:8px; bottom:72px; width:calc(100vw - 72px); max-height:52vh; overflow:auto; }
             .comparison-metrics { grid-template-columns:1fr 1fr; }
+            #archive-panel { left:7px; right:7px; top:auto; bottom:7px; width:auto; max-height:64vh; }
+            .archive-list { max-height:18vh; }
+            .pivot-header:not(.active) { font-size:1.7rem; }
         }
     </style>
 </head>
@@ -603,7 +653,8 @@
     </div>
 
     <div class="pivot-headers">
-        <h1 class="pivot-header">storm</h1>
+        <h1 id="pivot-live" class="pivot-header active" onclick="WeatherApp.switchMode('live')">storm</h1>
+        <h1 id="pivot-archive" class="pivot-header" onclick="WeatherApp.switchMode('archive')">archive</h1>
         <div id="storm-summary" class="storm-summary">HKO × CMA × JMA × CWA 熱帶氣旋路徑比較</div>
     </div>
 
@@ -642,6 +693,41 @@
                 <div id="comparison-time" style="color:#888;font-size:.72rem;margin-bottom:5px">--</div>
                 <div id="comparison-results"></div>
                 <div class="analysis-note">共識中心為可用來源位置的幾何平均；分歧範圍只供比較，不代表官方機率預報。</div>
+            </section>
+
+
+            <section id="archive-panel" class="map-hud hidden" aria-label="歷史風暴及公報重播">
+                <div class="archive-head">
+                    <div>
+                        <div class="archive-title">歷史風暴</div>
+                        <div class="archive-subtitle">D1 公報資料庫 · 路徑重播</div>
+                    </div>
+                    <button class="comparison-close" type="button" onclick="WeatherApp.switchMode('live')" aria-label="返回即時路徑">×</button>
+                </div>
+                <div class="archive-grid">
+                    <select id="archive-year" class="metro-select" aria-label="年份"></select>
+                    <input id="archive-search" class="archive-search" type="search" placeholder="搜尋名稱或編號" autocomplete="off">
+                </div>
+                <div id="archive-storm-list" class="archive-list"><div class="archive-list-empty">讀取歷史風暴…</div></div>
+                <div id="archive-detail" class="archive-detail hidden">
+                    <div id="archive-selected-name" class="archive-selected-name">--</div>
+                    <div id="archive-selected-meta" class="archive-selected-meta">--</div>
+                    <div id="archive-agencies" class="archive-agencies"></div>
+                    <div class="archive-frame-row">
+                        <button id="archive-play" class="archive-play" type="button" onclick="WeatherApp.toggleArchivePlayback()" aria-label="播放公報">▶</button>
+                        <input id="archive-slider" type="range" min="0" max="0" step="1" value="0" aria-label="歷次公報">
+                        <div id="archive-frame-count" class="archive-frame-count">0 / 0</div>
+                    </div>
+                    <div class="archive-frame-card">
+                        <div id="archive-frame-title" class="archive-frame-title">選擇公報</div>
+                        <div id="archive-frame-meta" class="archive-frame-meta">--</div>
+                    </div>
+                    <div class="archive-actions">
+                        <button class="metro-btn" type="button" onclick="WeatherApp.focusArchiveTrack()">定位路徑</button>
+                        <button class="metro-btn" type="button" onclick="WeatherApp.refreshArchive()">更新歷史</button>
+                    </div>
+                </div>
+                <div id="archive-status" class="archive-status">歷史 API：準備中</div>
             </section>
 
             <div id="no-storm-overlay" class="no-storm-overlay hidden">
@@ -708,7 +794,7 @@
                 <div class="legend-row"><div class="legend-color" style="background:#e51400"></div>超強颱風</div>
 
                 <div id="engine-status">資料引擎：準備中</div>
-                <div style="margin-top:12px;color:#666;font-size:.72rem;line-height:1.45">v3.2 PWA：各機構獨立非同步載入、IndexedDB 即時快取、路線點選高亮及純強度色數據點。保留多機構時效比較、分歧半徑、最近距港分析及最新風圈。</div>
+                <div style="margin-top:12px;color:#666;font-size:.72rem;line-height:1.45">v3.3 PWA：新增 D1 歷史風暴瀏覽、機構篩選、歷次公報時間軸及路徑重播。保留逐來源 async 載入、IndexedDB 快取、路線高亮及多機構比較。</div>
             </aside>
         </div>
     </div>
@@ -727,17 +813,19 @@ const WeatherApp = (() => {
     ];
     const JMA_FEED_URL = JMA_FEED_URLS[1];
 
-    // 部署 Worker v2.5 後，把地址改成自己的 Worker。
+    // 前端需要 Storm Worker v3.3-alpha.2 或更新版本。
     const WORKER_ORIGIN = 'https://storm.maxyu0725.workers.dev';
     const PROXY_URL = `${WORKER_ORIGIN}/?url=`;
     const CWA_API_URL = `${WORKER_ORIGIN}/api/cwa`;
+    const HISTORY_API_URL = `${WORKER_ORIGIN}/api/history`;
 
     const DEFAULT_VIEW = { center: [18.5, 122.0], zoom: 5 };
     const HONG_KONG = { lat: 22.3023, lon: 114.1746 };
-    const CACHE_KEY = 'hko-cma-jma-cwa-storm-track-cache-v3.2';
-    const DB_NAME = 'storm-track-v3.2';
+    const CACHE_KEY = 'hko-cma-jma-cwa-storm-track-cache-v3.3';
+    const DB_NAME = 'storm-track-v3.2'; // 沿用 v3.2 DB，升級 schema 以保留即時快取
     const DB_STORE = 'agency-cache';
-    const DB_VERSION = 1;
+    const DB_HISTORY_STORE = 'history-cache';
+    const DB_VERSION = 2;
     const FETCH_TIMEOUT_MS = 16000;
 
     const SOURCE_CONFIG = {
@@ -767,6 +855,15 @@ const WeatherApp = (() => {
     let userMapInteracted = false;
     let programmaticMapMove = false;
     let autoFitCompleted = false;
+    let currentMode = 'live';
+    let historyLayer = null;
+
+    const archiveState = {
+        loaded: false, loading: false, storms: [], filteredStorms: [],
+        selectedStormId: null, stormDetail: null, advisories: [], filteredAdvisories: [],
+        agency: 'ALL', index: 0, timer: null, playing: false, listSerial: 0, stormSerial: 0, frameSerial: 0,
+        detailCache: new Map(), currentBounds: null, fitOnNext: true
+    };
 
     const agencyStorms = { HKO: [], CMA: [], JMA: [], CWA: [] };
     const sourceSettled = { HKO: false, CMA: false, JMA: false, CWA: false };
@@ -879,6 +976,7 @@ const WeatherApp = (() => {
         gridLayer = L.layerGroup().addTo(map);
         trackLayer = L.layerGroup().addTo(map);
         analysisLayer = L.layerGroup().addTo(map);
+        historyLayer = L.layerGroup();
         measureLayer = L.layerGroup().addTo(map);
 
         const hkIcon = L.divIcon({
@@ -908,6 +1006,7 @@ const WeatherApp = (() => {
                 if (selectionState.agency) clearTrackHighlight();
                 document.getElementById('storm-panel').classList.remove('open');
                 if (comparisonState.open) toggleComparisonPanel(false);
+                if (currentMode === 'archive' && archiveState.playing) toggleArchivePlayback(false);
             }
         });
 
@@ -963,6 +1062,28 @@ const WeatherApp = (() => {
             document.getElementById('comparison-hour-label').textContent = `+${viewOptions.compareHours}h`;
             renderForecastComparison();
         });
+
+        document.getElementById('archive-year').addEventListener('change', applyArchiveFilters);
+        document.getElementById('archive-search').addEventListener('input', applyArchiveFilters);
+        document.getElementById('archive-storm-list').addEventListener('click', event => {
+            const item = event.target.closest('[data-history-storm]');
+            if (item) selectArchiveStorm(item.dataset.historyStorm);
+        });
+        document.getElementById('archive-agencies').addEventListener('click', event => {
+            const button = event.target.closest('[data-history-agency]');
+            if (!button) return;
+            archiveState.agency = button.dataset.historyAgency;
+            updateArchiveAgencyButtons();
+            rebuildArchiveFrames(true);
+        });
+        document.getElementById('archive-slider').addEventListener('input', event => {
+            archiveState.index = Number(event.target.value);
+            updateArchiveFrameLabels(false);
+        });
+        document.getElementById('archive-slider').addEventListener('change', event => {
+            archiveState.index = Number(event.target.value);
+            showArchiveFrame(archiveState.index, false);
+        });
     }
 
     function renderStaticLayers() {
@@ -998,6 +1119,7 @@ const WeatherApp = (() => {
 
 
     async function refreshData() {
+        if (currentMode === 'archive') return refreshArchive();
         const serial = ++requestSerial;
         activeFetchCount = 4;
         autoFitCompleted = false;
@@ -1103,6 +1225,7 @@ const WeatherApp = (() => {
     }
 
     function finalizeRefresh() {
+        if (currentMode !== 'live') return;
         if (currentStorms.length > 0) {
             hideOverlays();
             return;
@@ -1876,10 +1999,10 @@ const WeatherApp = (() => {
     function renderStorms(fitMap) {
         trackLayer.clearLayers();
         trackRegistry.clear();
-        hideOverlays();
+        if (currentMode === 'live') hideOverlays();
 
         if (currentStorms.length === 0) {
-            document.getElementById('storm-summary').textContent = '目前沒有活躍熱帶氣旋路徑';
+            if (currentMode === 'live') document.getElementById('storm-summary').textContent = '目前沒有活躍熱帶氣旋路徑';
             return;
         }
 
@@ -1908,11 +2031,11 @@ const WeatherApp = (() => {
             (sourceVisible.HKO && group.sources.HKO) || (sourceVisible.CWA && group.sources.CWA) ||
             (sourceVisible.CMA && group.sources.CMA) || (sourceVisible.JMA && group.sources.JMA)
         ).map(group => group.displayName);
-        document.getElementById('storm-summary').textContent = visibleNames.length ? visibleNames.join(' · ') : '所有資料來源已隱藏';
+        if (currentMode === 'live') document.getElementById('storm-summary').textContent = visibleNames.length ? visibleNames.join(' · ') : '所有資料來源已隱藏';
 
         if (boundsPoints.length > 0) {
             lastFitBounds = L.latLngBounds(boundsPoints);
-            if (fitMap) fitMapBounds(lastFitBounds.pad(0.18), { maxZoom: 6, animate: true }, true);
+            if (fitMap && currentMode === 'live') fitMapBounds(lastFitBounds.pad(0.18), { maxZoom: 6, animate: true }, true);
         }
         applyTrackHighlight();
         renderForecastComparison();
@@ -2642,6 +2765,7 @@ const WeatherApp = (() => {
             request.onupgradeneeded = () => {
                 const db = request.result;
                 if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'source' });
+                if (!db.objectStoreNames.contains(DB_HISTORY_STORE)) db.createObjectStore(DB_HISTORY_STORE, { keyPath: 'key' });
             };
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error || new Error('IndexedDB 開啟失敗'));
@@ -2688,6 +2812,401 @@ const WeatherApp = (() => {
     async function loadAllAgencyCaches() {
         const entries = await Promise.all(['HKO', 'CMA', 'JMA', 'CWA'].map(async source => [source, await loadAgencyCache(source)]));
         return Object.fromEntries(entries);
+    }
+
+
+    function switchMode(mode) {
+        const next = mode === 'archive' ? 'archive' : 'live';
+        if (currentMode === next) return;
+        currentMode = next;
+        document.body.classList.toggle('archive-mode', next === 'archive');
+        document.getElementById('pivot-live').classList.toggle('active', next === 'live');
+        document.getElementById('pivot-archive').classList.toggle('active', next === 'archive');
+        document.getElementById('archive-panel').classList.toggle('hidden', next !== 'archive');
+        document.getElementById('storm-panel').classList.remove('open');
+        if (comparisonState.open) toggleComparisonPanel(false);
+        if (measureState.active) toggleMeasure(false);
+
+        if (next === 'archive') {
+            clearTrackHighlight();
+            if (map.hasLayer(trackLayer)) map.removeLayer(trackLayer);
+            if (map.hasLayer(analysisLayer)) map.removeLayer(analysisLayer);
+            if (!map.hasLayer(historyLayer)) historyLayer.addTo(map);
+            hideOverlays();
+            document.getElementById('storm-summary').textContent = 'D1 歷史風暴 · 歷次公報路徑重播';
+            if (!archiveState.loaded) loadArchiveStorms(false);
+            else if (archiveState.filteredAdvisories.length) showArchiveFrame(archiveState.index, false);
+        } else {
+            stopArchivePlayback();
+            historyLayer.clearLayers();
+            if (map.hasLayer(historyLayer)) map.removeLayer(historyLayer);
+            if (!map.hasLayer(trackLayer)) trackLayer.addTo(map);
+            if (!map.hasLayer(analysisLayer)) analysisLayer.addTo(map);
+            document.getElementById('storm-summary').textContent = currentStorms.length
+                ? `${currentStorms.length} 個活躍風暴 · HKO × CMA × JMA × CWA`
+                : 'HKO × CMA × JMA × CWA 熱帶氣旋路徑比較';
+            renderStorms(false);
+            renderForecastComparison();
+        }
+        setTimeout(() => map.invalidateSize(), 80);
+    }
+
+    async function fetchHistoryJson(path) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        try {
+            const response = await fetch(`${HISTORY_API_URL}${path}`, {
+                cache: 'no-store', signal: controller.signal,
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+            if (!data) throw new Error('歷史 API 沒有返回 JSON');
+            return data;
+        } catch (error) {
+            if (error?.name === 'AbortError') throw new Error('歷史 API 連線逾時');
+            throw error;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    async function saveHistoryCache(key, value) {
+        const payload = { key, savedAt: new Date().toISOString(), value };
+        const db = await openStormDb();
+        if (!db || !db.objectStoreNames.contains(DB_HISTORY_STORE)) {
+            try { localStorage.setItem(`${CACHE_KEY}-history-${key}`, JSON.stringify(payload)); } catch {}
+            return;
+        }
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(DB_HISTORY_STORE, 'readwrite');
+            tx.objectStore(DB_HISTORY_STORE).put(payload);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        }).catch(() => {});
+    }
+
+    async function loadHistoryCache(key) {
+        const db = await openStormDb();
+        if (!db || !db.objectStoreNames.contains(DB_HISTORY_STORE)) {
+            try { return JSON.parse(localStorage.getItem(`${CACHE_KEY}-history-${key}`)); } catch { return null; }
+        }
+        return await new Promise(resolve => {
+            const tx = db.transaction(DB_HISTORY_STORE, 'readonly');
+            const request = tx.objectStore(DB_HISTORY_STORE).get(key);
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () => resolve(null);
+        });
+    }
+
+    async function loadArchiveStorms(force = false) {
+        if (archiveState.loading) return;
+        archiveState.loading = true;
+        const serial = ++archiveState.listSerial;
+        setArchiveStatus('正在讀取 D1 歷史風暴…');
+        document.getElementById('archive-panel').classList.add('archive-loading');
+
+        if (!force && !archiveState.loaded) {
+            const cached = await loadHistoryCache('storms');
+            if (serial !== archiveState.listSerial) return;
+            if (Array.isArray(cached?.value?.storms)) {
+                archiveState.storms = cached.value.storms;
+                populateArchiveYears();
+                applyArchiveFilters();
+                setArchiveStatus(`先顯示裝置快取 · ${formatHkt(cached.savedAt)}`);
+            }
+        }
+
+        try {
+            const data = await fetchHistoryJson('/storms?limit=100');
+            if (serial !== archiveState.listSerial) return;
+            archiveState.storms = Array.isArray(data.storms) ? data.storms : [];
+            archiveState.loaded = true;
+            await saveHistoryCache('storms', data);
+            populateArchiveYears();
+            applyArchiveFilters();
+            setArchiveStatus(`D1 已載入 ${archiveState.storms.length} 個風暴 · ${formatNow()}`);
+            if (!archiveState.selectedStormId && archiveState.filteredStorms.length) {
+                selectArchiveStorm(archiveState.filteredStorms[0].id);
+            }
+        } catch (error) {
+            setArchiveStatus(`歷史 API 失敗：${error.message}`);
+            if (!archiveState.storms.length) {
+                document.getElementById('archive-storm-list').innerHTML = '<div class="archive-list-empty">未能取得歷史風暴。</div>';
+            }
+        } finally {
+            archiveState.loading = false;
+            document.getElementById('archive-panel').classList.remove('archive-loading');
+        }
+    }
+
+    function populateArchiveYears() {
+        const select = document.getElementById('archive-year');
+        const previous = select.value;
+        const years = [...new Set(archiveState.storms.map(storm => Number(storm.year)).filter(Number.isFinite))].sort((a,b) => b-a);
+        select.innerHTML = '<option value="ALL">全部年份</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
+        select.value = years.includes(Number(previous)) ? previous : (years[0] ? String(years[0]) : 'ALL');
+    }
+
+    function applyArchiveFilters() {
+        const year = document.getElementById('archive-year').value;
+        const query = normalizeName(document.getElementById('archive-search').value);
+        archiveState.filteredStorms = archiveState.storms.filter(storm => {
+            if (year !== 'ALL' && String(storm.year) !== year) return false;
+            if (!query) return true;
+            const haystack = normalizeName([storm.id, storm.international_number, storm.name_en, storm.name_zh].filter(Boolean).join(' '));
+            return haystack.includes(query);
+        });
+        renderArchiveStormList();
+    }
+
+    function renderArchiveStormList() {
+        const container = document.getElementById('archive-storm-list');
+        if (!archiveState.filteredStorms.length) {
+            container.innerHTML = '<div class="archive-list-empty">沒有符合條件的歷史風暴。</div>';
+            return;
+        }
+        container.innerHTML = archiveState.filteredStorms.map(storm => {
+            const displayName = archiveStormName(storm);
+            const status = { active:'活躍', dissipated:'已消散', archived:'已歸檔', merged:'已合併' }[storm.status] || storm.status || '--';
+            return `<button class="archive-storm ${storm.id === archiveState.selectedStormId ? 'active' : ''}" data-history-storm="${escapeHtml(storm.id)}">
+                <div class="archive-storm-name">${escapeHtml(displayName)}</div>
+                <div class="archive-storm-meta">${escapeHtml(storm.id)} · ${escapeHtml(status)} · ${Number(storm.advisory_count || 0)} 份公報</div>
+            </button>`;
+        }).join('');
+    }
+
+    function archiveStormName(storm) {
+        const zh = String(storm?.name_zh || '').trim();
+        const en = String(storm?.name_en || '').trim();
+        if (zh && en && normalizeName(zh) !== normalizeName(en)) return `${zh} (${en})`;
+        return zh || en || `未命名系統 ${storm?.international_number || ''}`.trim();
+    }
+
+    async function selectArchiveStorm(stormId) {
+        if (!stormId) return;
+        stopArchivePlayback();
+        archiveState.selectedStormId = stormId;
+        archiveState.agency = 'ALL';
+        archiveState.index = 0;
+        archiveState.fitOnNext = true;
+        renderArchiveStormList();
+        document.getElementById('archive-detail').classList.remove('hidden');
+        document.getElementById('archive-selected-name').textContent = '讀取風暴資料…';
+        document.getElementById('archive-selected-meta').textContent = stormId;
+        setArchiveStatus('正在讀取歷次公報…');
+        const serial = ++archiveState.stormSerial;
+
+        const cached = await loadHistoryCache(`storm-${stormId}`);
+        if (serial !== archiveState.stormSerial) return;
+        if (cached?.value?.detail && Array.isArray(cached?.value?.advisories)) {
+            applyArchiveStormPayload(cached.value.detail, cached.value.advisories, true);
+        }
+
+        try {
+            const [detail, list] = await Promise.all([
+                fetchHistoryJson(`/storms/${encodeURIComponent(stormId)}`),
+                fetchHistoryJson(`/storms/${encodeURIComponent(stormId)}/advisories?limit=200`)
+            ]);
+            if (serial !== archiveState.stormSerial) return;
+            const advisories = Array.isArray(list.advisories) ? list.advisories : [];
+            applyArchiveStormPayload(detail, advisories, false);
+            await saveHistoryCache(`storm-${stormId}`, { detail, advisories });
+            setArchiveStatus(`已載入 ${advisories.length} 份公報 · ${formatNow()}`);
+        } catch (error) {
+            setArchiveStatus(`公報讀取失敗：${error.message}`);
+            if (!archiveState.advisories.length) {
+                document.getElementById('archive-frame-title').textContent = '沒有可用公報';
+                document.getElementById('archive-frame-meta').textContent = error.message;
+            }
+        }
+    }
+
+    function applyArchiveStormPayload(detail, advisories, cached) {
+        archiveState.stormDetail = detail;
+        archiveState.advisories = [...advisories].sort((a,b) => parseTimeMs(a.issued_at) - parseTimeMs(b.issued_at));
+        const storm = detail?.storm || archiveState.storms.find(item => item.id === archiveState.selectedStormId) || {};
+        document.getElementById('archive-selected-name').textContent = archiveStormName(storm);
+        document.getElementById('archive-selected-meta').textContent = `${storm.id || archiveState.selectedStormId} · ${storm.first_seen_at ? formatHkt(storm.first_seen_at) : '--'} 至 ${storm.last_seen_at ? formatHkt(storm.last_seen_at) : '--'}${cached ? ' · 快取' : ''}`;
+        renderArchiveAgencyButtons();
+        rebuildArchiveFrames(true);
+    }
+
+    function renderArchiveAgencyButtons() {
+        const agencies = [...new Set(archiveState.advisories.map(item => item.agency).filter(Boolean))];
+        const buttons = ['ALL', ...['HKO','CMA','JMA','CWA'].filter(code => agencies.includes(code))];
+        document.getElementById('archive-agencies').innerHTML = buttons.map(code => `<button type="button" class="archive-agency ${archiveState.agency === code ? 'active' : ''}" data-history-agency="${code}">${code === 'ALL' ? '全部' : code}</button>`).join('');
+    }
+
+    function updateArchiveAgencyButtons() {
+        document.querySelectorAll('[data-history-agency]').forEach(button => button.classList.toggle('active', button.dataset.historyAgency === archiveState.agency));
+    }
+
+    function rebuildArchiveFrames(resetIndex = false) {
+        stopArchivePlayback();
+        archiveState.filteredAdvisories = archiveState.advisories.filter(item => archiveState.agency === 'ALL' || item.agency === archiveState.agency);
+        if (resetIndex) archiveState.index = Math.max(0, archiveState.filteredAdvisories.length - 1);
+        archiveState.index = Math.min(archiveState.index, Math.max(0, archiveState.filteredAdvisories.length - 1));
+        const slider = document.getElementById('archive-slider');
+        slider.max = Math.max(0, archiveState.filteredAdvisories.length - 1);
+        slider.value = archiveState.index;
+        slider.disabled = archiveState.filteredAdvisories.length <= 1;
+        updateArchiveFrameLabels(false);
+        if (archiveState.filteredAdvisories.length) showArchiveFrame(archiveState.index, archiveState.fitOnNext);
+        else {
+            historyLayer.clearLayers();
+            document.getElementById('archive-frame-title').textContent = '此機構沒有公報';
+            document.getElementById('archive-frame-meta').textContent = '--';
+        }
+    }
+
+    function updateArchiveFrameLabels(loading = false) {
+        const total = archiveState.filteredAdvisories.length;
+        const frame = archiveState.filteredAdvisories[archiveState.index];
+        document.getElementById('archive-frame-count').textContent = total ? `${archiveState.index + 1} / ${total}` : '0 / 0';
+        if (!frame) return;
+        document.getElementById('archive-frame-title').textContent = `${frame.agency} · ${formatHkt(frame.issued_at)}`;
+        document.getElementById('archive-frame-meta').textContent = loading
+            ? '正在讀取路徑點…'
+            : `${frame.point_count || 0} 個路徑點 · Parser ${frame.parser_version || '--'}`;
+    }
+
+    async function showArchiveFrame(index, fit = false) {
+        const frame = archiveState.filteredAdvisories[index];
+        if (!frame || currentMode !== 'archive') return;
+        archiveState.index = index;
+        document.getElementById('archive-slider').value = index;
+        updateArchiveFrameLabels(true);
+        const serial = ++archiveState.frameSerial;
+        let detail = archiveState.detailCache.get(frame.id);
+        if (!detail) {
+            const cached = await loadHistoryCache(`advisory-${frame.id}`);
+            if (cached?.value?.advisory) detail = cached.value;
+        }
+        try {
+            if (!detail) {
+                detail = await fetchHistoryJson(`/advisories/${encodeURIComponent(frame.id)}`);
+                await saveHistoryCache(`advisory-${frame.id}`, detail);
+            }
+            if (serial !== archiveState.frameSerial || currentMode !== 'archive') return;
+            archiveState.detailCache.set(frame.id, detail);
+            renderArchiveAdvisory(detail, fit || archiveState.fitOnNext);
+            archiveState.fitOnNext = false;
+            updateArchiveFrameLabels(false);
+        } catch (error) {
+            if (serial !== archiveState.frameSerial) return;
+            document.getElementById('archive-frame-meta').textContent = `路徑讀取失敗：${error.message}`;
+        }
+    }
+
+    function renderArchiveAdvisory(payload, fit = false) {
+        historyLayer.clearLayers();
+        const advisory = payload?.advisory || {};
+        const points = Array.isArray(payload?.points) ? payload.points : [];
+        const agency = advisory.agency || archiveState.filteredAdvisories[archiveState.index]?.agency || 'HKO';
+        const config = SOURCE_CONFIG[agency] || SOURCE_CONFIG.HKO;
+        const actual = points.filter(point => point.point_type === 'analysis');
+        const forecast = points.filter(point => point.point_type === 'forecast');
+        const bounds = [];
+
+        if (actual.length >= 2) {
+            L.polyline(actual.map(point => [point.latitude, point.longitude]), {
+                color:config.color, weight:3, opacity:.92, lineJoin:'round', interactive:false
+            }).addTo(historyLayer);
+        }
+        if (forecast.length) {
+            const line = [];
+            if (actual.length) line.push([actual.at(-1).latitude, actual.at(-1).longitude]);
+            line.push(...forecast.map(point => [point.latitude, point.longitude]));
+            if (line.length >= 2) L.polyline(line, {
+                color:config.color, weight:2.7, opacity:.96, dashArray:config.dash, lineJoin:'round', interactive:false
+            }).addTo(historyLayer);
+        }
+
+        points.forEach((point, pointIndex) => {
+            const lat = Number(point.latitude), lon = Number(point.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+            bounds.push([lat, lon]);
+            const isCurrent = point.point_type === 'analysis' && point === actual.at(-1);
+            const size = isCurrent ? 16 : (point.point_type === 'forecast' ? 10 : 9);
+            const fill = intensityColor(point.intensity_label || point.intensity_code);
+            const icon = L.divIcon({
+                html:`<div class="archive-history-node ${isCurrent ? 'archive-current-node' : ''}" style="width:${size}px;height:${size}px;background:${fill}"></div>`,
+                className:'', iconSize:[size,size], iconAnchor:[size/2,size/2]
+            });
+            const distance = haversineKm(HONG_KONG.lat,HONG_KONG.lon,lat,lon);
+            const typeLabel = point.point_type === 'forecast' ? '預測' : (isCurrent ? '最新分析' : '分析');
+            const popup = `<div class="tc-popup-title" style="color:${config.color}">${escapeHtml(agency)} 歷史公報 · ${escapeHtml(typeLabel)}</div>
+                <div class="tc-popup-row">發報：${escapeHtml(formatHkt(advisory.issued_at))}</div>
+                <div class="tc-popup-row">有效時間：${escapeHtml(formatHkt(point.valid_at))}</div>
+                <div class="tc-popup-row">位置：${formatLatLon(lat,lon)}</div>
+                <div class="tc-popup-row">強度：${escapeHtml(translateIntensity(point.intensity_label || point.intensity_code) || '未提供')}</div>
+                <div class="tc-popup-row">最高持續風速：${escapeHtml(formatWind(point.wind_ms))}</div>
+                <div class="tc-popup-row">中心氣壓：${escapeHtml(formatPressure(point.pressure_hpa))}</div>
+                ${point.forecast_hour !== null && point.forecast_hour !== undefined ? `<div class="tc-popup-row">預報時效：+${escapeHtml(point.forecast_hour)} 小時</div>` : ''}
+                <div class="tc-popup-row">距離香港：約 ${Math.round(distance)} 公里</div>`;
+            L.marker([lat,lon],{icon,riseOnHover:true}).bindPopup(popup,{maxWidth:300}).addTo(historyLayer);
+
+            if (point.point_type === 'forecast' && (point.forecast_hour === 24 || point.forecast_hour === 48 || point.forecast_hour === 72 || point.forecast_hour === 96 || point.forecast_hour === 120)) {
+                L.marker([lat,lon], {
+                    icon:L.divIcon({html:`<div class="archive-time-label">+${point.forecast_hour}h</div>`,className:'',iconSize:[42,16],iconAnchor:[-7,8]}),
+                    interactive:false
+                }).addTo(historyLayer);
+            }
+
+            const probability = Number(point.probability_radius_km);
+            if (point.point_type === 'forecast' && Number.isFinite(probability) && probability > 0) {
+                L.circle([lat,lon], {radius:probability*1000,color:config.color,weight:1,opacity:.35,dashArray:'3,7',fillColor:config.color,fillOpacity:.018,interactive:false}).addTo(historyLayer);
+            }
+            (point.windRadii || []).forEach((radius,index) => {
+                const radii = {ne:Number(radius.radius_ne_km),se:Number(radius.radius_se_km),sw:Number(radius.radius_sw_km),nw:Number(radius.radius_nw_km)};
+                const polygon = buildQuadrantPolygon(lat,lon,radii);
+                if (polygon.length >= 4) L.polygon(polygon,{color:config.color,weight:1,opacity:.3,fillColor:config.color,fillOpacity:.02,interactive:false}).addTo(historyLayer);
+            });
+        });
+
+        archiveState.currentBounds = bounds.length ? L.latLngBounds(bounds) : null;
+        if (fit && archiveState.currentBounds?.isValid()) fitMapBounds(archiveState.currentBounds.pad(.15), {maxZoom:7,animate:true});
+        document.getElementById('archive-frame-meta').textContent = `${points.length} 個路徑點 · ${actual.length} 分析／${forecast.length} 預測 · ${advisory.source_code || advisory.parser_version || '--'}`;
+        document.getElementById('storm-summary').textContent = `${archiveStormName(archiveState.stormDetail?.storm || {})} · ${agency} · ${formatHkt(advisory.issued_at)}`;
+    }
+
+    function toggleArchivePlayback(force) {
+        const next = typeof force === 'boolean' ? force : !archiveState.playing;
+        if (!next) { stopArchivePlayback(); return; }
+        if (archiveState.filteredAdvisories.length < 2) return;
+        archiveState.playing = true;
+        document.getElementById('archive-play').textContent = 'Ⅱ';
+        if (archiveState.index >= archiveState.filteredAdvisories.length - 1) archiveState.index = 0;
+        showArchiveFrame(archiveState.index, false);
+        archiveState.timer = setInterval(() => {
+            if (archiveState.index >= archiveState.filteredAdvisories.length - 1) { stopArchivePlayback(); return; }
+            archiveState.index += 1;
+            showArchiveFrame(archiveState.index, false);
+        }, 1400);
+    }
+
+    function stopArchivePlayback() {
+        archiveState.playing = false;
+        clearInterval(archiveState.timer);
+        archiveState.timer = null;
+        const button = document.getElementById('archive-play');
+        if (button) button.textContent = '▶';
+    }
+
+    function focusArchiveTrack() {
+        if (archiveState.currentBounds?.isValid()) fitMapBounds(archiveState.currentBounds.pad(.15), {maxZoom:7,animate:true});
+    }
+
+    async function refreshArchive() {
+        archiveState.loaded = false;
+        const selected = archiveState.selectedStormId;
+        await loadArchiveStorms(true);
+        if (selected && archiveState.storms.some(storm => storm.id === selected)) await selectArchiveStorm(selected);
+    }
+
+    function setArchiveStatus(message) {
+        document.getElementById('archive-status').textContent = message;
     }
 
     function showSourceStatus(source) {
@@ -2754,6 +3273,10 @@ const WeatherApp = (() => {
     }
 
     function resetView() {
+        if (currentMode === 'archive' && archiveState.currentBounds?.isValid()) {
+            fitMapBounds(archiveState.currentBounds.pad(.15), { maxZoom: 7, animate: true });
+            return;
+        }
         if (lastFitBounds && currentStorms.length > 0) fitMapBounds(lastFitBounds.pad(.18), { maxZoom: 6, animate: true });
         else {
             programmaticMapMove = true;
@@ -2765,7 +3288,8 @@ const WeatherApp = (() => {
     return {
         init, refreshData, toggleStormPanel, resetView,
         toggleBasemap, toggleFullscreen, toggleMeasure, showSourceStatus,
-        toggleComparisonPanel, focusComparison, installPwa, clearTrackHighlight
+        toggleComparisonPanel, focusComparison, installPwa, clearTrackHighlight,
+        switchMode, toggleArchivePlayback, focusArchiveTrack, refreshArchive
     };
 })();
 
