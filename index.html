@@ -2,13 +2,20 @@
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>香港天氣｜HKO × CMA × JMA × CWA 熱帶氣旋路徑 v3.0</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>香港天氣｜HKO × CMA × JMA × CWA 熱帶氣旋路徑 v3.1 PWA</title>
 
+    <meta name="application-name" content="Storm Track">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="Storm Track">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌀</text></svg>">
+    <meta name="msapplication-TileColor" content="#000000">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 
@@ -39,6 +46,7 @@
         html, body {
             width: 100%;
             height: 100%;
+            min-height: 100dvh;
             margin: 0;
             overflow: hidden;
             background: var(--bg);
@@ -55,7 +63,25 @@
             flex-direction: column;
             width: 100%;
             height: 100%;
-            padding-top: 14px;
+            min-height: 100dvh;
+            padding-top: calc(14px + env(safe-area-inset-top, 0px));
+            padding-right: env(safe-area-inset-right, 0px);
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+            padding-left: env(safe-area-inset-left, 0px);
+            background: var(--bg);
+        }
+
+        #app-container:fullscreen,
+        #app-container:-webkit-full-screen {
+            width: 100vw;
+            height: 100dvh;
+            min-height: 100dvh;
+            background: var(--bg);
+        }
+
+        @media (display-mode: fullscreen), (display-mode: standalone) {
+            html, body, #app-container { min-height: 100dvh; }
+            body { user-select: none; -webkit-user-select: none; }
         }
 
         .header-top-bar {
@@ -170,8 +196,8 @@
 
         .metro-fab {
             position: absolute;
-            right: 24px;
-            bottom: 24px;
+            right: calc(24px + env(safe-area-inset-right, 0px));
+            bottom: calc(24px + env(safe-area-inset-bottom, 0px));
             z-index: 1000;
             display: flex;
             align-items: center;
@@ -562,7 +588,8 @@
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17L17 3l4 4L7 21H3v-4z"></path><path d="M12 8l4 4M9 11l2 2M15 5l2 2"></path></svg>
             </button>
             <button id="comparison-button" class="metro-btn" onclick="WeatherApp.toggleComparisonPanel()" title="預測比較分析" aria-label="預測比較分析">Σ</button>
-            <button class="metro-btn" onclick="WeatherApp.toggleFullscreen()" title="全螢幕" aria-label="全螢幕">⛶</button>
+            <button id="pwa-install-button" class="metro-btn hidden" onclick="WeatherApp.installPwa()" title="安裝 Storm Track" aria-label="安裝 Storm Track">⇩</button>
+            <button id="fullscreen-button" class="metro-btn" onclick="WeatherApp.toggleFullscreen()" title="全螢幕／隱藏系統介面" aria-label="全螢幕／隱藏系統介面">⛶</button>
             <button class="metro-btn" onclick="WeatherApp.refreshData()" title="同步更新 HKO、CMA、JMA 與 CWA" aria-label="更新資料">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
             </button>
@@ -675,7 +702,7 @@
                 <div class="legend-row"><div class="legend-color" style="background:#e51400"></div>超強颱風</div>
 
                 <div id="engine-status">資料引擎：準備中</div>
-                <div style="margin-top:12px;color:#666;font-size:.72rem;line-height:1.45">第二階段加入多機構時效比較、分歧半徑、最近距港分析及最新風圈。CMA 使用 NMC BABJ；JMA 使用官方 VPTW；CWA 使用 W-C0034-005。</div>
+                <div style="margin-top:12px;color:#666;font-size:.72rem;line-height:1.45">v3.1 PWA：支援安裝、離線啟動殼、全螢幕顯示及安全區域。第二階段包括多機構時效比較、分歧半徑、最近距港分析及最新風圈。</div>
             </aside>
         </div>
     </div>
@@ -701,7 +728,7 @@ const WeatherApp = (() => {
 
     const DEFAULT_VIEW = { center: [18.5, 122.0], zoom: 5 };
     const HONG_KONG = { lat: 22.3023, lon: 114.1746 };
-    const CACHE_KEY = 'hko-cma-jma-cwa-storm-track-cache-v3.0';
+    const CACHE_KEY = 'hko-cma-jma-cwa-storm-track-cache-v3.1';
     const FETCH_TIMEOUT_MS = 16000;
 
     const SOURCE_CONFIG = {
@@ -725,6 +752,7 @@ const WeatherApp = (() => {
     let lastFitBounds = null;
     let requestSerial = 0;
     let toastTimer = null;
+    let deferredInstallPrompt = null;
 
     const sourceVisible = { HKO: true, CMA: true, JMA: true, CWA: true };
     const sourceHealth = {
@@ -750,9 +778,64 @@ const WeatherApp = (() => {
     const comparisonState = { open: false, groupKey: null, lastBounds: null };
 
     function init() {
+        initPwa();
         initMap();
         bindControls();
         refreshData();
+    }
+
+    function initPwa() {
+        const installButton = document.getElementById('pwa-install-button');
+        const fullscreenButton = document.getElementById('fullscreen-button');
+
+        if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+            navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' })
+                .then(registration => registration.update().catch(() => {}))
+                .catch(error => console.warn('Service Worker 註冊失敗', error));
+        }
+
+        window.addEventListener('beforeinstallprompt', event => {
+            event.preventDefault();
+            deferredInstallPrompt = event;
+            installButton?.classList.remove('hidden');
+        });
+
+        window.addEventListener('appinstalled', () => {
+            deferredInstallPrompt = null;
+            installButton?.classList.add('hidden');
+            showToast('Storm Track 已安裝');
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            fullscreenButton?.classList.toggle('active', Boolean(document.fullscreenElement));
+            setTimeout(() => map?.invalidateSize(), 120);
+        });
+        document.addEventListener('webkitfullscreenchange', () => {
+            fullscreenButton?.classList.toggle('active', Boolean(document.webkitFullscreenElement));
+            setTimeout(() => map?.invalidateSize(), 120);
+        });
+
+        const installed = window.matchMedia('(display-mode: fullscreen)').matches
+            || window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true;
+        if (installed) installButton?.classList.add('hidden');
+    }
+
+    async function installPwa() {
+        if (deferredInstallPrompt) {
+            deferredInstallPrompt.prompt();
+            await deferredInstallPrompt.userChoice.catch(() => null);
+            deferredInstallPrompt = null;
+            document.getElementById('pwa-install-button')?.classList.add('hidden');
+            return;
+        }
+
+        const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+        if (isIos && window.navigator.standalone !== true) {
+            showToast('iPhone／iPad：Safari 分享 → 加入主畫面');
+        } else {
+            showToast('請從瀏覽器選單選擇「安裝應用程式」');
+        }
     }
 
     function initMap() {
@@ -2222,10 +2305,17 @@ const WeatherApp = (() => {
     }
 
     async function toggleFullscreen() {
-        const target = document.getElementById('app-container');
+        const target = document.documentElement;
+        const activeElement = document.fullscreenElement || document.webkitFullscreenElement;
         try {
-            if (!document.fullscreenElement) await target.requestFullscreen();
-            else await document.exitFullscreen();
+            if (!activeElement) {
+                const request = target.requestFullscreen || target.webkitRequestFullscreen;
+                if (!request) throw new Error('此瀏覽器不支援全螢幕 API');
+                await request.call(target, { navigationUI: 'hide' });
+            } else {
+                const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                await exit.call(document);
+            }
             setTimeout(() => map.invalidateSize(), 150);
         } catch (error) {
             showToast(`全螢幕失敗：${error.message}`);
@@ -2475,7 +2565,7 @@ const WeatherApp = (() => {
     return {
         init, refreshData, toggleStormPanel, resetView,
         toggleBasemap, toggleFullscreen, toggleMeasure, showSourceStatus,
-        toggleComparisonPanel, focusComparison
+        toggleComparisonPanel, focusComparison, installPwa
     };
 })();
 
