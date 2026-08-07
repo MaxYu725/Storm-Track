@@ -41,7 +41,7 @@ self.addEventListener('fetch', event => {
 
   // Keep storm data and map tiles live. The upstream Worker already applies its own cache policy.
   if (
-    url.hostname === 'storm.maxyu0725.workers.dev' ||
+    url.hostname === 'storm.max-yu.workers.dev' ||
     url.hostname.endsWith('basemaps.cartocdn.com') ||
     url.hostname.endsWith('tile.openstreetmap.org')
   ) {
