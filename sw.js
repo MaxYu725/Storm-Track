@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '3.3.2';
+const VERSION = '3.3.3';
 const CACHE_PREFIX = 'storm-track-';
 const SHELL_CACHE = `${CACHE_PREFIX}shell-${VERSION}`;
 const STATIC_CACHE = `${CACHE_PREFIX}static-${VERSION}`;
@@ -32,17 +32,6 @@ self.addEventListener('activate', event => {
     );
     await self.clients.claim();
   })());
-});
-
-self.addEventListener('message', event => {
-  if (event.data?.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-    return;
-  }
-
-  if (event.data?.type === 'GET_VERSION') {
-    event.ports?.[0]?.postMessage({ version: VERSION });
-  }
 });
 
 self.addEventListener('fetch', event => {
