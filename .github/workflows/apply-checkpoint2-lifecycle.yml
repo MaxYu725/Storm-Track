@@ -3,19 +3,20 @@ name: Apply Checkpoint 2 lifecycle patch
 on:
   push:
     branches:
-      - agent/checkpoint2-lifecycle-stability
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: startsWith(github.event.head_commit.message, 'Apply Checkpoint 2 lifecycle patch')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout branch
+      - name: Checkout main
         uses: actions/checkout@v6
         with:
-          ref: agent/checkpoint2-lifecycle-stability
+          ref: main
 
       - name: Apply targeted lifecycle patch
         run: python tools/apply_checkpoint2_lifecycle.py
@@ -32,15 +33,12 @@ jobs:
           PY
           node --check /tmp/storm-inline.js
 
-      - name: Commit patched index
+      - name: Commit final lifecycle fix and remove one-shot tooling
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
-          if git diff --cached --quiet; then
-            echo "No patch needed"
-            exit 0
-          fi
+          git rm .github/workflows/apply-checkpoint2-lifecycle.yml tools/apply_checkpoint2_lifecycle.py
           git commit -m "Improve PWA foreground recovery"
-          git push origin HEAD:agent/checkpoint2-lifecycle-stability
+          git push origin HEAD:main
