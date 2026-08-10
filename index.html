@@ -445,6 +445,14 @@
             transition: opacity .2s;
         }
         #toast.show { opacity: 1; }
+        #pwa-update-banner {
+            left:50%; bottom:68px; z-index:1250; transform:translateX(-50%);
+            display:flex; align-items:center; gap:9px; max-width:calc(100vw - 28px);
+            padding:8px 9px 8px 11px; border:1px solid #666; background:rgba(0,0,0,.96);
+            color:#fff; font-size:.76rem; pointer-events:auto; white-space:nowrap;
+            box-shadow:0 5px 18px rgba(0,0,0,.5);
+        }
+        #pwa-update-banner button { height:28px; padding:0 9px; border:1px solid #fff; background:#fff; color:#000; cursor:pointer; }
 
         .leaflet-control-zoom a {
             border-radius: 0 !important;
@@ -594,8 +602,9 @@
         .archive-agencies { display:flex; flex-wrap:wrap; gap:5px; margin:10px 0 8px; }
         .archive-agency { height:27px; min-width:46px; padding:0 8px; border:1px solid #444; background:#090909; color:#aaa; cursor:pointer; }
         .archive-agency.active { border-color:#fff; color:#000; background:#fff; }
-        .archive-frame-row { display:grid; grid-template-columns:34px 1fr auto; gap:8px; align-items:center; }
+        .archive-frame-row { display:grid; grid-template-columns:34px 1fr auto auto; gap:7px; align-items:center; }
         .archive-play { width:34px; height:32px; border:1px solid #777; background:#080808; color:#fff; cursor:pointer; font-size:.9rem; }
+        .archive-speed { height:30px; min-width:58px; padding:0 5px; border:1px solid #444; background:#0b0b0b; color:#ddd; font-size:.68rem; outline:none; }
         .archive-frame-row input[type=range] { width:100%; accent-color:var(--accent); }
         .archive-frame-count { min-width:46px; text-align:right; color:#aaa; font-size:.68rem; font-variant-numeric:tabular-nums; }
         .archive-frame-card { margin-top:8px; padding:9px; border:1px solid #333; background:#0c0c0c; }
@@ -671,6 +680,10 @@
             <div id="coordinate-readout" class="map-hud">--</div>
             <div id="measure-hint" class="map-hud hidden">量度模式：在地圖點選起點及終點，按 Esc 結束</div>
             <div id="toast" class="map-hud"></div>
+            <div id="pwa-update-banner" class="map-hud hidden" role="status" aria-live="polite">
+                <span>Storm Track 新版本已就緒</span>
+                <button type="button" onclick="WeatherApp.applyPwaUpdate()">重新載入</button>
+            </div>
 
             <section id="comparison-panel" class="map-hud hidden" aria-label="多機構預測比較">
                 <div class="comparison-head">
@@ -717,6 +730,11 @@
                         <button id="archive-play" class="archive-play" type="button" onclick="WeatherApp.toggleArchivePlayback()" aria-label="播放公報">▶</button>
                         <input id="archive-slider" type="range" min="0" max="0" step="1" value="0" aria-label="歷次公報">
                         <div id="archive-frame-count" class="archive-frame-count">0 / 0</div>
+                        <select id="archive-speed" class="archive-speed" aria-label="歷史公報播放速度" onchange="WeatherApp.setArchivePlaybackSpeed(this.value)">
+                            <option value="0.7">0.7×</option>
+                            <option value="1" selected>1×</option>
+                            <option value="1.75">1.75×</option>
+                        </select>
                     </div>
                     <div class="archive-frame-card">
                         <div id="archive-frame-title" class="archive-frame-title">選擇公報</div>
@@ -867,7 +885,7 @@ const WeatherApp = (() => {
     const archiveState = {
         loaded: false, loading: false, storms: [], filteredStorms: [],
         selectedStormId: null, stormDetail: null, advisories: [], filteredAdvisories: [],
-        agency: 'ALL', index: 0, timer: null, playing: false, listSerial: 0, stormSerial: 0, frameSerial: 0,
+        agency: 'ALL', index: 0, timer: null, playing: false, playbackSpeed: 1, listSerial: 0, stormSerial: 0, frameSerial: 0,
         detailCache: new Map(), currentBounds: null, fitOnNext: true
     };
 
@@ -915,9 +933,8 @@ const WeatherApp = (() => {
             const hadController = Boolean(navigator.serviceWorker.controller);
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 if (!hadController || reloadingForUpdate) return;
-                reloadingForUpdate = true;
-                if (document.visibilityState === 'visible') location.reload();
-                else pendingControllerReload = true;
+                pendingControllerReload = true;
+                if (document.visibilityState === 'visible') showPwaUpdatePrompt();
             });
 
             navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' })
@@ -952,6 +969,16 @@ const WeatherApp = (() => {
         if (installed) installButton?.classList.add('hidden');
     }
 
+    function showPwaUpdatePrompt() {
+        pendingControllerReload = false;
+        document.getElementById('pwa-update-banner')?.classList.remove('hidden');
+    }
+
+    function applyPwaUpdate() {
+        reloadingForUpdate = true;
+        location.reload();
+    }
+
     function scheduleMapResize(delay = 120) {
         clearTimeout(mapResizeTimer);
         mapResizeTimer = setTimeout(() => map?.invalidateSize({ pan: false, debounceMoveend: true }), delay);
@@ -975,7 +1002,7 @@ const WeatherApp = (() => {
 
             scheduleMapResize();
             if (pendingControllerReload) {
-                location.reload();
+                showPwaUpdatePrompt();
                 return;
             }
 
@@ -3239,11 +3266,23 @@ const WeatherApp = (() => {
         document.getElementById('archive-play').textContent = 'Ⅱ';
         if (archiveState.index >= archiveState.filteredAdvisories.length - 1) archiveState.index = 0;
         showArchiveFrame(archiveState.index, false);
+        scheduleArchivePlaybackTimer();
+    }
+
+    function scheduleArchivePlaybackTimer() {
+        clearInterval(archiveState.timer);
+        const delay = Math.round(1400 / archiveState.playbackSpeed);
         archiveState.timer = setInterval(() => {
             if (archiveState.index >= archiveState.filteredAdvisories.length - 1) { stopArchivePlayback(); return; }
             archiveState.index += 1;
             showArchiveFrame(archiveState.index, false);
-        }, 1400);
+        }, delay);
+    }
+
+    function setArchivePlaybackSpeed(value) {
+        const speed = Number(value);
+        archiveState.playbackSpeed = [0.7, 1, 1.75].includes(speed) ? speed : 1;
+        if (archiveState.playing) scheduleArchivePlaybackTimer();
     }
 
     function stopArchivePlayback() {
@@ -3272,22 +3311,26 @@ const WeatherApp = (() => {
     function showSourceStatus(source) {
         const health = sourceHealth[source] || { state: 'unknown', message: '沒有狀態資料' };
         document.getElementById('storm-panel').classList.add('open');
-        showToast(`${source}：${health.message}`);
+        const checkedAt = health.updatedAt ? ` · 最後檢查 ${formatHkt(health.updatedAt)}` : '';
+        showToast(`${source}：${health.message}${checkedAt}`);
     }
 
     function setSourceHealth(source, state, message) {
-        sourceHealth[source] = { state, message, updatedAt: new Date().toISOString() };
+        const updatedAt = new Date().toISOString();
+        sourceHealth[source] = { state, message, updatedAt };
         const badge = document.getElementById(`badge-${source.toLowerCase()}`);
+        const checkedAt = formatHkt(updatedAt);
         badge.className = `source-badge ${state}`;
-        badge.title = message;
-        badge.setAttribute('aria-label', `${source}：${message}`);
+        badge.title = `${message} · 最後檢查 ${checkedAt}`;
+        badge.setAttribute('aria-label', `${source}：${message}，最後檢查 ${checkedAt}`);
     }
 
     function buildStatusHtml() {
         const rows = ['HKO', 'CMA', 'JMA', 'CWA'].map(source => {
             const health = sourceHealth[source];
             const stateLabel = { loading: '載入中', ok: '已載入', empty: '無活躍風暴', error: '失敗', stale: '快取／過期' }[health.state] || health.state;
-            return `${source}［${stateLabel}］：${escapeHtml(health.message)}`;
+            const checkedAt = health.updatedAt ? ` · 最後檢查 ${escapeHtml(formatHkt(health.updatedAt))}` : '';
+            return `${source}［${stateLabel}］：${escapeHtml(health.message)}${checkedAt}`;
         });
         rows.push(activeFetchCount > 0 ? `尚有 ${activeFetchCount} 個來源更新中` : `完成：${formatNow()}`);
         return `資料引擎：各機構獨立 async 載入<br>${rows.join('<br>')}`;
@@ -3348,8 +3391,8 @@ const WeatherApp = (() => {
     return {
         init, refreshData, toggleStormPanel, resetView,
         toggleBasemap, toggleFullscreen, toggleMeasure, showSourceStatus,
-        toggleComparisonPanel, focusComparison, installPwa, clearTrackHighlight,
-        switchMode, toggleArchivePlayback, focusArchiveTrack, refreshArchive
+        toggleComparisonPanel, focusComparison, installPwa, applyPwaUpdate, clearTrackHighlight,
+        switchMode, toggleArchivePlayback, setArchivePlaybackSpeed, focusArchiveTrack, refreshArchive
     };
 })();
 
