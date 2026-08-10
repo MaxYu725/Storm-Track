@@ -879,7 +879,6 @@ const WeatherApp = (() => {
     let backgroundedAt = null;
     let lifecycleRefreshAt = 0;
     let pendingControllerReload = false;
-    let reloadingForUpdate = false;
     let mapResizeTimer = null;
 
     const archiveState = {
@@ -932,7 +931,7 @@ const WeatherApp = (() => {
         if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
             const hadController = Boolean(navigator.serviceWorker.controller);
             navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (!hadController || reloadingForUpdate) return;
+                if (!hadController) return;
                 pendingControllerReload = true;
                 if (document.visibilityState === 'visible') showPwaUpdatePrompt();
             });
@@ -975,7 +974,6 @@ const WeatherApp = (() => {
     }
 
     function applyPwaUpdate() {
-        reloadingForUpdate = true;
         location.reload();
     }
 
