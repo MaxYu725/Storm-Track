@@ -1,8 +1,9 @@
 'use strict';
 
-const VERSION = '3.3.1';
-const SHELL_CACHE = `storm-track-shell-${VERSION}`;
-const STATIC_CACHE = `storm-track-static-${VERSION}`;
+const VERSION = '3.3.2';
+const CACHE_PREFIX = 'storm-track-';
+const SHELL_CACHE = `${CACHE_PREFIX}shell-${VERSION}`;
+const STATIC_CACHE = `${CACHE_PREFIX}static-${VERSION}`;
 const APP_SHELL = [
   './',
   './index.html',
@@ -24,13 +25,24 @@ self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const valid = new Set([SHELL_CACHE, STATIC_CACHE]);
     const names = await caches.keys();
-    await Promise.all(names.filter(name => name.startsWith('storm-track-') && !valid.has(name)).map(name => caches.delete(name)));
+    await Promise.all(
+      names
+        .filter(name => name.startsWith(CACHE_PREFIX) && !valid.has(name))
+        .map(name => caches.delete(name))
+    );
     await self.clients.claim();
   })());
 });
 
 self.addEventListener('message', event => {
-  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+
+  if (event.data?.type === 'GET_VERSION') {
+    event.ports?.[0]?.postMessage({ version: VERSION });
+  }
 });
 
 self.addEventListener('fetch', event => {
@@ -65,16 +77,18 @@ self.addEventListener('fetch', event => {
 
 async function networkFirstNavigation(request) {
   try {
-    const response = await fetch(request);
+    // Do not let the browser HTTP cache pin an older index.html after a new PWA release.
+    const response = await fetch(new Request(request, { cache: 'no-store' }));
     if (response?.ok) {
       const cache = await caches.open(SHELL_CACHE);
       cache.put('./index.html', response.clone()).catch(() => {});
     }
     return response;
   } catch {
-    return (await caches.match(request))
-      || (await caches.match('./index.html'))
-      || (await caches.match('./'))
+    const cache = await caches.open(SHELL_CACHE);
+    return (await cache.match(request))
+      || (await cache.match('./index.html'))
+      || (await cache.match('./'))
       || new Response('Storm Track 暫時離線。', {
         status: 503,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' }
@@ -83,13 +97,12 @@ async function networkFirstNavigation(request) {
 }
 
 async function cacheFirst(request, cacheName) {
-  const cached = await caches.match(request);
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
   if (cached) return cached;
+
   const response = await fetch(request);
-  if (response?.ok) {
-    const cache = await caches.open(cacheName);
-    cache.put(request, response.clone()).catch(() => {});
-  }
+  if (response?.ok) cache.put(request, response.clone()).catch(() => {});
   return response;
 }
 
