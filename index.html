@@ -831,7 +831,7 @@ const WeatherApp = (() => {
     ];
     const JMA_FEED_URL = JMA_FEED_URLS[1];
 
-    // 前端需要 Storm Worker v3.3-alpha.2 或更新版本。
+    // Production Storm Worker is deployed independently at WORKER_ORIGIN.
     const WORKER_ORIGIN = 'https://storm.max-yu.workers.dev';
     const PROXY_URL = `${WORKER_ORIGIN}/?url=`;
     const CWA_API_URL = `${WORKER_ORIGIN}/api/cwa`;
@@ -1748,10 +1748,6 @@ const WeatherApp = (() => {
         if (!Number.isFinite(value)) return null;
         const unit = (radius.getAttribute('unit') || '').toLowerCase();
         return unit.includes('海里') || unit === 'nm' ? value * 1.852 : value;
-    }
-
-    function firstLocalByType(node, localName, typeText) {
-        return elementsByLocalName(node, localName).find(item => (item.getAttribute('type') || '').includes(typeText)) || null;
     }
 
     function firstLocal(node, localName) {
