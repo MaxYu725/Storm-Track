@@ -827,6 +827,7 @@ const WeatherApp = (() => {
     const DB_HISTORY_STORE = 'history-cache';
     const DB_VERSION = 2;
     const FETCH_TIMEOUT_MS = 16000;
+    const FOREGROUND_REFRESH_AFTER_MS = 5 * 60 * 1000;
 
     const SOURCE_CONFIG = {
         HKO: { name: '香港天文台', color: '#ffffff', dash: '7,8' },
@@ -857,6 +858,11 @@ const WeatherApp = (() => {
     let autoFitCompleted = false;
     let currentMode = 'live';
     let historyLayer = null;
+    let backgroundedAt = null;
+    let lifecycleRefreshAt = 0;
+    let pendingControllerReload = false;
+    let reloadingForUpdate = false;
+    let mapResizeTimer = null;
 
     const archiveState = {
         loaded: false, loading: false, storms: [], filteredStorms: [],
@@ -897,6 +903,7 @@ const WeatherApp = (() => {
         initPwa();
         initMap();
         bindControls();
+        bindAppLifecycle();
         refreshData();
     }
 
@@ -905,6 +912,14 @@ const WeatherApp = (() => {
         const fullscreenButton = document.getElementById('fullscreen-button');
 
         if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+            const hadController = Boolean(navigator.serviceWorker.controller);
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!hadController || reloadingForUpdate) return;
+                reloadingForUpdate = true;
+                if (document.visibilityState === 'visible') location.reload();
+                else pendingControllerReload = true;
+            });
+
             navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' })
                 .then(registration => registration.update().catch(() => {}))
                 .catch(error => console.warn('Service Worker 註冊失敗', error));
@@ -935,6 +950,51 @@ const WeatherApp = (() => {
             || window.matchMedia('(display-mode: standalone)').matches
             || window.navigator.standalone === true;
         if (installed) installButton?.classList.add('hidden');
+    }
+
+    function scheduleMapResize(delay = 120) {
+        clearTimeout(mapResizeTimer);
+        mapResizeTimer = setTimeout(() => map?.invalidateSize({ pan: false, debounceMoveend: true }), delay);
+    }
+
+    function refreshForLifecycle() {
+        const now = Date.now();
+        if (now - lifecycleRefreshAt < 3000) return;
+        lifecycleRefreshAt = now;
+        if (currentMode === 'archive') refreshArchive();
+        else refreshData();
+    }
+
+    function bindAppLifecycle() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                backgroundedAt = Date.now();
+                if (archiveState.playing) stopArchivePlayback();
+                return;
+            }
+
+            scheduleMapResize();
+            if (pendingControllerReload) {
+                location.reload();
+                return;
+            }
+
+            const awayMs = backgroundedAt ? Date.now() - backgroundedAt : 0;
+            backgroundedAt = null;
+            if (awayMs >= FOREGROUND_REFRESH_AFTER_MS) refreshForLifecycle();
+        });
+
+        window.addEventListener('pageshow', event => {
+            scheduleMapResize();
+            if (event.persisted) refreshForLifecycle();
+        });
+
+        window.addEventListener('online', () => {
+            if (document.visibilityState === 'visible') refreshForLifecycle();
+        });
+
+        window.addEventListener('resize', () => scheduleMapResize(80));
+        window.addEventListener('orientationchange', () => scheduleMapResize(180));
     }
 
     async function installPwa() {
