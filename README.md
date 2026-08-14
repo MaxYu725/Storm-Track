@@ -7,6 +7,7 @@
 - Web App：`https://maxyu725.github.io/Storm-Track/`
 - Storm Worker：`https://storm.max-yu.workers.dev`
 - 前端部署：GitHub Pages，由 `.github/workflows/deploy-pages.yml` 在 `main` push 後自動部署
+- Standalone 狀態：**release candidate / maintenance / integration-ready**
 
 ## 目前功能
 
@@ -55,5 +56,7 @@ History API 主要端點：
 - 不新增來源機構，除非有明確產品理由
 - 不把不同機構的分析／預測資料誤當成單一官方預報
 - 修改 `main` 後應確認 GitHub Pages deployment 成功，並以實際 deployment artifact 做 regression
+
+Release Candidate 記錄：[`docs/RELEASE_CANDIDATE.md`](docs/RELEASE_CANDIDATE.md)。
 
 Weather App 整合契約：[`docs/WEATHER_APP_INTEGRATION.md`](docs/WEATHER_APP_INTEGRATION.md)。
