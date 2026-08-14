@@ -56,4 +56,4 @@ History API 主要端點：
 - 不把不同機構的分析／預測資料誤當成單一官方預報
 - 修改 `main` 後應確認 GitHub Pages deployment 成功，並以實際 deployment artifact 做 regression
 
-更詳細的 Weather App 整合契約會放在 `docs/WEATHER_APP_INTEGRATION.md`。
+Weather App 整合契約：[`docs/WEATHER_APP_INTEGRATION.md`](docs/WEATHER_APP_INTEGRATION.md)。
