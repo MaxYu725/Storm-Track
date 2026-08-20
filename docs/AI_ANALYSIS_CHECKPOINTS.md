@@ -1,6 +1,6 @@
 # Storm Track AI analysis development
 
-Status: **AI-2 checkpoint implementation**  
+Status: **AI-3 checkpoint implementation**  
 Baseline: `b03d16149a33928a49790b0d8308dd31e40b1ed4`  
 Feature branch: `feature/ai-analysis-engine`
 
@@ -8,7 +8,7 @@ Feature branch: `feature/ai-analysis-engine`
 
 AI development must not deploy or reconstruct the existing production Worker from historical `worker.js` source. The production Worker remains independently deployed until its authoritative source is recovered/rebuilt and verified.
 
-AI-1 and AI-2 are repository-only deterministic analysis work. They do not call Workers AI, do not predict HKO warning signals and do not change live/cache/map lifecycle.
+AI-1 through AI-3 are repository-only deterministic analysis work. They do not call Workers AI, do not predict HKO warning signals and do not change live/cache/map lifecycle.
 
 ## AI-1 — StormAnalysisSnapshot core
 
@@ -133,6 +133,80 @@ HongKongImpact
   semantics
 ```
 
+## AI-3 — HKO Signal Risk Input Engine
+
+Goal: assemble the measurable, versioned inputs needed for later Hong Kong warning-risk calibration without emitting a warning-signal prediction or risk score.
+
+Added module:
+
+- `analysis/hko-signal-risk-inputs.js`
+
+The module combines three repository-domain inputs:
+
+1. `StormAnalysisSnapshot` for source state, common-time spread and provenance;
+2. `HongKongImpact` for closest approach, trend and uncertainty;
+3. the existing normalized source group for meteorological fields that AI-1 intentionally did not copy, such as `maximumWind`, `pressure`, `movingSpeed`, `movingDirection` and `windRadii`.
+
+It does not read Leaflet state or raw upstream response formats.
+
+Responsibilities:
+
+- preserve agency independence and never substitute a missing agency with another source;
+- normalize numeric wind values to m/s when the adapter value is numeric or carries m/s, km/h or knot units;
+- normalize movement speed to km/h when explicit agency motion is available;
+- derive a separate app-computed motion vector from track geometry when enough timed points exist;
+- calculate storm bearing/sector relative to Hong Kong;
+- map Hong Kong into the storm-centred NE/SE/SW/NW quadrant for available wind radii;
+- evaluate whether a supplied quadrant wind radius geometrically reaches Hong Kong at that radius timestamp;
+- summarize current and closest-time intensity ranges without converting them into a warning decision;
+- preserve closest-approach lead time, agency time spread, route spread and impact uncertainty;
+- attach official HKO warning context only when it is explicitly supplied by a trusted caller; it is never inferred from storm geometry;
+- expose a flat `featureVector` suitable for later D1 verification/calibration records.
+
+The wind-radius coverage calculation is geometric evidence only. A radius covering Hong Kong does not by itself mean an HKO signal should be issued. Local wind, terrain, storm structure and HKO operational judgement remain separate.
+
+### Signal-risk input contract v1
+
+```text
+HkoSignalRiskInputs
+  schemaVersion = hko-signal-risk-inputs/v1
+  sourceSnapshotVersion
+  sourceImpactVersion
+  generatedAt
+  storm
+  referencePoint
+  coverage
+  proximity
+  motion
+  intensity
+  windField
+  disagreement
+  officialHkoWarningContext
+  agencies
+    HKO / CMA / JMA / CWA
+      current
+      derivedMotion
+      closestApproach
+      windField
+      provenance
+  featureVector
+  semantics
+```
+
+AI-3 output explicitly states:
+
+```text
+deterministic = true
+officialAgencyDataRemainSeparate = true
+agencySubstitutionUsed = false
+geometryIsAppComputed = true
+warningSignalPredictionIncluded = false
+warningRiskScoreIncluded = false
+hkoDecisionInferred = false
+officialHkoWarningContextInferred = false
+aiGenerated = false
+```
+
 ## Validation
 
 Run with Node.js:
@@ -140,6 +214,7 @@ Run with Node.js:
 ```bash
 node tests/storm-analysis-core.test.cjs
 node tests/hk-impact-engine.test.cjs
+node tests/hko-signal-risk-inputs.test.cjs
 ```
 
 AI-1 tests cover:
@@ -163,6 +238,18 @@ AI-2 tests cover:
 8. insufficient uncertainty state and no synthetic consensus when only one agency is usable;
 9. explicit exclusion of HKO warning-signal prediction and AI generation.
 
+AI-3 tests cover:
+
+1. m/s, km/h and knot wind-unit normalization;
+2. storm sector and Hong Kong quadrant geometry;
+3. wind-radius coverage evidence at latest and closest-time radius points;
+4. derived motion speed/direction kept separate from official motion;
+5. closest-approach lead time and flat feature-vector generation;
+6. multi-agency intensity normalization and spread;
+7. official HKO warning context remaining absent unless explicitly supplied;
+8. supplied official context remaining context only, with no warning prediction;
+9. missing-agency metrics remaining missing with no cross-agency substitution.
+
 ## Next checkpoint
 
-AI-3 should build the deterministic HKO impact/signal-risk input layer without asking an LLM to decide a warning signal. It should first model the measurable ingredients required for later risk calibration, including forecast wind fields when available, storm intensity, closest approach, approach quadrant/direction, forecast spread and official HKO warning context. Any eventual signal result must remain a Storm Track risk estimate and must never be represented as an HKO decision.
+AI-4 should start the forecast-verification layer. It should persist a forecast-time feature snapshot and later match it against observed storm position/intensity and official warning outcomes, producing versioned error/calibration records. It should not automatically promote new weights or warning-risk rules until historical backtesting and minimum-sample safeguards exist.
