@@ -175,6 +175,23 @@
       }
     }
 
+    for (let peakIndex = 1; peakIndex < track.length - 1; peakIndex += 1) {
+      const beforePeak = track.slice(0, peakIndex);
+      const afterPeak = track.slice(peakIndex + 1);
+      if (!beforePeak.length || !afterPeak.length) continue;
+      const priorMinimum = beforePeak.reduce((best, point) => point.distanceKm < best.distanceKm ? point : best, beforePeak[0]);
+      const laterMinimum = afterPeak.reduce((best, point) => point.distanceKm < best.distanceKm ? point : best, afterPeak[0]);
+      const peak = track[peakIndex];
+      const outwardKm = peak.distanceKm - priorMinimum.distanceKm;
+      const recoveryKm = peak.distanceKm - laterMinimum.distanceKm;
+      if (!(outwardKm > 0) || !(recoveryKm > 0)) continue;
+      const outwardStrength = clamp(outwardKm / Math.max(80, priorMinimum.distanceKm * 0.12));
+      const recoveryStrength = clamp(recoveryKm / Math.max(100, peak.distanceKm * 0.18));
+      const shapeStrength = Math.sqrt(outwardStrength * recoveryStrength);
+      const relevance = softTimeRelevance(laterMinimum.leadHours);
+      reApproachConfidence = Math.max(reApproachConfidence, shapeStrength * (0.5 + 0.5 * relevance));
+    }
+
     return {
       currentDistanceKm: first.distanceKm,
       forecastEndDistanceKm: last.distanceKm,
