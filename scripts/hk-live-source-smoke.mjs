@@ -8,10 +8,12 @@ async function getText(url) {
 }
 
 function parseJsonp(text) {
-  const first = text.indexOf('(');
-  const last = text.lastIndexOf(')');
-  const raw = first >= 0 && last > first ? text.slice(first + 1, last) : text;
-  return JSON.parse(raw.replace(/;\s*$/, ''));
+  let raw = String(text || '').trim().replace(/;\s*$/, '').trim();
+  const candidates = ['{', '['].map(ch => raw.indexOf(ch)).filter(index => index >= 0);
+  if (!candidates.length) throw new Error('JSONP payload has no JSON body');
+  raw = raw.slice(Math.min(...candidates)).trim();
+  while (raw.endsWith(')')) raw = raw.slice(0, -1).trim();
+  return JSON.parse(raw);
 }
 
 console.log('LIVE_SOURCE_SMOKE_AT', new Date().toISOString());
@@ -22,7 +24,8 @@ try {
   const urls = [...hkoList.matchAll(/<TropicalCycloneURL>([^<]+)<\/TropicalCycloneURL>/g)].map(match => match[1].replace(/&amp;/g, '&'));
   for (const url of urls.slice(0, 4)) {
     try {
-      const track = await getText(url.startsWith('http') ? url : `https://www.weather.gov.hk${url}`);
+      const safeUrl = url.startsWith('http') ? url.replace(/^http:/, 'https:') : `https://www.weather.gov.hk${url}`;
+      const track = await getText(safeUrl);
       console.log('HKO_TRACK_URL', url);
       console.log('HKO_TRACK', preview(track, 12000));
     } catch (error) {
