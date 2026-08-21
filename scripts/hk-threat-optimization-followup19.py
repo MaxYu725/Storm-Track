@@ -38,10 +38,4 @@ if text.count(old) != 1:
     raise SystemExit(f'followup19 T1 likelihood anchor mismatch: {text.count(old)}')
 text = text.replace(old, new, 1)
 
-old = """      `timeline-evidence:${t1Timeline.maxEvidence.toFixed(3)}`, `t1-risk-index:${t1RiskIndex.toFixed(3)}`"""
-new = """      `timeline-evidence:${t1Timeline.maxEvidence.toFixed(3)}`, `timeline-credible-evidence:${(t1Timeline.credibleMaxEvidence ?? 0).toFixed(3)}`, `interpolation-confidence:${interpolationConfidence.toFixed(3)}`, `t1-likely-index:${t1LikelyIndex.toFixed(3)}`, `t1-risk-index:${t1RiskIndex.toFixed(3)}`"""
-if text.count(old) != 1:
-    raise SystemExit(f'followup19 T1 basis anchor mismatch: {text.count(old)}')
-text = text.replace(old, new, 1)
-
 path.write_text(text, encoding='utf-8')
