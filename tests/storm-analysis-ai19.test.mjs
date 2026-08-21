@@ -25,7 +25,7 @@ assert.match(extractionWorkflow, /ROW_NUMBER\(\) OVER/);
 assert.match(extractionWorkflow, /point_type='forecast'/);
 assert.match(extractionWorkflow, /tp\.valid_at > c\.as_of/);
 assert.match(extractionWorkflow, /tp\.valid_at > r\.as_of/);
-assert.match(extractionWorkflow, /fromdateiso8601/);
+assert.match(extractionWorkflow, /all\(\.\[\]; \.valid_at > \.as_of\)/);
 for (const cutoff of ['2026-08-06T00:00:00.000Z','2026-08-08T00:00:00.000Z','2026-08-10T00:00:00.000Z','2026-08-12T02:00:28.000Z']) {
   assert.ok(extractionWorkflow.includes(cutoff), `AI-19 extraction must pin cutoff ${cutoff}`);
 }
