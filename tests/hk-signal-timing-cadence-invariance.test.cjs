@@ -97,6 +97,23 @@ function run(hours) {
 const dense = run(Array.from({ length: 13 }, (_, index) => 30 + index));
 const sparse = run([30, 36, 42]);
 
+console.log('CADENCE_DIAGNOSTIC', JSON.stringify({
+  dense: {
+    likelihood: dense.signals.T1.likelihood,
+    riskIndex: dense.signals.T1.riskIndex,
+    window: dense.signals.T1.estimatedWindow,
+    strongest: dense.signals.T1.strongestCheckpoint,
+    persistenceHours: dense.signals.T1.persistenceHours
+  },
+  sparse: {
+    likelihood: sparse.signals.T1.likelihood,
+    riskIndex: sparse.signals.T1.riskIndex,
+    window: sparse.signals.T1.estimatedWindow,
+    strongest: sparse.signals.T1.strongestCheckpoint,
+    persistenceHours: sparse.signals.T1.persistenceHours
+  }
+}));
+
 assert.equal(dense.signals.T1.likelihood, sparse.signals.T1.likelihood, 'sampling cadence must not change T1 likelihood');
 assert.equal(dense.signals.T1.likelihood, 'possible');
 assert.ok(dense.signals.T1.estimatedWindow && sparse.signals.T1.estimatedWindow, 'both representations should produce broad timing guidance');
