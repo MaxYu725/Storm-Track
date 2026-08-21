@@ -3,6 +3,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node ../../tests/storm-analysis-worker.test.mjs && node ../../tests/storm-analysis-orchestrator.test.mjs && node ../../tests/storm-analysis-ai10.test.mjs && node ../../tests/hko-signal-risk-calibration.test.cjs && node ../../tests/storm-analysis-ai11.test.mjs && node ../../tests/signal-calibration-walkforward-trainer.test.cjs && node ../../tests/storm-analysis-ai13.test.mjs && node ../../tests/storm-analysis-ai14.test.mjs && node ../../tests/storm-analysis-ai15.test.mjs"
+    "test": "node ../../tests/storm-analysis-worker.test.mjs && node ../../tests/storm-analysis-orchestrator.test.mjs && node ../../tests/storm-analysis-ai10.test.mjs && node ../../tests/hko-signal-risk-calibration.test.cjs && node ../../tests/storm-analysis-ai11.test.mjs && node ../../tests/signal-calibration-walkforward-trainer.test.cjs && node ../../tests/storm-analysis-ai13.test.mjs && node ../../tests/storm-analysis-ai14.test.mjs && node ../../tests/storm-analysis-ai15.test.mjs && node ../../tests/storm-analysis-ai16.test.mjs",
+    "test:integration": "vitest run --config vitest.config.js",
+    "check:config": "node scripts/check-deploy-config.mjs --allow-placeholder",
+    "check:deploy-target": "node scripts/check-deploy-config.mjs",
+    "migrate:local": "wrangler d1 migrations apply storm-analysis --local",
+    "dev:local": "wrangler dev --local",
+    "deploy:dry-run": "wrangler deploy --dry-run --experimental-provision=false --outdir .wrangler/ai16-dry-run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.22.0",
+    "vitest": "4.1.11",
+    "wrangler": "4.124.0"
   }
 }

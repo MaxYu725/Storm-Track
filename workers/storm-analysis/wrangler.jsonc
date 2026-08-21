@@ -1,9 +1,9 @@
 {
+  "$schema": "./node_modules/wrangler/config-schema.json",
   // Independent analysis Worker. Do not point this at the production Storm Worker database.
   "name": "storm-analysis",
   "main": "src/index.js",
-  "compatibility_date": "2026-08-21",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_date": "2026-08-20",
   "observability": {
     "enabled": true,
     "logs": {
@@ -14,8 +14,8 @@
     {
       "binding": "ANALYSIS_DB",
       "database_name": "storm-analysis",
-      // Replace only after a new independent D1 database has been created.
-      // This all-zero placeholder must never be replaced with the production Storm Worker database ID.
+      // AI-16 deployment interlock: replace only after creating a NEW independent D1 database.
+      // Never copy the production Storm Worker database ID here.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "schema"
     }
