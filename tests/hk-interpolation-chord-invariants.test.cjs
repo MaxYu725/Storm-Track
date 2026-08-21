@@ -105,14 +105,21 @@ assert.ok(ambiguous12.interpolationReliability < resolved12.interpolationReliabi
 
 // Two interpolated chords passing close to Hong Kong are a genuine scenario that must
 // remain visible, but they are not two independent official confirmations. They must not
-// by themselves escalate a strong-wind/gale prediction to "likely".
+// by themselves escalate any warning-signal prediction to "likely".
+assert.notEqual(ambiguous.forecast.signals.T1.likelihood, 'likely',
+  `interpolated chord majority must not manufacture likely T1; got ${ambiguous.forecast.signals.T1.likelihood}`);
 assert.notEqual(ambiguous.forecast.signals.T3.likelihood, 'likely',
   `interpolated chord majority must not manufacture likely T3; got ${ambiguous.forecast.signals.T3.likelihood}`);
 assert.notEqual(ambiguous.forecast.signals.T8.likelihood, 'likely',
   `interpolated chord majority must not manufacture likely T8; got ${ambiguous.forecast.signals.T8.likelihood}`);
 
+// Raw physical concern must remain visible even when escalation credibility is reduced.
+assert.ok(ambiguous.forecast.signals.T1.riskIndex >= 0.35,
+  'interpolated proximity scenario should remain visible as at least possible raw T1 risk');
+
 // Once official intermediate points resolve the curve away from Hong Kong, the threat
 // should not increase and confidence should recover.
+assert.ok(resolved.forecast.signals.T1.riskIndex <= ambiguous.forecast.signals.T1.riskIndex + 1e-9);
 assert.ok(resolved.forecast.signals.T3.riskIndex <= ambiguous.forecast.signals.T3.riskIndex + 1e-9);
 assert.ok(resolved.forecast.signals.T8.riskIndex <= ambiguous.forecast.signals.T8.riskIndex + 1e-9);
 assert.ok(resolved.assessment.summary.confidenceIndex > ambiguous.assessment.summary.confidenceIndex,
