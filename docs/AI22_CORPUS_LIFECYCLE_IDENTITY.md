@@ -1,6 +1,6 @@
 # AI-22 — Corpus Lifecycle & Identity
 
-Status: **implementation started; schema/repository/builder complete for local and CI validation; remote migration/capture not yet activated**
+Status: **completed — runtime activated, first bounded capture and true incremental append proven remotely; live WP-2026-16 window remains active by design**
 
 AI-22 changes forecast-corpus preservation from a one-shot frozen import into an incremental, auditable lifecycle. It does not import truth, persist verification, redesign training thresholds, promote a Champion, or change production weights.
 
@@ -35,7 +35,7 @@ Before any import, the lifecycle repository checks the independent analysis D1:
 - same storm/cutoff + changed immutable content -> fatal conflict;
 - no prior snapshot -> append.
 
-The legacy `INSERT OR IGNORE` behavior in the generic backfill repository is therefore never relied upon to decide AI-22 snapshot conflicts.
+The generic backfill repository's `INSERT OR IGNORE` behavior is never relied upon to decide AI-22 snapshot conflicts.
 
 ### 3. Capture lifecycle
 
@@ -57,6 +57,8 @@ Allowed transitions:
 A frozen window cannot be reopened. Exact already-saved snapshots may still be recognized without rewriting them.
 
 If a new snapshot arrives for a quiescent window, a successful capture automatically returns that window to `active` and records a lifecycle event.
+
+A real operational window is not forced to `quiescent` or `frozen` simply to close a development phase. Freeze occurs only after the source forecast stream becomes quiescent and the capture boundary is reviewed.
 
 ### 4. Multiple runs for one storm
 
@@ -94,18 +96,15 @@ For the production `storms.international_number` field, AI-22 uses the identity 
 
 A reviewed merge means downstream readers may resolve `from_storm_key` to `to_storm_key`. The original forecast rows remain unchanged for audit/replay.
 
-Guards reject:
+Guards reject self-merges, multiple reviewed destinations, reviewed merge cycles, and conflicting reviewed external identity bindings.
 
-- self-merges;
-- more than one reviewed destination for the same source key;
-- reviewed merge cycles;
-- conflicting reviewed external identity bindings.
+## Builder and repository
 
-## Builder
+`workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs` reuses AI-21's source-separation and no-future-leakage validation while adding stable incremental lifecycle semantics.
 
-`workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs` reuses AI-21's established source-separation and no-future-leakage validation, while changing the lifecycle semantics:
+Key rules remain:
 
-- production source D1 remains pinned to `storm-track-db` / `eb0bf995-3ea7-4bf6-bbca-b425892c4d7e`;
+- production source D1 is pinned to `storm-track-db` / `eb0bf995-3ea7-4bf6-bbca-b425892c4d7e`;
 - HKO, CMA, JMA and CWA remain independent;
 - missing sources stay missing;
 - advisory issue time must be at/before the cutoff;
@@ -114,44 +113,71 @@ Guards reject:
 - snapshot IDs remain stable across incremental runs;
 - external identity is removed from immutable snapshots and emitted separately as unreviewed evidence;
 - truth/signal rows remain zero;
-- no new storm-count learning gate is introduced.
+- no new storm-count, all-agencies, or sample-count learning gate is introduced.
 
-## Repository
+`workers/storm-analysis/src/corpus-lifecycle-repository.js` provides preview classification, append-only capture after conflict preflight, lifecycle transitions, identity review/merge primitives, and merge-chain resolution.
 
-`workers/storm-analysis/src/corpus-lifecycle-repository.js` provides:
+When a storm already exists in `historical_storms`, AI-22 preserves existing storm metadata during a forecast-only incremental run so a later truth state cannot accidentally be downgraded.
 
-- capture preview with existing/appended classification;
-- append-only capture execution through the existing generic backfill repository only after conflict preflight;
-- lifecycle state transitions;
-- reviewed/unreviewed external identity decisions;
-- reviewed storm-key merge decisions;
-- reviewed merge-chain resolution.
+## Operational proof: WP-2026-16
 
-When a storm already exists in `historical_storms`, AI-22 preserves the existing storm metadata during a forecast-only incremental run so that a later truth state cannot accidentally be downgraded back to `forecast-only`.
+AI-22 used `WP-2026-16` as the first live lifecycle case.
 
-## First operational case
+### AI-22D — runtime activation
 
-`WP-2026-16` remains the preferred first lifecycle case because the latest read-only candidate inventory found:
+- migration `0007_corpus_lifecycle.sql` applied to remote `storm-analysis`;
+- independent `storm-analysis` Worker deployed and smoke-tested;
+- authenticated live lifecycle preview succeeded with zero writes;
+- production `storm-track-db` remained read-only;
+- production Storm Worker was not modified.
 
-- all four independent agencies;
-- 252 forecast advisories;
-- 1,334 forecast points;
-- active updates at the time of inventory.
+### AI-22E — first bounded capture
 
-The correct AI-22 behavior is therefore to open an active capture window, preserve a bounded deterministic set of currently available historical cutoffs, and append later cutoffs to the same window while they appear. It should be frozen only after the forecast stream becomes quiescent and the capture boundary is reviewed.
+- four immutable `WP-2026-16` snapshots appended;
+- exact replay classified `4 existing / 0 appended / writesPerformed=false`;
+- capture window `wp-2026-16-operational-202608` remained `active`;
+- production number `18` was stored only as unreviewed identity evidence;
+- truth / verification / training / promotion remained zero.
 
-## Current checkpoint and next step
+### AI-22F — true incremental append
 
-This checkpoint is code/schema/test preparation only. It does **not** migrate the remote `storm-analysis` D1 or import `WP-2026-16` yet.
+A later production archive read selected one genuinely new usable cutoff while preserving the original four:
 
-Next AI-22 step:
+- new cutoff: `2026-08-21T06:45:00.000Z`;
+- usable agencies at that cutoff: `CMA / CWA / JMA`;
+- incremental classification: `4 existing / 1 appended`;
+- exact replay: `5 existing / 0 appended / writesPerformed=false`;
+- original four `snapshot_id`, `fingerprint`, and `payload_hash` values remained unchanged;
+- remote forecast snapshots became `13` total / `5` for `WP-2026-16`;
+- identity evidence for production number `18`: `2 unreviewed / 0 reviewed`;
+- identity merges: `0`;
+- truth / verification / training / promotion rows: `0`;
+- Signal Champion: none, generation `0`.
 
-1. run the complete regression + D1 integration suite;
-2. run a read-only fresh inventory/extraction for `WP-2026-16`;
-3. generate the first AI-22 lifecycle capture request using a stable window ID;
-4. inspect append/existing/conflict preview against remote `storm-analysis`;
-5. apply migration `0007` and deploy the independent analysis Worker only after the route wiring and deployment diff are reviewed;
-6. perform the first bounded WP-2026-16 capture;
-7. repeat with a later cutoff to prove true incremental append before freezing the window.
+The new cutoff did not contain HKO. This is valid: AI-22 preserves the actual usable source state and does not invent a new requirement that every incremental cutoff contain all four agencies.
 
-Production `storm-track-db` remains read-only throughout AI-22, and the production Storm Worker is not modified.
+## Lifecycle transition proof
+
+The D1 integration suite proves:
+
+- incremental append and exact replay;
+- `active -> quiescent`;
+- automatic `quiescent -> active` when new evidence arrives;
+- `active/quiescent -> frozen`;
+- frozen-window rejection of new appends;
+- snapshot ID/cutoff conflict rejection;
+- reviewed identity conflict handling and reviewed merge-cycle rejection.
+
+Because `WP-2026-16` was still producing usable new forecast evidence during AI-22F, the live window remains `active`. Remote transition is therefore an operational event driven by real storm state, not an AI-22 completion blocker.
+
+## Completion
+
+AI-22 is complete. The implementation, runtime activation, first capture, incremental append, immutability, idempotent replay, authorization separation and lifecycle-transition semantics have all been demonstrated.
+
+See `AI22_COMPLETION_RESULT.md` for the closeout decision and final state, plus:
+
+- `AI22_RUNTIME_ACTIVATION_RESULT.md`;
+- `AI22_WP16_FIRST_CAPTURE_RESULT.md`;
+- `AI22_WP16_INCREMENTAL_CAPTURE_RESULT.md`.
+
+There is currently no AI-23 artifact, trigger, workflow, test or committed phase contract in the repository. The next roadmap step should be selected from current project goals and evidence rather than created only to continue phase numbering.
