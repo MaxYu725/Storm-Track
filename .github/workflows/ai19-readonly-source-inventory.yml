@@ -9,6 +9,14 @@ on:
       - .github/ai19-backfill-trigger.txt
       - docs/AI19_CONTROLLED_HISTORICAL_BACKFILL_PILOT.md
       - tests/storm-analysis-ai19.test.mjs
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai19-readonly-source-inventory.yml
+      - .github/ai19-backfill-trigger.txt
+      - docs/AI19_CONTROLLED_HISTORICAL_BACKFILL_PILOT.md
+      - tests/storm-analysis-ai19.test.mjs
   workflow_dispatch:
 
 permissions:
@@ -20,7 +28,7 @@ concurrency:
 
 jobs:
   inspect:
-    if: github.ref == 'refs/heads/feature/ai-analysis-engine'
+    if: github.ref == 'refs/heads/feature/ai-analysis-engine' || github.base_ref == 'feature/ai-analysis-engine'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -92,7 +100,7 @@ jobs:
           npx wrangler whoami >/dev/null
 
           databases="$(npx wrangler d1 list --json --experimental-provision=false)"
-          printf '%s' "$databases" | jq -c '[.[] | {name,uuid:(.uuid // .id // null),created_at:(.created_at // null)}]' 
+          printf '%s' "$databases" | jq -c '[.[] | {name,uuid:(.uuid // .id // null),created_at:(.created_at // null)}]'
 
           : > /tmp/ai19-candidates.ndjson
           while IFS=$'\t' read -r name uuid; do
