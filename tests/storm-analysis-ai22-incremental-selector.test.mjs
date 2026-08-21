@@ -89,7 +89,7 @@ const replay = buildIncrementalLifecycleEvidence(structuredClone(input), { windo
 assert.deepEqual(replay, result, 'incremental selection must be deterministic');
 
 const noNew = structuredClone(input);
-noNew.existingCutoffs = advisories.map(row => row.issued_at);
+noNew.existingCutoffs = Array.from(new Set(advisories.map(row => row.issued_at)));
 assert.throws(() => buildIncrementalLifecycleEvidence(noNew, { windowId: 'wp-2026-16-operational-202608' }), /no new usable cutoff/);
 
 const duplicateExisting = structuredClone(input);
