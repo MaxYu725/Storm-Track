@@ -153,10 +153,12 @@
       proximity = smoothCloser(distanceKm, 800);
       windEvidence = Number.isFinite(windMs) ? clamp((windMs - 10) / 25) : 0;
     }
+    const exposureWind = windEvidence * proximity;
+    const exposureRapid = rapid * Math.max(proximity, 0.25);
     const raw = signal === 'T8'
-      ? proximity * 0.38 + windEvidence * 0.34 + rapid * 0.18 + agreement * 0.10
+      ? proximity * 0.42 + exposureWind * 0.30 + exposureRapid * 0.18 + agreement * 0.10
       : (signal === 'T3'
-        ? proximity * 0.40 + windEvidence * 0.28 + rapid * 0.20 + agreement * 0.12
+        ? proximity * 0.42 + exposureWind * 0.28 + exposureRapid * 0.18 + agreement * 0.12
         : proximity * 0.48 + windEvidence * 0.14 + rapid * 0.24 + agreement * 0.14);
     return clamp(raw * (0.55 + 0.45 * timeRelevance));
   }
@@ -167,11 +169,16 @@
       .map(item => ({ checkpoint: item, evidence: checkpointEvidence(item, signal) }));
     if (!entries.length) return { maxEvidence: 0, strongest: null, firstPossible: null, firstLikely: null };
     const strongest = entries.reduce((best, item) => item.evidence > best.evidence ? item : best, entries[0]);
+    const crossing = threshold => entries.find((item, index) => {
+      if (item.evidence < threshold) return false;
+      if (index === 0) return finite(item.checkpoint?.leadHours) > 0;
+      return entries[index - 1].evidence < threshold;
+    }) ?? null;
     return {
       maxEvidence: strongest.evidence,
       strongest,
-      firstPossible: entries.find(item => item.evidence >= (signal === 'T8' ? 0.40 : signal === 'T3' ? 0.38 : 0.35)) ?? null,
-      firstLikely: entries.find(item => item.evidence >= (signal === 'T8' ? 0.70 : signal === 'T3' ? 0.65 : 0.58)) ?? null
+      firstPossible: crossing(signal === 'T8' ? 0.40 : signal === 'T3' ? 0.38 : 0.35),
+      firstLikely: crossing(signal === 'T8' ? 0.70 : signal === 'T3' ? 0.65 : 0.58)
     };
   }
 
@@ -180,7 +187,7 @@
     return selected?.checkpoint?.validTime ?? selected?.checkpoint?.time ?? null;
   }
 
-  function timelineWindow(anchor, timeline, defaultBefore = 4, defaultAfter = 6) {
+  function timelineWindow(anchor, timeline, referenceTime, defaultBefore = 4, defaultAfter = 6) {
     if (!anchor) return null;
     const anchorMs = timeMs(anchor);
     if (!Number.isFinite(anchorMs)) return null;
@@ -190,7 +197,9 @@
       ? finite(timeline[index + 1]?.intervalFromPreviousHours) : null;
     const before = Number.isFinite(previousGap) ? clamp(previousGap / 2, 2, 6) : defaultBefore;
     const after = Number.isFinite(nextGap) ? clamp(nextGap / 2, 2, 8) : defaultAfter;
-    return windowAround(anchor, before, after);
+    const referenceMs = timeMs(referenceTime);
+    const startMs = Math.max(anchorMs - before * HOUR_MS, Number.isFinite(referenceMs) ? referenceMs : -Infinity);
+    return { start: iso(startMs), end: iso(anchorMs + after * HOUR_MS) };
   }
 
   function buildBasicHkSignalForecast({ impact, weightedImpact, signalInputs, threatAssessment, generatedAt } = {}) {
@@ -315,8 +324,13 @@
 
     const signalWindow = (likelihood, timelineAnchorValue, fallbackAnchor, before, after) => {
       if (likelihood === 'unlikely') return null;
-      if (timelineAnchorValue) return timelineWindow(timelineAnchorValue, timeline, before, after);
-      return fallbackAnchor ? windowAround(fallbackAnchor, before, after) : null;
+      if (timelineAnchorValue) return timelineWindow(timelineAnchorValue, timeline, referenceTime, before, after);
+      if (forecastEdge > 0.5 || !fallbackAnchor) return null;
+      const fallbackWindow = windowAround(fallbackAnchor, before, after);
+      const referenceMs = timeMs(referenceTime);
+      const fallbackStartMs = timeMs(fallbackWindow?.start);
+      if (fallbackWindow && Number.isFinite(referenceMs) && Number.isFinite(fallbackStartMs) && fallbackStartMs < referenceMs) fallbackWindow.start = iso(referenceMs);
+      return fallbackWindow;
     };
 
     return {
@@ -380,6 +394,9 @@
         hardThreatGateUsed: false,
         fixedDayBucketsUsed: false,
         timelineCanDriveSignalRisk: timeline.length > 0,
+        signalTimingUsesFutureThresholdCrossings: true,
+        stormIntensityIsCoupledToHongKongExposureForT3T8: true,
+        horizonLimitedFallbackTimingSuppressed: true,
         timeWeightingIsContinuous: true,
         softTimeScaleHours: SOFT_TIME_SCALE_HOURS,
         historicalCalibrationRequired: false,

@@ -51,6 +51,7 @@ assert.equal(result.threatAssessment.semantics.fixedDayBucketsUsed, false);
 assert.ok(result.threatAssessment.timeline.some(item => item.label === '+6h'));
 assert.ok(result.threatAssessment.timeline.some(item => item.label === '+12h'));
 assert.ok(result.threatAssessment.timeline.some(item => item.rapidEvolutionIndex > 0.3));
+assert.ok(result.threatAssessment.timeline.every(item => item.leadHours >= 0));
 assert.ok(result.basicForecast.signals.T8.riskIndex > 0.4);
 
 const html = ui.renderGroupSummary(group, { generatedAt: '2026-08-21T12:00:00Z' });

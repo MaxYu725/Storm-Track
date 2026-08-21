@@ -456,7 +456,8 @@
     const windFieldConfidence = clamp((usableAgencyCount > 0 ? windFieldCoverageCount / usableAgencyCount : 0) * 0.65
       + (Number.isFinite(representativeWindMs) ? clamp(representativeWindMs / 35) * 0.35 : 0));
 
-    const timeline = buildTimeline(agencyTracks, normalizedReferencePoint, referenceTimeMs);
+    const fullTimeline = buildTimeline(agencyTracks, normalizedReferencePoint, referenceTimeMs);
+    const timeline = fullTimeline.filter(item => Number.isFinite(item.leadHours) && item.leadHours >= 0);
     const strongestTimelineThreat = timeline.reduce((best, item) => item.threatIndex > (best?.threatIndex ?? -1) ? item : best, null);
     const fastestEvolution = timeline.reduce((best, item) => item.rapidEvolutionIndex > (best?.rapidEvolutionIndex ?? -1) ? item : best, null);
     const currentDistanceKm = median(patterns.map(pattern => pattern.currentDistanceKm).filter(Number.isFinite));
@@ -536,6 +537,7 @@
         timeWeightingIsContinuous: true,
         timelineUsesOfficialValidTimes: true,
         crossAgencyInterpolationIsTransparent: true,
+        pastCheckpointsExcludedFromForecastTimeline: true,
         fixedDayBucketsUsed: false,
         checkpointSpacingIsDecisionGate: false,
         officialHkoForecast: false,
