@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildCanonicalTruth, buildReadinessStatus, detectPositionTableFinality, parseBestTrackText } from '../workers/storm-analysis/scripts/ai20-jma-besttrack.mjs';
 
+// Temporary PR-only marker to trigger the read-only AI-20 audit.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
 const trigger = read('.github/ai20-truth-trigger.txt').trim();
