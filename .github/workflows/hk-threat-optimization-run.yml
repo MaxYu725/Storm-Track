@@ -19,6 +19,7 @@ on:
       - scripts/hk-threat-optimization-followup10.py
       - scripts/hk-threat-optimization-diagnostics.py
       - scripts/hk-live-source-smoke.mjs
+      - scripts/hk-live-engine-probe.mjs
       - analysis/**
       - tests/**
       - workers/storm-analysis/**
@@ -75,3 +76,6 @@ jobs:
 
       - name: Read-only live source smoke
         run: node scripts/hk-live-source-smoke.mjs
+
+      - name: Run live HKO CMA CWA acceptance through patched engine
+        run: node scripts/hk-live-engine-probe.mjs
