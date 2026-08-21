@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { buildProspectiveForecastCorpus, SOURCE_DB } from './ai21-build-forecast-corpus.mjs';
 import { previewImportPlan } from '../src/backfill-repository.js';
 import { CORPUS_CAPTURE_VERSION } from '../src/corpus-lifecycle-repository.js';
@@ -93,7 +96,7 @@ export function buildLifecycleCapture(evidence, options = {}) {
     assert(stormKey, `storms[${index}].stormKey is required`);
     const windowId = String(storm?.lifecycle?.windowId || '').trim();
     assert(windowId, `${stormKey}.lifecycle.windowId is required so incremental runs share an explicit capture window`);
-    const requested = String(storm?.lifecycle?.initialState || 'active').toLowerCase();
+    const requested = String(storm?.lifecycle?.initialState || 'active').trim().toLowerCase();
     const initialState = requested === 'closed' ? 'frozen' : requested;
     assert(['active', 'quiescent', 'frozen'].includes(initialState), `${stormKey}.lifecycle.initialState must be active, quiescent or frozen`);
     return { windowId, stormKey, initialState };
@@ -215,4 +218,46 @@ export function buildLifecycleCapture(evidence, options = {}) {
       remoteWritesPerformed: false
     }
   };
+}
+
+function parseArgs(argv) {
+  const args = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (!token?.startsWith('--')) continue;
+    const key = token.slice(2);
+    const value = argv[index + 1];
+    assert(value != null && !value.startsWith('--'), `--${key} requires a value`);
+    args[key] = value;
+    index += 1;
+  }
+  return args;
+}
+
+function writeStable(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const parsed = JSON.parse(importer.stableStringify(value));
+  fs.writeFileSync(file, `${JSON.stringify(parsed, null, 2)}\n`);
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  assert(args.evidence, 'usage: ai22-build-lifecycle-capture.mjs --evidence <json> [--output <dir>]');
+  const evidence = JSON.parse(fs.readFileSync(path.resolve(args.evidence), 'utf8'));
+  const result = buildLifecycleCapture(evidence);
+  if (args.output) {
+    const output = path.resolve(args.output);
+    writeStable(path.join(output, 'lifecycle-evidence.json'), result.evidence);
+    writeStable(path.join(output, 'lifecycle-plan.json'), result.plan);
+    writeStable(path.join(output, 'lifecycle-capture-request.json'), result.captureRequest);
+    writeStable(path.join(output, 'lifecycle-summary.json'), result.summary);
+  }
+  process.stdout.write(`${JSON.stringify({ ok: true, ...result.summary }, null, 2)}\n`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(error => {
+    console.error(error?.stack || String(error));
+    process.exitCode = 1;
+  });
 }
