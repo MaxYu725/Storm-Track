@@ -1,5 +1,6 @@
 import { createBackfillRepository, previewImportPlan } from './backfill-repository.js';
 import { createCorpusLifecycleRepository, CORPUS_CAPTURE_VERSION } from './corpus-lifecycle-repository.js';
+import { createVerificationResultRepository, VERIFICATION_RESULT_REPOSITORY_VERSION } from './verification-result-repository.js';
 import { createModelRepository } from './model-repository.js';
 import { createSignalRiskRepository, PROFILE_SCHEMA_VERSION } from './signal-risk-repository.js';
 import { createAnalysisOrchestrator, ORCHESTRATION_VERSION } from './analysis-orchestrator.js';
@@ -105,6 +106,13 @@ async function requireAnalysisAdminAuthorization(request, env) {
   );
 }
 
+function verificationRowsFromBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || !Array.isArray(body.rows)) {
+    throw httpError(400, 'invalid-verification-request', 'verification request must contain a rows array');
+  }
+  return body.rows;
+}
+
 function factories(dependencies = {}) {
   return {
     modelRepository: dependencies.createModelRepository || createModelRepository,
@@ -113,6 +121,7 @@ function factories(dependencies = {}) {
     cacheRepository: dependencies.createAnalysisCacheRepository || createAnalysisCacheRepository,
     cacheIdentity: dependencies.buildAnalysisCacheIdentity || buildAnalysisCacheIdentity,
     corpusLifecycleRepository: dependencies.createCorpusLifecycleRepository || createCorpusLifecycleRepository,
+    verificationRepository: dependencies.createVerificationResultRepository || createVerificationResultRepository,
     trainingPreview: dependencies.previewPersistedSignalCalibrationTraining || previewPersistedSignalCalibrationTraining,
     trainingRun: dependencies.runPersistedSignalCalibrationTraining || runPersistedSignalCalibrationTraining,
     outcomeCurationRepository: dependencies.createOutcomeCurationRepository || createOutcomeCurationRepository,
@@ -190,6 +199,7 @@ async function route(request, env, dependencies) {
       deterministicAnalysisVersion: ORCHESTRATION_VERSION,
       analysisCacheVersion: CACHE_SCHEMA_VERSION,
       corpusLifecycleVersion: CORPUS_CAPTURE_VERSION,
+      verificationPersistenceVersion: VERIFICATION_RESULT_REPOSITORY_VERSION,
       signalRiskCalibrationVersion: PROFILE_SCHEMA_VERSION,
       signalTrainingRunnerVersion: SIGNAL_TRAINING_RUNNER_VERSION,
       outcomeCurationVersion: OUTCOME_CURATION_VERSION,
@@ -251,6 +261,22 @@ async function route(request, env, dependencies) {
     const body = await readJsonWithLimit(request);
     const repository = factory.corpusLifecycleRepository(requireAnalysisDb(env));
     return json({ ok: true, merge: await repository.recordStormMerge(body) });
+  }
+
+  if (url.pathname === '/api/admin/verification/preview') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.verificationRepository(requireAnalysisDb(env));
+    return json({ ok: true, preview: repository.preview(verificationRowsFromBody(body)) });
+  }
+
+  if (url.pathname === '/api/admin/verification/persist') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.verificationRepository(requireAnalysisDb(env));
+    return json({ ok: true, persistence: await repository.persist(verificationRowsFromBody(body)) });
   }
 
   if (url.pathname === '/api/admin/signal-training/preview') {
