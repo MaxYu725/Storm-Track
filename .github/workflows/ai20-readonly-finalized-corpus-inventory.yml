@@ -1,0 +1,135 @@
+name: AI-20 Read-only finalized corpus inventory
+
+on:
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai20-readonly-finalized-corpus-inventory.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    if: github.base_ref == 'feature/ai-analysis-engine' || github.ref == 'refs/heads/feature/ai-analysis-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      BEST_TRACK_URL: https://www.jma.go.jp/jma/jma-eng/jma-center/rsmc-hp-pub-eg/Besttracks/bst2026.txt
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Worker toolchain
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Verify completed AI-19 and locked AI-20 lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < .github/ai19-backfill-trigger.txt)" == "COMPLETED_AI19" ]]
+          [[ "$(tr -d '\r\n' < .github/ai20-truth-trigger.txt)" == "PENDING_AI20" ]]
+          node tests/storm-analysis-ai20.test.mjs
+          echo 'AI20_CORPUS_INVENTORY_LIFECYCLE_OK=true'
+
+      - name: Fetch finalized JMA Best Track index
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --retry 4 --retry-delay 2 --retry-all-errors -A 'Storm-Track-AI20-corpus-inventory/1.0' -sS "$BEST_TRACK_URL" -o /tmp/bst2026.txt
+          node --input-type=module <<'NODE' > /tmp/jma-finalized.json
+          import fs from 'node:fs';
+          import { parseBestTrackText } from './workers/storm-analysis/scripts/ai20-jma-besttrack.mjs';
+          const storms = parseBestTrackText(fs.readFileSync('/tmp/bst2026.txt', 'utf8'));
+          process.stdout.write(JSON.stringify(storms.map(storm => ({
+            internationalNumber: storm.internationalNumber,
+            name: storm.name,
+            revisionDate: storm.revisionDate,
+            pointCount: storm.points.length
+          }))));
+          NODE
+          echo "AI20_JMA_FINALIZED=$(jq -c '.' /tmp/jma-finalized.json)"
+
+      - name: Verify production source identity and inventory forecast provenance using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          source_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-track-db") | (.uuid // .id // empty)')"
+          [[ "$source_id" == "eb0bf995-3ea7-4bf6-bbca-b425892c4d7e" ]]
+
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "
+            SELECT s.id, s.international_number, s.name_en, s.name_zh, s.status, s.merged_into_id,
+              s.first_seen_at, s.last_seen_at,
+              COUNT(DISTINCT a.id) AS advisory_count,
+              COUNT(DISTINCT a.agency) AS agency_count,
+              GROUP_CONCAT(DISTINCT a.agency) AS agencies,
+              COUNT(CASE WHEN tp.point_type='forecast' THEN 1 END) AS forecast_point_count,
+              COUNT(DISTINCT CASE WHEN tp.point_type='forecast' THEN a.agency END) AS forecast_agency_count,
+              MIN(CASE WHEN tp.point_type='forecast' THEN tp.valid_at END) AS first_forecast_valid_at,
+              MAX(CASE WHEN tp.point_type='forecast' THEN tp.valid_at END) AS last_forecast_valid_at
+            FROM storms s
+            LEFT JOIN advisories a ON a.storm_id=s.id
+            LEFT JOIN track_points tp ON tp.advisory_id=a.id
+            GROUP BY s.id, s.international_number, s.name_en, s.name_zh, s.status, s.merged_into_id, s.first_seen_at, s.last_seen_at
+            ORDER BY s.first_seen_at, s.id;" > /tmp/production-storms-raw.json
+          jq '[.. | objects | select(has("advisory_count") and has("forecast_point_count"))]' /tmp/production-storms-raw.json > /tmp/production-storms.json
+          echo "AI20_PRODUCTION_STORMS=$(jq -c '.' /tmp/production-storms.json)"
+
+      - name: Join finalized JMA identities to production candidates without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const jma = JSON.parse(fs.readFileSync('/tmp/jma-finalized.json', 'utf8'));
+          const production = JSON.parse(fs.readFileSync('/tmp/production-storms.json', 'utf8'));
+          const normalize = value => {
+            const digits = String(value ?? '').replace(/\D/g, '');
+            if (!digits) return null;
+            return digits.length >= 4 ? digits.slice(-4) : digits.padStart(4, '0');
+          };
+          const byNumber = new Map(jma.map(storm => [normalize(storm.internationalNumber), storm]));
+          const matches = production.map(row => ({
+            ...row,
+            normalizedInternationalNumber: normalize(row.international_number),
+            jmaFinalized: byNumber.get(normalize(row.international_number)) ?? null
+          })).filter(row => row.jmaFinalized);
+          const viable = matches.filter(row => Number(row.forecast_point_count) > 0 && Number(row.advisory_count) > 0);
+          console.log(`AI20_FINALIZED_PRODUCTION_MATCHES=${JSON.stringify(matches)}`);
+          console.log(`AI20_FINALIZED_FORECAST_CANDIDATES=${JSON.stringify(viable)}`);
+          console.log(`AI20_FINALIZED_FORECAST_CANDIDATE_COUNT=${viable.length}`);
+          NODE
+
+      - name: Reconfirm remote analysis state using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT
+            (SELECT COUNT(*) FROM backfill_runs) AS backfill_runs,
+            (SELECT COUNT(*) FROM historical_storms) AS historical_storms,
+            (SELECT COUNT(*) FROM forecast_snapshots) AS forecast_snapshots,
+            (SELECT COUNT(*) FROM truth_datasets) AS truth_datasets,
+            (SELECT COUNT(*) FROM truth_points) AS truth_points,
+            (SELECT COUNT(*) FROM verification_results) AS verification_results,
+            (SELECT COUNT(*) FROM signal_calibration_training_runs) AS training_runs,
+            (SELECT COUNT(*) FROM signal_profile_promotion_events) AS promotion_events,
+            (SELECT generation FROM signal_calibration_state WHERE state_id=1) AS generation,
+            (SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) AS champion_profile_id;" > /tmp/ai20-analysis-state.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai20-analysis-state.json | head -n 1)"
+          echo "AI20_CORPUS_INVENTORY_ANALYSIS_STATE=$row"
+          printf '%s' "$row" | jq -e '.backfill_runs==1 and .historical_storms==1 and .forecast_snapshots==4 and .truth_datasets==0 and .truth_points==0 and .verification_results==0 and .training_runs==0 and .promotion_events==0 and .generation==0 and .champion_profile_id==null' >/dev/null
+          echo 'AI20_CORPUS_INVENTORY_MUTATIONS_PERFORMED=false'
