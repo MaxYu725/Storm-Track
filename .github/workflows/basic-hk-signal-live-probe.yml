@@ -1,0 +1,32 @@
+name: Basic HK signal live probe
+
+on:
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/basic-hk-signal-live-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read live Storm Track sources only
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://storm.max-yu.workers.dev'
+          echo '=== HEALTH ==='
+          curl --fail -sS "$base/health" | jq .
+          for path in /probe/identity /probe/cma /probe/jma /probe/cwa /api/cwa; do
+            echo "=== ${path} ==="
+            curl --fail -sS "$base${path}" | head -c 20000
+            echo
+          done
+          echo '=== HKO TC LIST VIA WORKER PROXY ==='
+          curl --fail -sS --get "$base/" --data-urlencode 'url=https://www.weather.gov.hk/wxinfo/currwx/tc_list.xml' | head -c 20000
+          echo
