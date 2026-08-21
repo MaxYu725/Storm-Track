@@ -189,12 +189,14 @@ class MockD1 {
   response = await handleRequest(new Request('https://example.test/health'), { ANALYSIS_DB: db, ANALYSIS_ADMIN_TOKEN: 'secret' }, deps);
   body = await response.json();
   assert.equal(body.analysisAdminEnabled, true);
-  assert.equal(body.promotionApiEnabled, false);
+  assert.equal(body.promotionApiEnabled, true);
+  assert.equal(body.automaticPromotionEnabled, false);
 
   response = await handleRequest(new Request('https://example.test/api/admin/signal-risk/promote', {
     method: 'POST', headers: { authorization: 'Bearer secret' }
   }), { ANALYSIS_DB: db, ANALYSIS_ADMIN_TOKEN: 'secret' }, deps);
-  assert.equal(response.status, 404);
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, 'missing-body');
 }
 
 console.log('storm-analysis AI-14 tests: OK');
