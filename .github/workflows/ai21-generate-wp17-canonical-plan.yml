@@ -1,0 +1,162 @@
+name: AI-21 Generate canonical WP-2026-17 forecast corpus plan
+
+on:
+  push:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai21-generate-wp17-canonical-plan.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai21-generate-wp17-canonical-plan
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    if: github.ref == 'refs/heads/feature/ai-analysis-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      WORKER_URL: https://storm-analysis.max-yu.workers.dev
+      EXPECTED_EVIDENCE_SHA256: bf48ab58f885b42b33b0d5f0247416a649b389cfffaa4b4d794868076964716f
+      EXPECTED_PLAN_SHA256: 77b2bfdac1190cd5987f2407e9d83af5efa6fabd346ac6f9516fbb3f914e69d2
+      EXPECTED_RUN_ID: ai21_forecast_corpus_bf48ab58f885b42b
+    steps:
+      - name: Checkout AI branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Worker toolchain
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run complete no-write regression gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd workers/storm-analysis && npm test)
+          (cd workers/storm-analysis && npm run test:integration)
+          (cd workers/storm-analysis && npm run deploy:dry-run)
+
+      - name: Verify phase locks and source identity
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < ../../.github/ai19-backfill-trigger.txt)" == "COMPLETED_AI19" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai20-truth-trigger.txt)" == "PENDING_AI20" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai21-corpus-trigger.txt)" == "PENDING_AI21" ]]
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          source_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-track-db") | (.uuid // .id // empty)')"
+          [[ "$source_id" == "eb0bf995-3ea7-4bf6-bbca-b425892c4d7e" ]]
+          echo 'AI21_IMPORT_LOCKED=true'
+
+      - name: Read exact WP-2026-17 evidence using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected_sql="WITH cutoffs(as_of) AS (VALUES ('2026-08-11T12:00:00.000Z'),('2026-08-12T12:00:00.000Z'),('2026-08-13T12:00:00.000Z'),('2026-08-14T09:45:00.000Z')), ranked AS (SELECT c.as_of,a.id,a.storm_id,a.agency,a.issued_at,a.fetched_at,a.source_code,a.source_url,a.source_hash,a.raw_object_key,a.parser_version,ROW_NUMBER() OVER (PARTITION BY c.as_of,a.agency ORDER BY a.issued_at DESC,a.id DESC) rn FROM cutoffs c JOIN advisories a ON a.storm_id='WP-2026-17' AND a.issued_at<=c.as_of WHERE EXISTS (SELECT 1 FROM track_points tp WHERE tp.advisory_id=a.id AND tp.point_type='forecast' AND tp.valid_at>c.as_of)) SELECT as_of,id,storm_id,agency,issued_at,fetched_at,source_code,source_url,source_hash,raw_object_key,parser_version FROM ranked WHERE rn=1 ORDER BY as_of,agency;"
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "$selected_sql" > /tmp/ai21-selected-raw.json
+          jq '[.. | objects | select(has("as_of") and has("agency") and has("id"))]' /tmp/ai21-selected-raw.json > /tmp/ai21-selected.json
+
+          points_sql="WITH cutoffs(as_of) AS (VALUES ('2026-08-11T12:00:00.000Z'),('2026-08-12T12:00:00.000Z'),('2026-08-13T12:00:00.000Z'),('2026-08-14T09:45:00.000Z')), ranked AS (SELECT c.as_of,a.id,a.storm_id,a.agency,a.issued_at,ROW_NUMBER() OVER (PARTITION BY c.as_of,a.agency ORDER BY a.issued_at DESC,a.id DESC) rn FROM cutoffs c JOIN advisories a ON a.storm_id='WP-2026-17' AND a.issued_at<=c.as_of WHERE EXISTS (SELECT 1 FROM track_points fp WHERE fp.advisory_id=a.id AND fp.point_type='forecast' AND fp.valid_at>c.as_of)), selected AS (SELECT * FROM ranked WHERE rn=1) SELECT s.as_of,s.storm_id,s.agency,tp.advisory_id,tp.valid_at,tp.forecast_hour,tp.latitude,tp.longitude,tp.pressure_hpa,tp.wind_ms,tp.gust_ms,tp.wind_averaging_minutes,tp.intensity_code,tp.intensity_label,tp.probability_radius_km,tp.source_order FROM selected s JOIN track_points tp ON tp.advisory_id=s.id WHERE tp.point_type='forecast' AND tp.valid_at>s.as_of ORDER BY s.as_of,s.agency,tp.valid_at,tp.source_order;"
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "$points_sql" > /tmp/ai21-points-raw.json
+          jq '[.. | objects | select(has("as_of") and has("advisory_id") and has("valid_at"))]' /tmp/ai21-points-raw.json > /tmp/ai21-points.json
+          [[ "$(jq 'length' /tmp/ai21-selected.json)" -eq 11 ]]
+          [[ "$(jq 'length' /tmp/ai21-points.json)" -eq 56 ]]
+          jq -e 'all(.[]; .valid_at > .as_of)' /tmp/ai21-points.json >/dev/null
+          echo 'AI21_PRODUCTION_EVIDENCE_READ_ONLY=true'
+
+      - name: Build exact deterministic canonical plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated_at="$(jq -r '[.[].fetched_at // .[].issued_at] | max' /tmp/ai21-selected.json)"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const selectedAdvisories=JSON.parse(fs.readFileSync('/tmp/ai21-selected.json','utf8'));
+          const forecastPoints=JSON.parse(fs.readFileSync('/tmp/ai21-points.json','utf8'));
+          const generatedAt=selectedAdvisories.map(x=>x.fetched_at||x.issued_at).filter(Boolean).sort().at(-1);
+          const evidence={sourceDatabase:{name:'storm-track-db',uuid:'eb0bf995-3ea7-4bf6-bbca-b425892c4d7e'},generatedAt,minimumAgencies:2,storms:[{stormKey:'WP-2026-17',nameEn:'TC2620',nameTc:'熱帶低氣壓 19',season:2026,basin:'WNP',identity:{status:'unreviewed',internationalNumber:'17',source:'production-storm-row'},cutoffs:['2026-08-11T12:00:00.000Z','2026-08-12T12:00:00.000Z','2026-08-13T12:00:00.000Z','2026-08-14T09:45:00.000Z'],selectedAdvisories,forecastPoints}]};
+          fs.mkdirSync('data/ai21',{recursive:true});
+          fs.writeFileSync('/tmp/ai21-evidence-input.json',JSON.stringify(evidence));
+          NODE
+          rm -rf data/ai21
+          node workers/storm-analysis/scripts/ai21-build-forecast-corpus.mjs --evidence /tmp/ai21-evidence-input.json --output data/ai21 > /tmp/ai21-builder.json
+          cat /tmp/ai21-builder.json
+          [[ "$(jq -r '.evidenceSha256' /tmp/ai21-builder.json)" == "$EXPECTED_EVIDENCE_SHA256" ]]
+          [[ "$(jq -r '.planSha256' /tmp/ai21-builder.json)" == "$EXPECTED_PLAN_SHA256" ]]
+          [[ "$(jq -r '.runId' /tmp/ai21-builder.json)" == "$EXPECTED_RUN_ID" ]]
+          jq -e '.ok==true and .stormCount==1 and .snapshotCount==4 and .selectedAdvisoryCount==11 and .forecastPointCount==56 and .tableCounts.backfill_runs==1 and .tableCounts.historical_storms==1 and .tableCounts.forecast_snapshots==4 and .tableCounts.truth_datasets==0 and .tableCounts.truth_points==0 and .tableCounts.signal_outcomes==0 and .storms[0].identity.status=="unreviewed" and .storms[0].identity.internationalNumber==null and .semantics.analysisDatabaseWritten==false' /tmp/ai21-builder.json >/dev/null
+
+      - name: Verify live plan endpoint is no-write
+        shell: bash
+        run: |
+          set -euo pipefail
+          plan_file="$(find data/ai21 -type f -name '*plan*.json' | head -n1)"
+          [[ -n "$plan_file" ]]
+          status="$(curl -sS -o /tmp/ai21-preview.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/plan" -H 'content-type: application/json' --data-binary @"$plan_file")"
+          [[ "$status" == "200" ]]
+          jq -e '.ok==true and .dryRun==true and .writesPerformed==false and .rowCount==6 and .tableCounts.backfill_runs==1 and .tableCounts.historical_storms==1 and .tableCounts.forecast_snapshots==4 and .tableCounts.truth_datasets==0 and .tableCounts.truth_points==0 and .tableCounts.signal_outcomes==0' /tmp/ai21-preview.json >/dev/null
+          echo "AI21_PLAN_FILE=$plan_file" >> "$GITHUB_ENV"
+          echo 'AI21_LIVE_PLAN_PREVIEW_NO_WRITE=true'
+
+      - name: Verify remote analysis remains at AI-19 state
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM backfill_runs) backfill_runs,(SELECT COUNT(*) FROM historical_storms) historical_storms,(SELECT COUNT(*) FROM historical_storms WHERE storm_key='WP-2026-17') wp17_storms,(SELECT COUNT(*) FROM forecast_snapshots) forecast_snapshots,(SELECT COUNT(*) FROM forecast_snapshots WHERE storm_key='WP-2026-17') wp17_snapshots,(SELECT COUNT(*) FROM truth_datasets) truth_datasets,(SELECT COUNT(*) FROM truth_points) truth_points,(SELECT COUNT(*) FROM verification_results) verification_results,(SELECT COUNT(*) FROM agency_skill_profiles) agency_skill_profiles,(SELECT COUNT(*) FROM adaptive_weight_candidates) adaptive_weight_candidates,(SELECT COUNT(*) FROM signal_calibration_training_runs) training_runs,(SELECT COUNT(*) FROM signal_profile_promotion_events) promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) champion_profile_id;" > /tmp/ai21-state.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai21-state.json | head -n1)"
+          echo "AI21_PRE_IMPORT_STATE=$row"
+          printf '%s' "$row" | jq -e '.backfill_runs==1 and .historical_storms==1 and .wp17_storms==0 and .forecast_snapshots==4 and .wp17_snapshots==0 and .truth_datasets==0 and .truth_points==0 and .verification_results==0 and .agency_skill_profiles==0 and .adaptive_weight_candidates==0 and .training_runs==0 and .promotion_events==0 and .generation==0 and .champion_profile_id==null' >/dev/null
+
+      - name: Record canonical AI-21B plan checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > docs/AI21_WP17_CANONICAL_PLAN_RESULT.md <<EOF
+          # AI-21B — WP-2026-17 Canonical Forecast-only Plan
+
+          Status: **canonical plan generated and dry-run verified; remote import still locked**
+
+          - Storm key: \`WP-2026-17\`
+          - Selected advisories: 11
+          - Future-only forecast points: 56
+          - Forecast snapshots: 4
+          - Evidence SHA-256: \`${EXPECTED_EVIDENCE_SHA256}\`
+          - Plan SHA-256: \`${EXPECTED_PLAN_SHA256}\`
+          - Run ID: \`${EXPECTED_RUN_ID}\`
+          - Truth datasets / points: 0 / 0
+          - Verification rows: 0
+          - Backfill mode: \`forecast-only\`
+          - Agency-skill eligible: no
+          - International identity: unreviewed / omitted from canonical snapshots
+          - Live plan endpoint: dry-run only, writesPerformed=false
+          - Remote storm-analysis remained at the exact AI-19 state during plan generation
+          - AI-21 trigger: \`PENDING_AI21\`
+
+          No production D1 write, ANALYSIS_DB write, verification persistence, training, curation, promotion, deployment, or secret mutation was performed while generating this checkpoint.
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/ai21 docs/AI21_WP17_CANONICAL_PLAN_RESULT.md
+          git diff --cached --check
+          git commit -m "AI-21B: record canonical WP-2026-17 plan [skip ci]"
+          git push origin HEAD:feature/ai-analysis-engine
+          echo 'AI21_CANONICAL_PLAN_RECORDED=true'
+          echo 'AI21_REMOTE_MUTATIONS_PERFORMED=false'
