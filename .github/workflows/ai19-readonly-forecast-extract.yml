@@ -65,7 +65,7 @@ jobs:
           points="$(jq -c '[.. | objects | select(has("as_of") and has("advisory_id") and has("valid_at"))]' /tmp/ai19-forecast-points.json)"
           echo "AI19_FORECAST_POINTS=${points}"
           echo "AI19_FORECAST_POINT_COUNT=$(printf '%s' "$points" | jq 'length')"
-          printf '%s' "$points" | jq -e 'all(.[]; (.valid_at | fromdateiso8601) > (.as_of | fromdateiso8601))' >/dev/null
+          printf '%s' "$points" | jq -e 'all(.[]; .valid_at > .as_of)' >/dev/null
 
           coverage="$(printf '%s' "$points" | jq -c 'group_by(.as_of) | map({asOf:.[0].as_of,agencies:(group_by(.agency)|map({agency:.[0].agency,points:length,advisoryId:.[0].advisory_id,issuedAt:.[0].issued_at}))})')"
           echo "AI19_SNAPSHOT_COVERAGE=${coverage}"
