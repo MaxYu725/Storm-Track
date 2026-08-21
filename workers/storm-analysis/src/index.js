@@ -3,6 +3,12 @@ import { createModelRepository } from './model-repository.js';
 import { createSignalRiskRepository, PROFILE_SCHEMA_VERSION } from './signal-risk-repository.js';
 import { createAnalysisOrchestrator, ORCHESTRATION_VERSION } from './analysis-orchestrator.js';
 import { createAnalysisCacheRepository, buildAnalysisCacheIdentity, CACHE_SCHEMA_VERSION } from './analysis-cache-repository.js';
+import {
+  previewPersistedSignalCalibrationTraining,
+  runPersistedSignalCalibrationTraining,
+  RUNNER_VERSION as SIGNAL_TRAINING_RUNNER_VERSION
+} from './signal-training-runner.js';
+import { createOutcomeCurationRepository, CURATION_VERSION as OUTCOME_CURATION_VERSION } from './outcome-curation-repository.js';
 
 const SERVICE = 'storm-analysis';
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -23,10 +29,11 @@ function errorResponse(error) {
   return json(payload, { status });
 }
 
-function httpError(status, code, message) {
+function httpError(status, code, message, details) {
   const error = new Error(message);
   error.status = status;
   error.code = code;
+  if (details !== undefined) error.details = details;
   return error;
 }
 
@@ -64,18 +71,36 @@ async function digest(value) {
 
 async function constantTimeSecretEqual(left, right) {
   const [a, b] = await Promise.all([digest(left), digest(right)]);
+  if (typeof crypto.subtle.timingSafeEqual === 'function') return crypto.subtle.timingSafeEqual(a, b);
   let difference = a.length ^ b.length;
   const length = Math.max(a.length, b.length);
   for (let index = 0; index < length; index += 1) difference |= (a[index % a.length] ^ b[index % b.length]);
   return difference === 0;
 }
 
-async function requireBackfillAuthorization(request, env) {
-  const secret = typeof env?.BACKFILL_TOKEN === 'string' ? env.BACKFILL_TOKEN : '';
-  if (!secret) throw httpError(503, 'import-disabled', 'backfill import is disabled until BACKFILL_TOKEN is configured');
+async function requireBearerAuthorization(request, secret, disabledCode, disabledMessage) {
+  if (typeof secret !== 'string' || !secret) throw httpError(503, disabledCode, disabledMessage);
   const header = request.headers.get('authorization') || '';
   const match = header.match(/^Bearer\s+(.+)$/i);
   if (!match || !(await constantTimeSecretEqual(match[1], secret))) throw httpError(401, 'unauthorized', 'valid bearer token is required');
+}
+
+async function requireBackfillAuthorization(request, env) {
+  return requireBearerAuthorization(
+    request,
+    env?.BACKFILL_TOKEN,
+    'import-disabled',
+    'backfill import is disabled until BACKFILL_TOKEN is configured'
+  );
+}
+
+async function requireAnalysisAdminAuthorization(request, env) {
+  return requireBearerAuthorization(
+    request,
+    env?.ANALYSIS_ADMIN_TOKEN,
+    'analysis-admin-disabled',
+    'analysis admin API is disabled until ANALYSIS_ADMIN_TOKEN is configured'
+  );
 }
 
 function factories(dependencies = {}) {
@@ -84,7 +109,10 @@ function factories(dependencies = {}) {
     signalRiskRepository: dependencies.createSignalRiskRepository || createSignalRiskRepository,
     orchestrator: dependencies.createAnalysisOrchestrator || createAnalysisOrchestrator,
     cacheRepository: dependencies.createAnalysisCacheRepository || createAnalysisCacheRepository,
-    cacheIdentity: dependencies.buildAnalysisCacheIdentity || buildAnalysisCacheIdentity
+    cacheIdentity: dependencies.buildAnalysisCacheIdentity || buildAnalysisCacheIdentity,
+    trainingPreview: dependencies.previewPersistedSignalCalibrationTraining || previewPersistedSignalCalibrationTraining,
+    trainingRun: dependencies.runPersistedSignalCalibrationTraining || runPersistedSignalCalibrationTraining,
+    outcomeCurationRepository: dependencies.createOutcomeCurationRepository || createOutcomeCurationRepository
   };
 }
 
@@ -154,10 +182,14 @@ async function route(request, env, dependencies) {
       service: SERVICE,
       analysisDbBound: Boolean(env?.ANALYSIS_DB),
       importEnabled: typeof env?.BACKFILL_TOKEN === 'string' && env.BACKFILL_TOKEN.length > 0,
+      analysisAdminEnabled: typeof env?.ANALYSIS_ADMIN_TOKEN === 'string' && env.ANALYSIS_ADMIN_TOKEN.length > 0,
       deterministicAnalysisVersion: ORCHESTRATION_VERSION,
       analysisCacheVersion: CACHE_SCHEMA_VERSION,
       signalRiskCalibrationVersion: PROFILE_SCHEMA_VERSION,
+      signalTrainingRunnerVersion: SIGNAL_TRAINING_RUNNER_VERSION,
+      outcomeCurationVersion: OUTCOME_CURATION_VERSION,
       workersAiEnabled: false,
+      promotionApiEnabled: false,
       productionStormWorkerModified: false
     });
   }
@@ -172,6 +204,28 @@ async function route(request, env, dependencies) {
     await requireBackfillAuthorization(request, env);
     const repository = createBackfillRepository(requireAnalysisDb(env));
     return json(await repository.importPlan(await readJsonWithLimit(request)));
+  }
+
+  if (url.pathname === '/api/admin/signal-training/preview') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    return json({ ok: true, preview: await factory.trainingPreview(requireAnalysisDb(env), body, dependencies.trainingDependencies || {}) });
+  }
+
+  if (url.pathname === '/api/admin/signal-training/run') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    return json({ ok: true, training: await factory.trainingRun(requireAnalysisDb(env), body, dependencies.trainingDependencies || {}) });
+  }
+
+  if (url.pathname === '/api/admin/signal-outcomes/curate') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.outcomeCurationRepository(requireAnalysisDb(env));
+    return json({ ok: true, curation: await repository.curate(body) });
   }
 
   if (url.pathname === '/api/models/champion') {
@@ -223,4 +277,10 @@ export async function handleRequest(request, env, dependencies = {}) {
 }
 
 export default { async fetch(request, env) { return handleRequest(request, env); } };
-export { MAX_BODY_BYTES, constantTimeSecretEqual, readJsonWithLimit, runAnalysisWithCache };
+export {
+  MAX_BODY_BYTES,
+  constantTimeSecretEqual,
+  readJsonWithLimit,
+  runAnalysisWithCache,
+  requireAnalysisAdminAuthorization
+};
