@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { handleRequest } from '../workers/storm-analysis/src/index.js';
 import { VERIFICATION_RESULT_REPOSITORY_VERSION } from '../workers/storm-analysis/src/verification-result-repository.js';
 
+// CI probe branch only: canonical workflow checks out feature/ai-analysis-engine.
 const rows = [{
   table: 'verification_results',
   primaryKey: 'verify_fixture',
