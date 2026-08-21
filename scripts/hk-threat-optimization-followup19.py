@@ -3,6 +3,11 @@ from pathlib import Path
 path = Path('analysis/basic-hk-signal-forecast.js')
 text = path.read_text(encoding='utf-8')
 
+old = "    const t1LikelyIndex = t1RiskIndex;\n"
+if text.count(old) != 1:
+    raise SystemExit(f'followup19 existing T1 likely anchor mismatch: {text.count(old)}')
+text = text.replace(old, '', 1)
+
 old = """    const interpolationConfidence = clamp(finite(analyzers.interpolationReliability?.confidence) ?? 1);
     const t3LikelyIndex = clamp(Math.max(
       staticT3Risk * 0.88 * interpolationConfidence,
