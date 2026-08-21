@@ -1,0 +1,269 @@
+name: AI-17 Provision storm-analysis
+
+on:
+  push:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai17-provision-storm-analysis.yml
+      - docs/AI17_PROVISIONING_FIRST_DEPLOYMENT.md
+      - tests/storm-analysis-ai17.test.mjs
+      - workers/storm-analysis/package.json
+  workflow_dispatch:
+    inputs:
+      reuse_existing_analysis_db:
+        description: Reuse an already-created storm-analysis D1 after explicit inspection
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai17-storm-analysis-provision
+  cancel-in-progress: false
+
+jobs:
+  provision-and-deploy:
+    if: github.ref == 'refs/heads/feature/ai-analysis-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      BACKFILL_TOKEN: ${{ secrets.BACKFILL_TOKEN }}
+      ANALYSIS_ADMIN_TOKEN: ${{ secrets.ANALYSIS_ADMIN_TOKEN }}
+    steps:
+      - name: Checkout AI branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Preflight secret availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_ACCOUNT_ID}" || -z "${CLOUDFLARE_API_TOKEN}" ]]; then
+            echo "AI-17 requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN GitHub Secrets." >&2
+            exit 1
+          fi
+          if [[ -n "${BACKFILL_TOKEN}" && -z "${ANALYSIS_ADMIN_TOKEN}" ]] || [[ -z "${BACKFILL_TOKEN}" && -n "${ANALYSIS_ADMIN_TOKEN}" ]]; then
+            echo "BACKFILL_TOKEN and ANALYSIS_ADMIN_TOKEN must either both exist or both be absent." >&2
+            exit 1
+          fi
+          if [[ -n "${BACKFILL_TOKEN}" ]]; then
+            echo "APP_SECRETS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "APP_SECRETS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install pinned deployment toolchain
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run Node checkpoint suite
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Run Workers Vitest / Miniflare D1 integration
+        working-directory: workers/storm-analysis
+        run: npm run test:integration
+
+      - name: Bundle-only Wrangler dry run
+        working-directory: workers/storm-analysis
+        run: npm run deploy:dry-run
+
+      - name: Verify Cloudflare authentication
+        working-directory: workers/storm-analysis
+        run: npx wrangler whoami
+
+      - name: Resolve or create independent ANALYSIS_DB
+        id: d1
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          reuse=false
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.reuse_existing_analysis_db }}" == "true" ]]; then
+            reuse=true
+          fi
+
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          count="$(printf '%s' "$databases" | jq '[.[] | select(.name == "storm-analysis")] | length')"
+
+          if [[ "$count" == "0" ]]; then
+            npx wrangler d1 create storm-analysis --location apac --experimental-provision=false
+          elif [[ "$count" == "1" && "$reuse" == "true" ]]; then
+            echo "Reusing existing storm-analysis D1 only because workflow_dispatch explicitly authorized it."
+          else
+            echo "Expected no pre-existing storm-analysis D1 for first provisioning; found $count. Refusing implicit reuse." >&2
+            exit 1
+          fi
+
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          count="$(printf '%s' "$databases" | jq '[.[] | select(.name == "storm-analysis")] | length')"
+          [[ "$count" == "1" ]] || { echo "Expected exactly one storm-analysis D1 after provisioning." >&2; exit 1; }
+          db_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-analysis") | (.uuid // .id // empty)')"
+          [[ "$db_id" =~ ^[0-9a-fA-F-]{36}$ ]] || { echo "Could not resolve storm-analysis D1 UUID." >&2; exit 1; }
+          echo "ANALYSIS_DB_ID=$db_id" >> "$GITHUB_ENV"
+          echo "database_id=$db_id" >> "$GITHUB_OUTPUT"
+
+      - name: Bind repository config to provisioned ANALYSIS_DB
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const path = 'wrangler.jsonc';
+          const zero = '00000000-0000-0000-0000-000000000000';
+          const id = process.env.ANALYSIS_DB_ID;
+          const source = fs.readFileSync(path, 'utf8');
+          const hits = source.split(zero).length - 1;
+          if (hits !== 1) throw new Error(`expected exactly one AI-16 D1 placeholder, found ${hits}`);
+          fs.writeFileSync(path, source.replace(zero, id));
+          NODE
+          npm run check:deploy-target
+
+      - name: Inspect and apply remote D1 migrations
+        working-directory: workers/storm-analysis
+        run: |
+          npx wrangler d1 migrations list storm-analysis --remote --experimental-provision=false
+          npx wrangler d1 migrations apply storm-analysis --remote --experimental-provision=false
+
+      - name: Verify remote migration chain and bootstrap state
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT name FROM d1_migrations ORDER BY id;" > /tmp/ai17-migrations.json
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT state_id, champion_profile_id, generation FROM signal_calibration_state;" > /tmp/ai17-state.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const rows = value => {
+            if (Array.isArray(value)) return value.flatMap(rows);
+            if (value && typeof value === 'object') {
+              if (Array.isArray(value.results)) return value.results;
+              return Object.values(value).flatMap(rows);
+            }
+            return [];
+          };
+          const migrationRows = rows(JSON.parse(fs.readFileSync('/tmp/ai17-migrations.json', 'utf8')));
+          const names = migrationRows.map(row => row?.name).filter(Boolean);
+          const expected = [
+            '0001_learning.sql',
+            '0002_analysis_cache.sql',
+            '0003_signal_risk_calibration.sql',
+            '0004_signal_training_runs.sql',
+            '0005_signal_outcome_curations.sql',
+            '0006_signal_profile_promotions.sql'
+          ];
+          if (JSON.stringify(names) !== JSON.stringify(expected)) throw new Error(`unexpected remote migration history: ${JSON.stringify(names)}`);
+          const stateRows = rows(JSON.parse(fs.readFileSync('/tmp/ai17-state.json', 'utf8')));
+          const state = stateRows.find(row => Number(row?.state_id) === 1);
+          if (!state || state.champion_profile_id != null || Number(state.generation) !== 0) throw new Error(`unexpected calibration bootstrap state: ${JSON.stringify(state)}`);
+          NODE
+
+      - name: Deploy storm-analysis Worker
+        working-directory: workers/storm-analysis
+        run: npx wrangler deploy --experimental-provision=false --message "AI-17 initial storm-analysis deployment"
+
+      - name: Configure application secrets when supplied by GitHub
+        if: env.APP_SECRETS_AVAILABLE == 'true'
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$BACKFILL_TOKEN" | npx wrangler secret put BACKFILL_TOKEN --experimental-provision=false
+          printf '%s' "$ANALYSIS_ADMIN_TOKEN" | npx wrangler secret put ANALYSIS_ADMIN_TOKEN --experimental-provision=false
+          npx wrangler secret list
+
+      - name: Resolve Worker URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" > /tmp/ai17-subdomain.json
+          subdomain="$(jq -r '.result.subdomain // empty' /tmp/ai17-subdomain.json)"
+          [[ -n "$subdomain" ]] || { echo "Unable to resolve workers.dev subdomain." >&2; exit 1; }
+          echo "WORKER_URL=https://storm-analysis.${subdomain}.workers.dev" >> "$GITHUB_ENV"
+
+      - name: Smoke-test deployed Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          health="$(curl --fail --retry 10 --retry-delay 2 --retry-all-errors -sS "${WORKER_URL}/health")"
+          printf '%s' "$health" | jq -e '
+            .ok == true and
+            .service == "storm-analysis" and
+            .analysisDbBound == true and
+            .workersAiEnabled == false and
+            .promotionApiEnabled == true and
+            .automaticPromotionEnabled == false and
+            .productionStormWorkerModified == false
+          ' >/dev/null
+
+          if [[ "$APP_SECRETS_AVAILABLE" == "true" ]]; then
+            printf '%s' "$health" | jq -e '.importEnabled == true and .analysisAdminEnabled == true' >/dev/null
+            expected_auth=401
+          else
+            printf '%s' "$health" | jq -e '.importEnabled == false and .analysisAdminEnabled == false' >/dev/null
+            expected_auth=503
+          fi
+
+          model="$(curl --fail -sS "${WORKER_URL}/api/models/champion")"
+          printf '%s' "$model" | jq -e '.ok == true and .readOnly == true and .model.modelVersion == "builtin-equal-v1" and .model.persisted == false' >/dev/null
+
+          profile="$(curl --fail -sS "${WORKER_URL}/api/signal-risk/profiles/champion")"
+          printf '%s' "$profile" | jq -e '.ok == true and .readOnly == true and .available == false and .profile == null' >/dev/null
+
+          for endpoint in \
+            /api/backfill/import \
+            /api/admin/signal-training/preview \
+            /api/admin/signal-risk/promotion/preview
+          do
+            status="$(curl -sS -o /tmp/ai17-auth-body.json -w '%{http_code}' -X POST "${WORKER_URL}${endpoint}" -H 'content-type: application/json' --data '{}')"
+            [[ "$status" == "$expected_auth" ]] || { echo "Unexpected unauthenticated status $status for $endpoint; expected $expected_auth." >&2; cat /tmp/ai17-auth-body.json; exit 1; }
+          done
+
+      - name: Record non-secret deployment evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_secret_status="disabled"
+          if [[ "$APP_SECRETS_AVAILABLE" == "true" ]]; then app_secret_status="configured-from-github-secrets"; fi
+          cat > docs/AI17_DEPLOYMENT_RESULT.md <<EOF
+          # AI-17 — First storm-analysis Deployment Result
+
+          Status: **deployed and smoke-tested**
+
+          - Source commit: \`${GITHUB_SHA}\`
+          - Workflow run: \`${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\`
+          - Worker: \`storm-analysis\`
+          - Worker URL: \`${WORKER_URL}\`
+          - D1 binding: \`ANALYSIS_DB\`
+          - D1 database: \`storm-analysis\`
+          - D1 database ID: \`${ANALYSIS_DB_ID}\`
+          - D1 location request: \`apac\`
+          - Remote migrations: \`0001 → 0006\` verified
+          - Initial signal Champion state: \`NONE / generation 0\`
+          - BACKFILL_TOKEN / ANALYSIS_ADMIN_TOKEN: \`${app_secret_status}\`
+          - Workers AI: disabled
+          - Automatic signal-profile promotion: disabled
+
+          Production Storm Worker, production D1/R2, \`main\`, PWA and GitHub Pages were not deployment targets in this workflow.
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- workers/storm-analysis/wrangler.jsonc docs/AI17_DEPLOYMENT_RESULT.md
+          git diff --cached --check
+          git commit -m "AI-17: record first storm-analysis deployment"
+          git push origin HEAD:feature/ai-analysis-engine
