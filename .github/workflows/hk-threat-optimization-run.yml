@@ -8,6 +8,7 @@ on:
       - .github/workflows/hk-threat-optimization-run.yml
       - .github/workflows/hk-threat-optimization.yml
       - scripts/hk-threat-optimization-followup.py
+      - scripts/hk-threat-optimization-followup2.py
       - analysis/**
       - tests/**
       - workers/storm-analysis/**
@@ -38,6 +39,7 @@ jobs:
           exec(compile(block, 'hk-threat-optimization.py', 'exec'), {'__name__': '__main__'})
           PY
           python scripts/hk-threat-optimization-followup.py
+          python scripts/hk-threat-optimization-followup2.py
           git diff --check
 
       - name: Run focused tests
