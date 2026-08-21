@@ -43,3 +43,4 @@ assert.doesNotMatch(workflow, /--command\s+["'][^"']*\b(?:INSERT|UPDATE|DELETE|R
 for (const marker of ['2615','JMA RSMC Tokyo Best Track','※','PENDING_AI20','truth_datasets = 0','truth_points = 0','verification_results = 0','generation = 0','no training','no promotion','forecast data must never be used as truth']) assert.ok(doc.includes(marker));
 
 console.log(`storm-analysis AI-20 readiness tests passed (${trigger})`);
+// AI-20 audit trigger only; workflow checks out feature/ai-analysis-engine.
