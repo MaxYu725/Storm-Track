@@ -1,0 +1,65 @@
+name: AI-22 corpus lifecycle regression
+
+on:
+  push:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/ai22-lifecycle-trigger.txt
+      - .github/workflows/ai22-regression.yml
+      - docs/AI22_CORPUS_LIFECYCLE_IDENTITY.md
+      - tests/storm-analysis-ai22.test.mjs
+      - workers/storm-analysis/package.json
+      - workers/storm-analysis/schema/0007_corpus_lifecycle.sql
+      - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
+      - workers/storm-analysis/src/corpus-lifecycle-repository.js
+      - workers/storm-analysis/test/corpus-lifecycle-repository.integration.test.js
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    if: github.ref == 'refs/heads/feature/ai-analysis-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Worker toolchain
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run complete regression suite through AI-22
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Run isolated D1 integration suite including migration 0007
+        working-directory: workers/storm-analysis
+        run: npm run test:integration
+
+      - name: Validate independent deployment configuration
+        working-directory: workers/storm-analysis
+        run: npm run check:config
+
+      - name: Verify phase locks remain safe
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < .github/ai19-backfill-trigger.txt)" == "COMPLETED_AI19" ]]
+          [[ "$(tr -d '\r\n' < .github/ai20-truth-trigger.txt)" == "PENDING_AI20" ]]
+          [[ "$(tr -d '\r\n' < .github/ai21-corpus-trigger.txt)" == "COMPLETED_AI21" ]]
+          [[ "$(tr -d '\r\n' < .github/ai22-lifecycle-trigger.txt)" == "PENDING_AI22" ]]
+          echo 'AI22_REMOTE_CAPTURE_LOCKED=true'
+          echo 'AI22_TRUTH_IMPORT_PERFORMED=false'
+          echo 'AI22_VERIFICATION_PERSISTED=false'
+          echo 'AI22_TRAINING_PERFORMED=false'
+          echo 'AI22_PROMOTION_PERFORMED=false'
