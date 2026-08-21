@@ -9,6 +9,7 @@ import {
   RUNNER_VERSION as SIGNAL_TRAINING_RUNNER_VERSION
 } from './signal-training-runner.js';
 import { createOutcomeCurationRepository, CURATION_VERSION as OUTCOME_CURATION_VERSION } from './outcome-curation-repository.js';
+import { createSignalPromotionRepository, PROMOTION_VERSION as SIGNAL_PROMOTION_VERSION } from './signal-promotion-repository.js';
 
 const SERVICE = 'storm-analysis';
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -112,7 +113,8 @@ function factories(dependencies = {}) {
     cacheIdentity: dependencies.buildAnalysisCacheIdentity || buildAnalysisCacheIdentity,
     trainingPreview: dependencies.previewPersistedSignalCalibrationTraining || previewPersistedSignalCalibrationTraining,
     trainingRun: dependencies.runPersistedSignalCalibrationTraining || runPersistedSignalCalibrationTraining,
-    outcomeCurationRepository: dependencies.createOutcomeCurationRepository || createOutcomeCurationRepository
+    outcomeCurationRepository: dependencies.createOutcomeCurationRepository || createOutcomeCurationRepository,
+    signalPromotionRepository: dependencies.createSignalPromotionRepository || createSignalPromotionRepository
   };
 }
 
@@ -188,8 +190,10 @@ async function route(request, env, dependencies) {
       signalRiskCalibrationVersion: PROFILE_SCHEMA_VERSION,
       signalTrainingRunnerVersion: SIGNAL_TRAINING_RUNNER_VERSION,
       outcomeCurationVersion: OUTCOME_CURATION_VERSION,
+      signalPromotionVersion: SIGNAL_PROMOTION_VERSION,
       workersAiEnabled: false,
-      promotionApiEnabled: false,
+      promotionApiEnabled: true,
+      automaticPromotionEnabled: false,
       productionStormWorkerModified: false
     });
   }
@@ -226,6 +230,38 @@ async function route(request, env, dependencies) {
     const body = await readJsonWithLimit(request);
     const repository = factory.outcomeCurationRepository(requireAnalysisDb(env));
     return json({ ok: true, curation: await repository.curate(body) });
+  }
+
+  if (url.pathname === '/api/admin/signal-risk/promotion/preview') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.signalPromotionRepository(requireAnalysisDb(env));
+    return json({ ok: true, preview: await repository.previewPromotion(body) });
+  }
+
+  if (url.pathname === '/api/admin/signal-risk/promote') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.signalPromotionRepository(requireAnalysisDb(env));
+    return json({ ok: true, promotion: await repository.promote(body) });
+  }
+
+  if (url.pathname === '/api/admin/signal-risk/rollback/preview') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.signalPromotionRepository(requireAnalysisDb(env));
+    return json({ ok: true, preview: await repository.previewRollback(body) });
+  }
+
+  if (url.pathname === '/api/admin/signal-risk/rollback') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.signalPromotionRepository(requireAnalysisDb(env));
+    return json({ ok: true, rollback: await repository.rollback(body) });
   }
 
   if (url.pathname === '/api/models/champion') {
