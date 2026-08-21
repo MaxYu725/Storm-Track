@@ -42,6 +42,9 @@ function snapshot(confirmed) {
     generatedAt: BASE,
     referencePoint: HK,
     sources: {
+      // Stage 1: CMA already publishes an official +12h point while HKO/CWA still
+      // require interpolation across a sparse 24h chord. Stage 2: all three agencies
+      // publish intermediate points confirming the same dangerous geometry.
       HKO: source({ confirmed, latOffset: 0.04, lonOffset: 0.03 }),
       CMA: source({ confirmed: true, latOffset: 0, lonOffset: 0 }),
       CWA: source({ confirmed, latOffset: -0.04, lonOffset: -0.03 }),
@@ -116,32 +119,23 @@ assert.equal(confirmed12.exactOfficialSupportCount, 3,
 assert.ok(confirmed12.interpolationReliability > sparse12.interpolationReliability + 0.2,
   `official confirmation should materially restore reliability: sparse=${sparse12.interpolationReliability.toFixed(3)} confirmed=${confirmed12.interpolationReliability.toFixed(3)}`);
 
+// T1 may escalate earlier because one agency already directly confirms the close pass.
+// Higher warning levels should preserve the danger as possible without treating two
+// sparse interpolated trajectories as equivalent to additional official confirmations.
 assert.notEqual(sparse.forecast.signals.T1.likelihood, 'unlikely',
   'partly confirmed dangerous scenario should remain visible for T1');
 assert.notEqual(sparse.forecast.signals.T3.likelihood, 'unlikely',
-  'sparse dangerous scenario should remain visible at least as possible T3');
+  'partly confirmed dangerous scenario should remain visible at least as possible T3');
 assert.notEqual(sparse.forecast.signals.T8.likelihood, 'unlikely',
-  'sparse dangerous scenario should remain visible at least as possible T8');
+  'partly confirmed dangerous scenario should remain visible at least as possible T8');
 assert.notEqual(sparse.forecast.signals.T3.likelihood, 'likely',
   `partly interpolated route should not prematurely become likely T3; got ${sparse.forecast.signals.T3.likelihood}`);
 assert.notEqual(sparse.forecast.signals.T8.likelihood, 'likely',
   `partly interpolated route should not prematurely become likely T8; got ${sparse.forecast.signals.T8.likelihood}`);
 
-console.log('CONFIRMATION_ESCALATION_DIAGNOSTIC', JSON.stringify({
-  sparse: {
-    checkpointReliability: sparse12.interpolationReliability,
-    assessmentConfidence: sparse.assessment.summary.confidenceIndex,
-    T3: sparse.forecast.signals.T3,
-    T8: sparse.forecast.signals.T8
-  },
-  confirmed: {
-    checkpointReliability: confirmed12.interpolationReliability,
-    assessmentConfidence: confirmed.assessment.summary.confidenceIndex,
-    T3: confirmed.forecast.signals.T3,
-    T8: confirmed.forecast.signals.T8
-  }
-}));
-
+// Once all three agencies publish intermediate points confirming the same dangerous
+// geometry, the interpolation penalty must lift. T8 may use reliable confirmed peak
+// evidence as well as persistence, so a short but extreme close pass is not suppressed.
 assert.equal(confirmed.forecast.signals.T1.likelihood, 'likely',
   `confirmed direct route should support likely T1; got ${confirmed.forecast.signals.T1.likelihood}`);
 assert.equal(confirmed.forecast.signals.T3.likelihood, 'likely',
