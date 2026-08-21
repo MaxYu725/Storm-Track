@@ -12,7 +12,7 @@ assert.ok(['PENDING_AI22_RUNTIME', 'ACTIVATE_AI22_RUNTIME', 'COMPLETED_AI22_RUNT
 const workflow = read('.github/workflows/ai22-activate-runtime.yml');
 for (const required of [
   'AI-22D Activate corpus lifecycle runtime',
-  "trigger == \"ACTIVATE_AI22_RUNTIME\"",
+  '$trigger\" == \"ACTIVATE_AI22_RUNTIME\"',
   'github.event_name',
   'refs/heads/feature/ai-analysis-engine',
   'SOURCE_DB_ID: eb0bf995-3ea7-4bf6-bbca-b425892c4d7e',
