@@ -75,3 +75,5 @@ assert.match(doc, /JMA.*RSMC Best Track Data/is);
 assert.match(doc, /preliminary.*truth/is);
 
 console.log('storm-analysis AI-19 read-only guard tests passed');
+
+// Millisecond-safe future-only extraction diagnostic PR marker; never merge.
