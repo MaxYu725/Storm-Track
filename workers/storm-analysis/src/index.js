@@ -1,4 +1,5 @@
 import { createBackfillRepository, previewImportPlan } from './backfill-repository.js';
+import { createCorpusLifecycleRepository, CORPUS_CAPTURE_VERSION } from './corpus-lifecycle-repository.js';
 import { createModelRepository } from './model-repository.js';
 import { createSignalRiskRepository, PROFILE_SCHEMA_VERSION } from './signal-risk-repository.js';
 import { createAnalysisOrchestrator, ORCHESTRATION_VERSION } from './analysis-orchestrator.js';
@@ -111,6 +112,7 @@ function factories(dependencies = {}) {
     orchestrator: dependencies.createAnalysisOrchestrator || createAnalysisOrchestrator,
     cacheRepository: dependencies.createAnalysisCacheRepository || createAnalysisCacheRepository,
     cacheIdentity: dependencies.buildAnalysisCacheIdentity || buildAnalysisCacheIdentity,
+    corpusLifecycleRepository: dependencies.createCorpusLifecycleRepository || createCorpusLifecycleRepository,
     trainingPreview: dependencies.previewPersistedSignalCalibrationTraining || previewPersistedSignalCalibrationTraining,
     trainingRun: dependencies.runPersistedSignalCalibrationTraining || runPersistedSignalCalibrationTraining,
     outcomeCurationRepository: dependencies.createOutcomeCurationRepository || createOutcomeCurationRepository,
@@ -187,6 +189,7 @@ async function route(request, env, dependencies) {
       analysisAdminEnabled: typeof env?.ANALYSIS_ADMIN_TOKEN === 'string' && env.ANALYSIS_ADMIN_TOKEN.length > 0,
       deterministicAnalysisVersion: ORCHESTRATION_VERSION,
       analysisCacheVersion: CACHE_SCHEMA_VERSION,
+      corpusLifecycleVersion: CORPUS_CAPTURE_VERSION,
       signalRiskCalibrationVersion: PROFILE_SCHEMA_VERSION,
       signalTrainingRunnerVersion: SIGNAL_TRAINING_RUNNER_VERSION,
       outcomeCurationVersion: OUTCOME_CURATION_VERSION,
@@ -208,6 +211,46 @@ async function route(request, env, dependencies) {
     await requireBackfillAuthorization(request, env);
     const repository = createBackfillRepository(requireAnalysisDb(env));
     return json(await repository.importPlan(await readJsonWithLimit(request)));
+  }
+
+  if (url.pathname === '/api/corpus/capture/preview') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireBackfillAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.corpusLifecycleRepository(requireAnalysisDb(env));
+    return json(await repository.previewCapture(body));
+  }
+
+  if (url.pathname === '/api/corpus/capture') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireBackfillAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.corpusLifecycleRepository(requireAnalysisDb(env));
+    return json(await repository.capture(body));
+  }
+
+  if (url.pathname === '/api/admin/corpus/lifecycle/transition') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.corpusLifecycleRepository(requireAnalysisDb(env));
+    return json({ ok: true, lifecycle: await repository.transitionWindow(body) });
+  }
+
+  if (url.pathname === '/api/admin/corpus/identity/bind') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.corpusLifecycleRepository(requireAnalysisDb(env));
+    return json({ ok: true, identity: await repository.recordIdentityBinding(body) });
+  }
+
+  if (url.pathname === '/api/admin/corpus/identity/merge') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    await requireAnalysisAdminAuthorization(request, env);
+    const body = await readJsonWithLimit(request);
+    const repository = factory.corpusLifecycleRepository(requireAnalysisDb(env));
+    return json({ ok: true, merge: await repository.recordStormMerge(body) });
   }
 
   if (url.pathname === '/api/admin/signal-training/preview') {
