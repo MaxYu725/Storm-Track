@@ -55,4 +55,5 @@ assert.ok(!workflow.includes('d1 execute storm-track-db --remote --command "INSE
 assert.ok(!workflow.includes('/api/admin/signal-training/run'), 'AI-22E must not train');
 assert.ok(!workflow.includes('/api/admin/signal-risk/promote'), 'AI-22E must not promote');
 
+// CI probe only: verifies the corrected identity-proposal assertion with the mutation gate closed.
 console.log(`storm-analysis AI-22 first capture safety guards passed (${trigger})`);
