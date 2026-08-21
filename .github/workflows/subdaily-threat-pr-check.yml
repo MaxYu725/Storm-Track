@@ -1,0 +1,36 @@
+name: Sub-daily threat PR check
+
+on:
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - analysis/hk-threat-assessment.js
+      - analysis/basic-hk-signal-forecast.js
+      - tests/hk-threat-assessment.test.cjs
+      - tests/basic-hk-signal-forecast.test.cjs
+      - workers/storm-analysis/**
+      - .github/workflows/subdaily-threat-pr-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Run focused threat tests
+        run: |
+          node tests/hk-threat-assessment.test.cjs
+          node tests/basic-hk-signal-forecast.test.cjs
+      - name: Install dependencies
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+      - name: Run full regression suite
+        working-directory: workers/storm-analysis
+        run: npm test
