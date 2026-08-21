@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const workflow = fs.readFileSync('.github/workflows/ai21-activate-wp17-corpus-import.yml', 'utf8');
-const trigger = fs.readFileSync('.github/ai21-corpus-trigger.txt', 'utf8').trim();
-const summary = JSON.parse(fs.readFileSync('data/ai21/forecast-corpus-summary.json', 'utf8'));
-const verifier = fs.readFileSync('workers/storm-analysis/scripts/ai21-verify-canonical-plan.mjs', 'utf8');
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const readText = relative => fs.readFileSync(path.join(repoRoot, relative), 'utf8');
+const workflow = readText('.github/workflows/ai21-activate-wp17-corpus-import.yml');
+const trigger = readText('.github/ai21-corpus-trigger.txt').trim();
+const summary = JSON.parse(readText('data/ai21/forecast-corpus-summary.json'));
+const verifier = readText('workers/storm-analysis/scripts/ai21-verify-canonical-plan.mjs');
 
 assert.ok(['PENDING_AI21','ACTIVATE_AI21','COMPLETED_AI21'].includes(trigger), `unexpected AI-21 lifecycle: ${trigger}`);
 assert.equal(summary.evidenceSha256, 'bf48ab58f885b42b33b0d5f0247416a649b389cfffaa4b4d794868076964716f');
