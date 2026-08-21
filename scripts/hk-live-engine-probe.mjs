@@ -203,3 +203,82 @@ console.log('LIVE_ENGINE_TIMELINE', JSON.stringify(threatAssessment.timeline.map
   windMs: item.windMedianMs, threatIndex: item.threatIndex, approachRateKmh: item.approachRateKmh,
   supportAgencyCount: item.supportAgencyCount, exactOfficialSupportCount: item.exactOfficialSupportCount
 }))));
+
+// Diagnostic-only reproduction of T1 timeline evidence. This mirrors the current
+// deterministic checkpoint formula so we can inspect the first threshold crossing
+// without changing product scoring or timing semantics.
+const finite = value => Number.isFinite(Number(value)) ? Number(value) : null;
+const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
+const median = values => {
+  const usable = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
+  if (!usable.length) return null;
+  const middle = Math.floor(usable.length / 2);
+  return usable.length % 2 ? usable[middle] : (usable[middle - 1] + usable[middle]) / 2;
+};
+const softTime = lead => !Number.isFinite(lead) ? 0 : (lead <= 0 ? 1 : 1 / (1 + lead / 72));
+const smoothCloser = (distanceKm, scaleKm) => {
+  if (!Number.isFinite(distanceKm) || !(scaleKm > 0)) return 0;
+  const ratio = Math.max(0, distanceKm) / scaleKm;
+  return 1 / (1 + ratio ** 3);
+};
+const t1PointEvidence = (entry, checkpoint) => {
+  const distanceKm = finite(entry?.distanceKm) ?? finite(checkpoint?.distanceMedianKm);
+  const windMs = finite(entry?.maximumWindMs) ?? finite(checkpoint?.windMedianMs);
+  const timeRelevance = clamp(finite(checkpoint?.timeRelevance) ?? softTime(finite(checkpoint?.leadHours)));
+  const rapid = clamp(finite(entry?.rapidEvolutionIndex) ?? finite(checkpoint?.rapidEvolutionIndex) ?? 0);
+  const approachRateKmh = finite(entry?.approachRateKmh) ?? finite(checkpoint?.approachRateKmh);
+  const proximity = smoothCloser(distanceKm, 800);
+  const motionPotential = Number.isFinite(approachRateKmh) ? clamp((approachRateKmh + 8) / 24) : 0.45;
+  const intensityPotential = Number.isFinite(windMs) ? clamp((windMs - 8) / 22) : 0.35;
+  const physical = proximity * (0.28 + 0.52 * motionPotential) + intensityPotential * 0.08 + rapid * 0.12;
+  return clamp(physical * (0.62 + 0.38 * timeRelevance));
+};
+const t1Diagnostics = threatAssessment.timeline
+  .filter(item => Number.isFinite(finite(item?.leadHours)) && finite(item.leadHours) > 1e-6)
+  .map(checkpoint => {
+    const perAgency = (Array.isArray(checkpoint?.agencies) ? checkpoint.agencies : []).map(entry => ({
+      agency: entry.agency,
+      distanceKm: finite(entry.distanceKm),
+      windMs: finite(entry.maximumWindMs),
+      approachRateKmh: finite(entry.approachRateKmh),
+      rapidEvolutionIndex: finite(entry.rapidEvolutionIndex),
+      evidence: t1PointEvidence(entry, checkpoint)
+    }));
+    const values = perAgency.map(item => item.evidence).filter(Number.isFinite);
+    const consensus = median(values) ?? 0;
+    const scenarioMax = values.length ? Math.max(...values) : 0;
+    const supportAgencyCount = perAgency.filter(item => item.evidence >= 0.35).length;
+    const totalAgencyCount = perAgency.length;
+    const supportFraction = totalAgencyCount > 0 ? supportAgencyCount / totalAgencyCount : 0;
+    const coverageCredibility = totalAgencyCount >= 3 ? 1 : (totalAgencyCount === 2 ? 0.82 : 0.60);
+    const scenarioCredibility = coverageCredibility * (0.35 + 0.65 * supportFraction);
+    const aggregate = clamp(Math.max(consensus, scenarioMax * scenarioCredibility));
+    return {
+      label: checkpoint.label,
+      validTime: checkpoint.validTime,
+      leadHours: checkpoint.leadHours,
+      distanceMedianKm: checkpoint.distanceMedianKm,
+      windMedianMs: checkpoint.windMedianMs,
+      aggregate,
+      consensus,
+      scenarioMax,
+      supportAgencyCount,
+      totalAgencyCount,
+      perAgency
+    };
+  });
+let firstPossibleIndex = -1;
+for (let index = 1; index < t1Diagnostics.length; index += 1) {
+  if (t1Diagnostics[index - 1].aggregate < 0.35 && t1Diagnostics[index].aggregate >= 0.35) {
+    firstPossibleIndex = index;
+    break;
+  }
+}
+const diagnosticWindow = firstPossibleIndex >= 0
+  ? t1Diagnostics.slice(Math.max(0, firstPossibleIndex - 4), Math.min(t1Diagnostics.length, firstPossibleIndex + 5))
+  : t1Diagnostics.filter(item => item.leadHours <= 60).filter((_, index) => index % 6 === 0);
+console.log('LIVE_ENGINE_T1_CROSSING_DIAGNOSTIC', JSON.stringify({
+  threshold: 0.35,
+  firstPossible: firstPossibleIndex >= 0 ? t1Diagnostics[firstPossibleIndex] : null,
+  aroundCrossing: diagnosticWindow
+}));
