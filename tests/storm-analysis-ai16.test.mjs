@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const EXPECTED_MIGRATIONS = [
+const AI16_BASELINE_MIGRATIONS = [
   '0001_learning.sql',
   '0002_analysis_cache.sql',
   '0003_signal_risk_calibration.sql',
@@ -28,9 +28,23 @@ function parseJsonc(text) {
 
 const migrationDir = path.join(workerRoot, 'schema');
 const migrationNames = fs.readdirSync(migrationDir).filter(name => name.endsWith('.sql')).sort();
-assert.deepEqual(migrationNames, EXPECTED_MIGRATIONS, 'migration chain must remain exactly 0001 through 0006');
+assert.deepEqual(
+  migrationNames.slice(0, AI16_BASELINE_MIGRATIONS.length),
+  AI16_BASELINE_MIGRATIONS,
+  'AI-16 baseline migrations 0001 through 0006 must remain unchanged and first in the chain'
+);
+const migrationNumbers = migrationNames.map(name => {
+  const match = name.match(/^(\d{4})_/);
+  assert.ok(match, `migration ${name} must start with a four-digit sequence`);
+  return Number(match[1]);
+});
+assert.deepEqual(
+  migrationNumbers,
+  migrationNumbers.map((_, index) => index + 1),
+  'migration chain must remain contiguous from 0001 with no gaps or duplicate sequence numbers'
+);
 
-const migrationSql = Object.fromEntries(EXPECTED_MIGRATIONS.map(name => [name, fs.readFileSync(path.join(migrationDir, name), 'utf8')]));
+const migrationSql = Object.fromEntries(AI16_BASELINE_MIGRATIONS.map(name => [name, fs.readFileSync(path.join(migrationDir, name), 'utf8')]));
 assert.match(migrationSql['0001_learning.sql'], /CREATE TABLE IF NOT EXISTS signal_outcomes/);
 assert.match(migrationSql['0003_signal_risk_calibration.sql'], /CREATE TABLE IF NOT EXISTS signal_calibration_profiles/);
 assert.match(migrationSql['0004_signal_training_runs.sql'], /ALTER TABLE signal_outcomes ADD COLUMN official_hko/);
