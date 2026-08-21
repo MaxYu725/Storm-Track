@@ -140,3 +140,5 @@ wrongDb.sourceDatabase.uuid = '00000000-0000-0000-0000-000000000000';
 assert.throws(() => buildProspectiveForecastCorpus(wrongDb), /source database UUID/);
 
 console.log('storm-analysis AI-21 prospective corpus tests passed');
+
+// Read-only audit trigger; no functional change.
