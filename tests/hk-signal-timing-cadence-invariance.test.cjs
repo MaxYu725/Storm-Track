@@ -5,11 +5,11 @@ const BASE = '2026-08-21T12:00:00.000Z';
 const time = hours => new Date(Date.parse(BASE) + hours * 3600000).toISOString();
 
 function physicalState(hour) {
-  // One continuous physical scenario. The only thing varied between the two
-  // forecasts below is sampling density.
-  const distanceKm = 700 - (hour - 30) * 10;
-  const windMs = 16 + (hour - 30) * 0.5;
-  return { distanceKm, windMs, approachRateKmh: 10 };
+  // One continuous physical scenario. It starts clearly below the T1 timeline
+  // threshold and crosses it later; only sampling density is varied.
+  const distanceKm = 900 - (hour - 30) * 25;
+  const windMs = 12 + (hour - 30) * 0.5;
+  return { distanceKm, windMs, approachRateKmh: 25 };
 }
 
 function checkpoint(hour, previousHour) {
