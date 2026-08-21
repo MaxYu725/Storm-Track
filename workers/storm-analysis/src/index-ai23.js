@@ -1,4 +1,4 @@
-import { handleRequest, readJsonWithLimit, requireAnalysisAdminAuthorization } from './index.js';
+import { handleRequest, readJsonWithLimit, requireAnalysisAdminAuthorization } from './index-base.js';
 import {
   createTruthAugmentationRepository,
   TRUTH_AUGMENTATION_REPOSITORY_VERSION
