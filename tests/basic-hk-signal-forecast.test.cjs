@@ -3,15 +3,10 @@
 const assert = require('node:assert/strict');
 const basic = require('../analysis/basic-hk-signal-forecast.js');
 
-function signalInputs({ windMs = 30, coverage = 1, agencies = 4, currentDistanceKm = null, sectors = [] } = {}) {
-  const agencyNames = ['HKO', 'CMA', 'JMA', 'CWA'];
+function signalInputs({ windMs = 30, coverage = 1, agencies = 4, currentDistanceKm = null } = {}) {
   return {
     generatedAt: '2026-08-21T12:00:00Z',
     coverage: { usableAgencyCount: agencies },
-    agencies: Object.fromEntries(agencyNames.slice(0, sectors.length).map((agency, index) => [agency, {
-      state: 'ok',
-      current: { sectorFromHongKong: sectors[index] }
-    }])),
     featureVector: {
       usableAgencyCount: agencies,
       currentDistanceMedianKm: currentDistanceKm,
@@ -19,6 +14,46 @@ function signalInputs({ windMs = 30, coverage = 1, agencies = 4, currentDistance
       currentMaximumWindMedianMs: windMs,
       closestTimeWindFieldCoverageAgencyCount: coverage
     }
+  };
+}
+
+function assessment({
+  currentDistanceKm,
+  minimumDistanceKm,
+  minimumLeadHours,
+  minimumTime,
+  direct = 0,
+  reApproach = 0,
+  quasi = 0,
+  edge = 0,
+  disagreement = 0.3,
+  windField = 0,
+  windMs = 15,
+  overallThreatIndex = null,
+  confidenceIndex = 0.7
+}) {
+  return {
+    schemaVersion: 'hk-threat-assessment/v1',
+    available: true,
+    summary: {
+      currentDistanceKm,
+      forecastMinimumKm: minimumDistanceKm,
+      forecastMinimumLeadHours: minimumLeadHours,
+      representativeMinimum: { distanceKm: minimumDistanceKm, time: minimumTime, source: 'test' },
+      overallThreatIndex,
+      confidenceIndex
+    },
+    analyzers: {
+      directApproach: { confidence: direct },
+      directDepart: { confidence: 0 },
+      reApproach: { confidence: reApproach },
+      quasiStationary: { confidence: quasi },
+      forecastEdge: { confidence: edge },
+      agencyDisagreement: { confidence: disagreement },
+      windField: { confidence: windField, representativeWindMs: windMs, coverageAgencyCount: 1 }
+    },
+    timeline: [],
+    semantics: { hardThreatGateUsed: false, timeWeightingIsContinuous: true }
   };
 }
 
@@ -31,15 +66,34 @@ function signalInputs({ windMs = 30, coverage = 1, agencies = 4, currentDistance
   };
   const weightedImpact = {
     available: true,
-    closestApproach: { distanceKm: 180, time: '2026-08-23T03:00:00Z' },
+    closestApproach: { distanceKm: 100, time: '2026-08-22T12:00:00Z' },
     distanceBands: {
-      '800': { firstEntryTime: '2026-08-22T00:00:00Z' },
-      '500': { firstEntryTime: '2026-08-22T12:00:00Z' },
-      '300': { firstEntryTime: '2026-08-22T20:00:00Z' }
+      '800': { firstEntryTime: '2026-08-21T15:00:00Z' },
+      '500': { firstEntryTime: '2026-08-21T22:00:00Z' },
+      '300': { firstEntryTime: '2026-08-22T04:00:00Z' }
     }
   };
+  const threatAssessment = assessment({
+    currentDistanceKm: 300,
+    minimumDistanceKm: 100,
+    minimumLeadHours: 24,
+    minimumTime: '2026-08-22T12:00:00Z',
+    direct: 0.95,
+    reApproach: 0.05,
+    edge: 0.2,
+    disagreement: 0.15,
+    windField: 0.9,
+    windMs: 40,
+    overallThreatIndex: 0.85,
+    confidenceIndex: 0.85
+  });
 
-  const result = basic.buildBasicHkSignalForecast({ impact, weightedImpact, signalInputs: signalInputs() });
+  const result = basic.buildBasicHkSignalForecast({
+    impact,
+    weightedImpact,
+    signalInputs: signalInputs({ windMs: 40, coverage: 3, currentDistanceKm: 300 }),
+    threatAssessment
+  });
   assert.equal(result.schemaVersion, 'basic-hk-signal-forecast/v1');
   assert.equal(result.available, true);
   assert.equal(result.impact.expected, true);
@@ -47,15 +101,11 @@ function signalInputs({ windMs = 30, coverage = 1, agencies = 4, currentDistance
   assert.equal(result.signals.T1.likelihood, 'likely');
   assert.equal(result.signals.T3.likelihood, 'likely');
   assert.equal(result.signals.T8.likelihood, 'likely');
-  assert.deepEqual(result.signals.T1.estimatedWindow, {
-    start: '2026-08-21T18:00:00.000Z',
-    end: '2026-08-22T06:00:00.000Z'
-  });
-  assert.deepEqual(result.signals.T3.estimatedWindow, {
-    start: '2026-08-22T06:00:00.000Z',
-    end: '2026-08-22T21:00:00.000Z'
-  });
-  assert.equal(result.semantics.nearTermThreatHorizonHours, 72);
+  assert.ok(result.signals.T1.riskIndex > 0.7);
+  assert.ok(result.signals.T8.riskIndex > 0.7);
+  assert.equal(result.semantics.hardThreatGateUsed, false);
+  assert.equal(result.semantics.timeWeightingIsContinuous, true);
+  assert.equal(result.semantics.softTimeScaleHours, 72);
   assert.equal(result.semantics.historicalCalibrationRequired, false);
   assert.equal(result.semantics.probabilityOutputIncluded, false);
   assert.equal(result.semantics.officialHkoForecast, false);
@@ -102,17 +152,33 @@ function signalInputs({ windMs = 30, coverage = 1, agencies = 4, currentDistance
       }
     },
     signalInputs: {
-      ...signalInputs({ windMs: 15, coverage: 0, agencies: 3, currentDistanceKm: 636, sectors: ['W', 'W', 'W'] }),
+      ...signalInputs({ windMs: 15, coverage: 0, agencies: 3, currentDistanceKm: 636 }),
       generatedAt: '2026-08-21T10:53:00Z'
-    }
+    },
+    threatAssessment: assessment({
+      currentDistanceKm: 636,
+      minimumDistanceKm: 496,
+      minimumLeadHours: 91.1,
+      minimumTime: '2026-08-25T06:00:00Z',
+      direct: 0.2,
+      reApproach: 0.5,
+      quasi: 0.4,
+      edge: 0.8,
+      disagreement: 0.8,
+      windField: 0.15,
+      windMs: 15,
+      overallThreatIndex: 0.42,
+      confidenceIndex: 0.36
+    })
   });
 
   assert.equal(liveLike.impact.likelihood, 'possible');
-  assert.equal(liveLike.impact.nearTermThreat, false);
-  assert.equal(liveLike.signals.T1.likelihood, 'unlikely');
+  assert.equal(liveLike.impact.forecastMinimumMayBeHorizonLimited, true);
+  assert.equal(liveLike.signals.T1.likelihood, 'possible');
   assert.equal(liveLike.signals.T3.likelihood, 'unlikely');
   assert.equal(liveLike.signals.T8.likelihood, 'unlikely');
-  assert.equal(liveLike.signals.T1.estimatedWindow, null);
+  assert.ok(liveLike.signals.T1.riskIndex > 0.35 && liveLike.signals.T1.riskIndex < 0.58);
+  assert.ok(liveLike.signals.T1.basis.some(item => item.startsWith('forecast-edge:')));
 }
 
 {
