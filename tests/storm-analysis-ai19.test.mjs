@@ -72,3 +72,5 @@ assert.match(doc, /JMA.*RSMC Best Track Data/is);
 assert.match(doc, /preliminary.*truth/is);
 
 console.log('storm-analysis AI-19 read-only guard tests passed');
+
+// Forecast-extraction diagnostic PR marker only; never merge this branch.
