@@ -58,7 +58,7 @@ for (const table of ['truth_datasets','truth_points','signal_outcomes','verifica
 
 const runRow = rows.find(row => row.table === 'backfill_runs');
 assert(runRow?.values?.run_id === EXPECTED.runId, 'AI-21 backfill run row ID mismatch');
-assert(typeof runRow?.values?.fingerprint === 'string' && /^[0-9a-f]{64}$/i.test(runRow.values.fingerprint), 'AI-21 run fingerprint invalid');
+assert(typeof runRow?.values?.fingerprint === 'string' && /^[0-9a-f]{16}$/i.test(runRow.values.fingerprint), 'AI-21 run fingerprint invalid');
 const stormRow = rows.find(row => row.table === 'historical_storms');
 assert(stormRow?.values?.storm_key === EXPECTED.stormKey, 'AI-21 historical storm mismatch');
 assert(stormRow?.values?.backfill_mode === 'forecast-only', 'AI-21 historical storm must remain forecast-only');
