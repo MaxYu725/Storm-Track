@@ -1,0 +1,88 @@
+name: AI-19 Read-only pilot candidate ranking
+
+on:
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai19-readonly-candidate-ranking.yml
+      - tests/storm-analysis-ai19.test.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rank:
+    if: github.base_ref == 'feature/ai-analysis-engine' || github.ref == 'refs/heads/feature/ai-analysis-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Wrangler
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run AI-19 guard
+        run: node tests/storm-analysis-ai19.test.mjs
+
+      - name: Verify AI-19 remains locked
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < .github/ai19-backfill-trigger.txt)" == "PENDING_AI19" ]]
+          echo 'AI19_IMPORT_LOCKED=true'
+
+      - name: Verify production source identity without mutation
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          source_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-track-db") | (.uuid // .id // empty)')"
+          [[ "$source_id" == "eb0bf995-3ea7-4bf6-bbca-b425892c4d7e" ]]
+          echo "AI19_PRODUCTION_SOURCE=storm-track-db:${source_id}"
+
+      - name: Rank storm and agency coverage using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false \
+            --command "SELECT s.id, s.international_number, s.name_en, s.name_zh, s.status, s.merged_into_id, s.first_seen_at, s.last_seen_at, COUNT(a.id) AS advisory_count, COUNT(DISTINCT a.agency) AS agency_count, GROUP_CONCAT(DISTINCT a.agency) AS agencies, MIN(a.issued_at) AS first_issued_at, MAX(a.issued_at) AS last_issued_at, SUM(CASE WHEN a.ingest_status = 'ok' THEN 1 ELSE 0 END) AS ok_advisories, SUM(COALESCE(a.point_count,0)) AS declared_points FROM storms s LEFT JOIN advisories a ON a.storm_id = s.id GROUP BY s.id, s.international_number, s.name_en, s.name_zh, s.status, s.merged_into_id, s.first_seen_at, s.last_seen_at ORDER BY s.last_seen_at ASC;" \
+            > /tmp/ai19-storm-ranking.json
+          echo "AI19_STORM_RANKING=$(jq -c '[.. | objects | select(has("advisory_count"))]' /tmp/ai19-storm-ranking.json)"
+
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false \
+            --command "SELECT a.storm_id, s.international_number, s.name_en, s.name_zh, a.agency, COUNT(*) AS advisory_count, SUM(COALESCE(a.point_count,0)) AS declared_points, MIN(a.issued_at) AS first_issued_at, MAX(a.issued_at) AS last_issued_at, SUM(CASE WHEN a.ingest_status = 'ok' THEN 1 ELSE 0 END) AS ok_advisories FROM advisories a JOIN storms s ON s.id = a.storm_id GROUP BY a.storm_id, s.international_number, s.name_en, s.name_zh, a.agency ORDER BY a.storm_id, a.agency;" \
+            > /tmp/ai19-agency-coverage.json
+          echo "AI19_AGENCY_COVERAGE=$(jq -c '[.. | objects | select(has("advisory_count") and has("agency"))]' /tmp/ai19-agency-coverage.json)"
+
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false \
+            --command "SELECT a.storm_id, a.agency, tp.point_type, COUNT(*) AS point_count, MIN(tp.valid_at) AS first_valid_at, MAX(tp.valid_at) AS last_valid_at FROM track_points tp JOIN advisories a ON a.id = tp.advisory_id GROUP BY a.storm_id, a.agency, tp.point_type ORDER BY a.storm_id, a.agency, tp.point_type;" \
+            > /tmp/ai19-point-coverage.json
+          echo "AI19_POINT_COVERAGE=$(jq -c '[.. | objects | select(has("point_count") and has("point_type"))]' /tmp/ai19-point-coverage.json)"
+
+      - name: Reconfirm analysis database remains pristine
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false \
+            --command "SELECT (SELECT COUNT(*) FROM backfill_runs) AS backfill_runs, (SELECT COUNT(*) FROM historical_storms) AS historical_storms, (SELECT COUNT(*) FROM truth_points) AS truth_points, (SELECT COUNT(*) FROM forecast_snapshots) AS forecast_snapshots, (SELECT COUNT(*) FROM signal_calibration_training_runs) AS training_runs, (SELECT COUNT(*) FROM signal_profile_promotion_events) AS promotion_events, (SELECT generation FROM signal_calibration_state WHERE state_id = 1) AS generation, (SELECT champion_profile_id FROM signal_calibration_state WHERE state_id = 1) AS champion_profile_id;" \
+            > /tmp/ai19-state.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai19-state.json | head -n 1)"
+          echo "AI19_ANALYSIS_STATE=${row}"
+          printf '%s' "$row" | jq -e '.backfill_runs == 0 and .historical_storms == 0 and .truth_points == 0 and .forecast_snapshots == 0 and .training_runs == 0 and .promotion_events == 0 and .generation == 0 and .champion_profile_id == null' >/dev/null
+          echo 'DIAG_MUTATIONS_PERFORMED=false'
