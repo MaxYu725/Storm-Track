@@ -1,0 +1,23 @@
+{
+  // Independent analysis Worker. Do not point this at the production Storm Worker database.
+  "name": "storm-analysis",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1
+    }
+  },
+  "d1_databases": [
+    {
+      "binding": "ANALYSIS_DB",
+      "database_name": "storm-analysis",
+      // Replace only after a new independent D1 database has been created.
+      // This all-zero placeholder must never be replaced with the production Storm Worker database ID.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "schema"
+    }
+  ]
+}
