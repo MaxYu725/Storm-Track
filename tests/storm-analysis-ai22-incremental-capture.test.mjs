@@ -60,3 +60,4 @@ assert.ok(!workflow.includes('/api/admin/corpus/identity/bind'), 'AI-22F must no
 assert.ok(!workflow.includes('/api/admin/corpus/identity/merge'), 'AI-22F must not merge identities');
 
 console.log(`storm-analysis AI-22 incremental capture safety guards passed (${trigger})`);
+// CI probe only: mutation gate remains closed.
