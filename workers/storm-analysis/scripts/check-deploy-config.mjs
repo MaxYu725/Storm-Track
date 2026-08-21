@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
-const EXPECTED_MAIN = 'src/index-ai23.js';
+const EXPECTED_MAIN = 'src/index.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const allowPlaceholder = process.argv.includes('--allow-placeholder');
 
