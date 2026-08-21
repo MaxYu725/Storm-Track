@@ -13,7 +13,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -30,6 +30,18 @@ jobs:
       - name: Install pinned Wrangler
         working-directory: workers/storm-analysis
         run: npm install --no-audit --no-fund
+
+      - name: Run complete Node checkpoint suite
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Run Workers Vitest / Miniflare D1 integration
+        working-directory: workers/storm-analysis
+        run: npm run test:integration
+
+      - name: Run bundle-only Wrangler dry run
+        working-directory: workers/storm-analysis
+        run: npm run deploy:dry-run
 
       - name: Inspect activation state without writes
         working-directory: workers/storm-analysis
