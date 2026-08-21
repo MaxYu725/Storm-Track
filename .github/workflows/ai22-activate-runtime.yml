@@ -1,0 +1,273 @@
+name: AI-22D Activate corpus lifecycle runtime
+
+on:
+  push:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai22-activate-runtime.yml
+      - .github/ai22-runtime-trigger.txt
+      - tests/storm-analysis-ai22-runtime.test.mjs
+      - workers/storm-analysis/package.json
+      - workers/storm-analysis/schema/0007_corpus_lifecycle.sql
+      - workers/storm-analysis/src/index.js
+      - workers/storm-analysis/src/corpus-lifecycle-repository.js
+      - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
+      - workers/storm-analysis/scripts/ai22-select-lifecycle-cutoffs.mjs
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai22-activate-runtime.yml
+      - tests/storm-analysis-ai22-runtime.test.mjs
+      - workers/storm-analysis/package.json
+      - workers/storm-analysis/schema/0007_corpus_lifecycle.sql
+      - workers/storm-analysis/src/index.js
+      - workers/storm-analysis/src/corpus-lifecycle-repository.js
+      - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
+      - workers/storm-analysis/scripts/ai22-select-lifecycle-cutoffs.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai22-runtime-activation
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  BACKFILL_TOKEN: ${{ secrets.BACKFILL_TOKEN }}
+  SOURCE_DB_ID: eb0bf995-3ea7-4bf6-bbca-b425892c4d7e
+  ANALYSIS_DB_ID: 99c692b2-c932-4774-bf8d-2d7f10f6c6f8
+  WORKER_URL: https://storm-analysis.max-yu.workers.dev
+  STORM_KEY: WP-2026-16
+  WINDOW_ID: wp-2026-16-operational-202608
+
+jobs:
+  validate-and-activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout canonical AI branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Worker toolchain
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run complete pre-activation regression gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd workers/storm-analysis && npm test)
+          (cd workers/storm-analysis && npm run test:integration)
+          (cd workers/storm-analysis && npm run check:config)
+          (cd workers/storm-analysis && npm run deploy:dry-run)
+
+      - name: Resolve explicit runtime mutation request
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          trigger="$(tr -d '\r\n' < .github/ai22-runtime-trigger.txt)"
+          [[ "$trigger" == "PENDING_AI22_RUNTIME" || "$trigger" == "ACTIVATE_AI22_RUNTIME" || "$trigger" == "COMPLETED_AI22_RUNTIME" ]]
+          requested=false
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/feature/ai-analysis-engine" && "$trigger" == "ACTIVATE_AI22_RUNTIME" ]]; then
+            requested=true
+          fi
+          echo "requested=$requested" >> "$GITHUB_OUTPUT"
+          echo "AI22_RUNTIME_LIFECYCLE=$trigger"
+          echo "AI22_RUNTIME_REMOTE_MUTATION_REQUESTED=$requested"
+
+      - name: Verify phase locks and pinned Cloudflare resources
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < ../../.github/ai19-backfill-trigger.txt)" == "COMPLETED_AI19" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai20-truth-trigger.txt)" == "PENDING_AI20" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai21-corpus-trigger.txt)" == "COMPLETED_AI21" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai22-lifecycle-trigger.txt)" == "PENDING_AI22" ]]
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          source_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-track-db") | (.uuid // .id // empty)')"
+          analysis_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-analysis") | (.uuid // .id // empty)')"
+          [[ "$source_id" == "$SOURCE_DB_ID" ]]
+          [[ "$analysis_id" == "$ANALYSIS_DB_ID" ]]
+          echo 'AI22_RUNTIME_RESOURCE_IDENTITIES_VERIFIED=true'
+
+      - name: Classify remote pre-activation state using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT name FROM d1_migrations ORDER BY id; SELECT (SELECT COUNT(*) FROM backfill_runs) backfill_runs,(SELECT COUNT(*) FROM historical_storms) historical_storms,(SELECT COUNT(*) FROM forecast_snapshots) forecast_snapshots,(SELECT COUNT(*) FROM forecast_snapshots WHERE storm_key='WP-2026-16') wp16_snapshots,(SELECT COUNT(*) FROM truth_datasets) truth_datasets,(SELECT COUNT(*) FROM truth_points) truth_points,(SELECT COUNT(*) FROM verification_results) verification_results,(SELECT COUNT(*) FROM agency_skill_profiles) agency_skill_profiles,(SELECT COUNT(*) FROM adaptive_weight_candidates) adaptive_weight_candidates,(SELECT COUNT(*) FROM signal_calibration_training_runs) training_runs,(SELECT COUNT(*) FROM signal_outcome_curations) curations,(SELECT COUNT(*) FROM signal_profile_promotion_events) promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) champion_profile_id; SELECT COUNT(*) AS lifecycle_table_count FROM sqlite_master WHERE type='table' AND name='corpus_capture_windows';" > /tmp/ai22-runtime-prestate.json
+          cat /tmp/ai22-runtime-prestate.json
+          PRESTATE=/tmp/ai22-runtime-prestate.json node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const input=JSON.parse(fs.readFileSync(process.env.PRESTATE,'utf8'));
+          const rows=value=>Array.isArray(value)?value.flatMap(rows):(value&&typeof value==='object'?(Array.isArray(value.results)?value.results:Object.values(value).flatMap(rows)):[]);
+          const all=rows(input);
+          const names=all.filter(row=>typeof row?.name==='string').map(row=>row.name);
+          const allowedA=['0001_learning.sql','0002_analysis_cache.sql','0003_signal_risk_calibration.sql','0004_signal_training_runs.sql','0005_signal_outcome_curations.sql','0006_signal_profile_promotions.sql'];
+          const allowedB=[...allowedA,'0007_corpus_lifecycle.sql'];
+          if (JSON.stringify(names)!==JSON.stringify(allowedA) && JSON.stringify(names)!==JSON.stringify(allowedB)) throw new Error(`unexpected migration state ${JSON.stringify(names)}`);
+          const row=all.find(item=>Object.hasOwn(item||{},'backfill_runs'));
+          if (!row) throw new Error('analysis state row missing');
+          const expected={backfill_runs:2,historical_storms:2,forecast_snapshots:8,wp16_snapshots:0,truth_datasets:0,truth_points:0,verification_results:0,agency_skill_profiles:0,adaptive_weight_candidates:0,training_runs:0,curations:0,promotion_events:0,generation:0};
+          for (const [key,value] of Object.entries(expected)) if (Number(row[key])!==value) throw new Error(`AI-22 runtime refuses ${key}=${row[key]}; expected ${value}`);
+          if (row.champion_profile_id!=null) throw new Error('AI-22 runtime refuses pre-existing Champion');
+          console.log(`AI22_RUNTIME_MIGRATION_CLASS=${names.length===7?'0007-already-applied':'0007-pending'}`);
+          NODE
+
+      - name: Require activation secrets before mutation
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]]
+          [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]
+          [[ -n "${BACKFILL_TOKEN:-}" ]]
+          echo 'AI22_RUNTIME_SECRETS_PRESENT=true'
+
+      - name: Apply only the pending lifecycle migration
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          before="$(npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command 'SELECT name FROM d1_migrations ORDER BY id;')"
+          count="$(printf '%s' "$before" | jq '[.. | objects | select(has("name") and (.name|type=="string"))] | length')"
+          if [[ "$count" -eq 6 ]]; then
+            npx wrangler d1 migrations list storm-analysis --remote --experimental-provision=false
+            npx wrangler d1 migrations apply storm-analysis --remote --experimental-provision=false
+          elif [[ "$count" -eq 7 ]]; then
+            printf '%s' "$before" | jq -e '[.. | objects | select(has("name")) | .name] | last == "0007_corpus_lifecycle.sql"' >/dev/null
+            echo 'AI22_RUNTIME_MIGRATION_ALREADY_APPLIED=true'
+          else
+            echo "Unexpected migration count $count" >&2
+            exit 1
+          fi
+          after="$(npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command 'SELECT name FROM d1_migrations ORDER BY id;')"
+          printf '%s' "$after" | jq -e '[.. | objects | select(has("name")) | .name] == ["0001_learning.sql","0002_analysis_cache.sql","0003_signal_risk_calibration.sql","0004_signal_training_runs.sql","0005_signal_outcome_curations.sql","0006_signal_profile_promotions.sql","0007_corpus_lifecycle.sql"]' >/dev/null
+          echo 'AI22_RUNTIME_MIGRATION_0007_READY=true'
+
+      - name: Deploy independent storm-analysis Worker runtime
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        run: npx wrangler deploy --experimental-provision=false --message "AI-22D corpus lifecycle runtime activation"
+
+      - name: Verify deployed runtime and authorization boundaries
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          health="$(curl --fail --retry 10 --retry-delay 2 --retry-all-errors -sS "${WORKER_URL}/health")"
+          printf '%s' "$health" | jq -e '.ok==true and .service=="storm-analysis" and .analysisDbBound==true and .importEnabled==true and .analysisAdminEnabled==true and .corpusLifecycleVersion=="corpus-lifecycle-capture/v1" and .workersAiEnabled==false and .automaticPromotionEnabled==false and .productionStormWorkerModified==false' >/dev/null
+          for endpoint in /api/corpus/capture/preview /api/corpus/capture /api/admin/corpus/lifecycle/transition /api/admin/corpus/identity/bind /api/admin/corpus/identity/merge; do
+            status="$(curl -sS -o /tmp/ai22-auth-body.json -w '%{http_code}' -X POST "${WORKER_URL}${endpoint}" -H 'content-type: application/json' --data '{}')"
+            [[ "$status" == "401" ]] || { echo "Unexpected unauthenticated status $status for $endpoint" >&2; cat /tmp/ai22-auth-body.json; exit 1; }
+          done
+          echo 'AI22_RUNTIME_AUTH_BOUNDARIES_VERIFIED=true'
+
+      - name: Rebuild current WP-2026-16 capture request from production SELECTs
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT id,name_zh,name_en,status,international_number,merged_into_id,created_at,updated_at FROM storms WHERE id='${STORM_KEY}' LIMIT 1;" > /tmp/ai22-runtime-storm-raw.json
+          jq '[.. | objects | select(.id == "WP-2026-16" and has("status"))] | first' /tmp/ai22-runtime-storm-raw.json > /tmp/ai22-runtime-storm.json
+          jq -e '.id == "WP-2026-16" and (.merged_into_id == null) and (.status != "merged")' /tmp/ai22-runtime-storm.json >/dev/null
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT a.id,a.storm_id,a.agency,a.issued_at,a.fetched_at,a.source_code,a.source_url,a.source_hash,a.raw_object_key,a.parser_version FROM advisories a WHERE a.storm_id='${STORM_KEY}' AND EXISTS (SELECT 1 FROM track_points tp WHERE tp.advisory_id=a.id AND tp.point_type='forecast' AND tp.valid_at>a.issued_at) ORDER BY a.issued_at,a.agency,a.id;" > /tmp/ai22-runtime-advisories-raw.json
+          jq '[.. | objects | select(.storm_id == "WP-2026-16" and has("agency") and has("source_hash"))]' /tmp/ai22-runtime-advisories-raw.json > /tmp/ai22-runtime-advisories.json
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT a.storm_id,a.agency,tp.advisory_id,tp.valid_at,tp.forecast_hour,tp.latitude,tp.longitude,tp.pressure_hpa,tp.wind_ms,tp.gust_ms,tp.wind_averaging_minutes,tp.intensity_code,tp.intensity_label,tp.probability_radius_km,tp.source_order FROM advisories a JOIN track_points tp ON tp.advisory_id=a.id WHERE a.storm_id='${STORM_KEY}' AND tp.point_type='forecast' ORDER BY a.issued_at,a.agency,tp.valid_at,tp.source_order;" > /tmp/ai22-runtime-points-raw.json
+          jq '[.. | objects | select(.storm_id == "WP-2026-16" and has("advisory_id") and has("valid_at"))]' /tmp/ai22-runtime-points-raw.json > /tmp/ai22-runtime-points.json
+          node scripts/ai22-select-lifecycle-cutoffs.mjs --storm /tmp/ai22-runtime-storm.json --advisories /tmp/ai22-runtime-advisories.json --points /tmp/ai22-runtime-points.json --window-id "$WINDOW_ID" --snapshots 4 --output /tmp/ai22-runtime-evidence.json --summary /tmp/ai22-runtime-selection.json > /tmp/ai22-runtime-selection-stdout.json
+          rm -rf /tmp/ai22-runtime-build
+          node scripts/ai22-build-lifecycle-capture.mjs --evidence /tmp/ai22-runtime-evidence.json --output /tmp/ai22-runtime-build > /tmp/ai22-runtime-capture-summary.json
+          jq -e '.stormKey=="WP-2026-16" and .selectedSnapshotCount>0 and .selectedSnapshotCount<=4 and .lifecycle.windowId=="wp-2026-16-operational-202608"' /tmp/ai22-runtime-selection.json >/dev/null
+          jq -e '.ok==true and .stormCount==1 and .snapshotCount>0 and .snapshotCount<=4 and .remoteWritesPerformed==false' /tmp/ai22-runtime-capture-summary.json >/dev/null
+          echo "AI22_RUNTIME_CAPTURE_REQUEST_BYTES=$(wc -c < /tmp/ai22-runtime-build/lifecycle-capture-request.json)"
+
+      - name: Exercise live lifecycle preview without writes
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -o /tmp/ai22-runtime-live-preview.json -w '%{http_code}' -X POST "${WORKER_URL}/api/corpus/capture/preview" -H "authorization: Bearer ${BACKFILL_TOKEN}" -H 'content-type: application/json' --data-binary @/tmp/ai22-runtime-build/lifecycle-capture-request.json)"
+          [[ "$status" == "200" ]]
+          jq -e '.ok==true and .dryRun==true and .stormCount==1 and .snapshotCount>0 and .snapshotCount<=4 and .appendedSnapshotCount==.snapshotCount and .existingSnapshotCount==0 and .writesPerformed==false and .semantics.appendOnlySnapshots==true and .semantics.truthWritten==false and .semantics.trainingWritten==false and .semantics.promotionWritten==false' /tmp/ai22-runtime-live-preview.json >/dev/null
+          echo 'AI22_RUNTIME_LIVE_PREVIEW_NO_WRITE=true'
+          cat /tmp/ai22-runtime-live-preview.json
+
+      - name: Prove runtime activation did not capture corpus rows
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM backfill_runs) backfill_runs,(SELECT COUNT(*) FROM historical_storms) historical_storms,(SELECT COUNT(*) FROM forecast_snapshots) forecast_snapshots,(SELECT COUNT(*) FROM forecast_snapshots WHERE storm_key='WP-2026-16') wp16_snapshots,(SELECT COUNT(*) FROM corpus_capture_windows) capture_windows,(SELECT COUNT(*) FROM corpus_capture_runs) capture_runs,(SELECT COUNT(*) FROM corpus_snapshot_memberships) snapshot_memberships,(SELECT COUNT(*) FROM storm_identity_bindings) identity_bindings,(SELECT COUNT(*) FROM storm_identity_merges) identity_merges,(SELECT COUNT(*) FROM truth_datasets) truth_datasets,(SELECT COUNT(*) FROM truth_points) truth_points,(SELECT COUNT(*) FROM verification_results) verification_results,(SELECT COUNT(*) FROM signal_calibration_training_runs) training_runs,(SELECT COUNT(*) FROM signal_profile_promotion_events) promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) champion_profile_id;" > /tmp/ai22-runtime-poststate.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai22-runtime-poststate.json | head -n1)"
+          ROW="$row" node --input-type=module <<'NODE'
+          const row=JSON.parse(process.env.ROW);
+          const expected={backfill_runs:2,historical_storms:2,forecast_snapshots:8,wp16_snapshots:0,capture_windows:0,capture_runs:0,snapshot_memberships:0,identity_bindings:0,identity_merges:0,truth_datasets:0,truth_points:0,verification_results:0,training_runs:0,promotion_events:0,generation:0};
+          for (const [key,value] of Object.entries(expected)) if (Number(row[key])!==value) throw new Error(`AI-22 runtime post-state ${key}=${row[key]}; expected ${value}`);
+          if (row.champion_profile_id!=null) throw new Error('AI-22 runtime activation changed Champion');
+          NODE
+          echo 'AI22_RUNTIME_CORPUS_WRITES_PERFORMED=false'
+
+      - name: Record successful runtime activation
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_sha="$(jq -r '.evidenceSha256' /tmp/ai22-runtime-capture-summary.json)"
+          plan_sha="$(jq -r '.planSha256' /tmp/ai22-runtime-capture-summary.json)"
+          run_id="$(jq -r '.runId' /tmp/ai22-runtime-capture-summary.json)"
+          snapshot_count="$(jq -r '.snapshotCount' /tmp/ai22-runtime-capture-summary.json)"
+          cat > docs/AI22_RUNTIME_ACTIVATION_RESULT.md <<EOF
+          # AI-22D — Corpus Lifecycle Runtime Activation Result
+
+          Status: **runtime activated; corpus capture still pending**
+
+          - Source commit: \`${GITHUB_SHA}\`
+          - Actions run: \`${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\`
+          - Analysis D1 migration: \`0007_corpus_lifecycle.sql\` applied and verified
+          - Worker: \`storm-analysis\` deployed and smoke-tested
+          - Production source D1: \`storm-track-db\` read-only
+          - WP-2026-16 live preview run ID: \`${run_id}\`
+          - WP-2026-16 preview evidence SHA-256: \`${evidence_sha}\`
+          - WP-2026-16 preview plan SHA-256: \`${plan_sha}\`
+          - WP-2026-16 preview snapshots: \`${snapshot_count}\`
+          - Live preview writesPerformed: \`false\`
+          - Remote WP-2026-16 snapshots after activation: \`0\`
+          - Corpus capture windows / runs / memberships after activation: \`0 / 0 / 0\`
+          - Truth / verification / training / promotion writes: \`0\`
+          - Signal Champion: \`NONE / generation 0\`
+          - Production Storm Worker modified: \`false\`
+
+          The next checkpoint is the first bounded WP-2026-16 capture. Runtime activation itself did not import any new forecast snapshot or identity proposal.
+          EOF
+          printf '%s\n' 'COMPLETED_AI22_RUNTIME' > .github/ai22-runtime-trigger.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/AI22_RUNTIME_ACTIVATION_RESULT.md .github/ai22-runtime-trigger.txt
+          git commit -m 'AI-22D: record lifecycle runtime activation [skip ci]'
+          git push origin HEAD:feature/ai-analysis-engine
+
+      - name: Confirm no mutation occurred when gate is closed
+        if: steps.gate.outputs.requested != 'true'
+        run: |
+          echo 'AI22_RUNTIME_REMOTE_MUTATION_REQUESTED=false'
+          echo 'AI22_RUNTIME_MIGRATION_APPLIED_BY_THIS_RUN=false'
+          echo 'AI22_RUNTIME_WORKER_DEPLOYED_BY_THIS_RUN=false'
+          echo 'AI22_RUNTIME_CORPUS_CAPTURED=false'
