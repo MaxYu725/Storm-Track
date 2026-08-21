@@ -1,0 +1,236 @@
+name: AI-23 Activate generic truth verification runtime
+
+on:
+  push:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai23-activate-runtime.yml
+      - .github/ai23-runtime-trigger.txt
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai23-activate-runtime.yml
+      - .github/ai23-runtime-trigger.txt
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai23-runtime-activation
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  ANALYSIS_ADMIN_TOKEN: ${{ secrets.ANALYSIS_ADMIN_TOKEN }}
+  SOURCE_DB_ID: eb0bf995-3ea7-4bf6-bbca-b425892c4d7e
+  ANALYSIS_DB_ID: 99c692b2-c932-4774-bf8d-2d7f10f6c6f8
+  WORKER_URL: https://storm-analysis.max-yu.workers.dev
+
+jobs:
+  validate-and-activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout canonical AI branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Worker toolchain
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run complete pre-activation regression gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd workers/storm-analysis && npm test)
+          (cd workers/storm-analysis && npm run test:integration)
+          (cd workers/storm-analysis && npm run check:config)
+          (cd workers/storm-analysis && npm run deploy:dry-run)
+
+      - name: Resolve explicit AI-23 runtime mutation request
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          trigger="$(tr -d '\r\n' < .github/ai23-runtime-trigger.txt)"
+          [[ "$trigger" == "PENDING_AI23_RUNTIME" || "$trigger" == "ACTIVATE_AI23_RUNTIME" || "$trigger" == "COMPLETED_AI23_RUNTIME" ]]
+          requested=false
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/feature/ai-analysis-engine" && "$trigger" == "ACTIVATE_AI23_RUNTIME" ]]; then
+            requested=true
+          fi
+          echo "requested=$requested" >> "$GITHUB_OUTPUT"
+          echo "AI23_RUNTIME_LIFECYCLE=$trigger"
+          echo "AI23_RUNTIME_REMOTE_MUTATION_REQUESTED=$requested"
+
+      - name: Verify phase locks and pinned Cloudflare resources
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < ../../.github/ai19-backfill-trigger.txt)" == "COMPLETED_AI19" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai20-truth-trigger.txt)" == "PENDING_AI20" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai21-corpus-trigger.txt)" == "COMPLETED_AI21" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai22-lifecycle-trigger.txt)" == "COMPLETED_AI22" ]]
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          source_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-track-db") | (.uuid // .id // empty)')"
+          analysis_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-analysis") | (.uuid // .id // empty)')"
+          [[ "$source_id" == "$SOURCE_DB_ID" ]]
+          [[ "$analysis_id" == "$ANALYSIS_DB_ID" ]]
+          echo 'AI23_RUNTIME_RESOURCE_IDENTITIES_VERIFIED=true'
+
+      - name: Classify and record remote pre-deployment state using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT name FROM d1_migrations ORDER BY id; SELECT (SELECT COUNT(*) FROM backfill_runs) backfill_runs,(SELECT COUNT(*) FROM historical_storms) historical_storms,(SELECT COUNT(*) FROM forecast_snapshots) forecast_snapshots,(SELECT COUNT(*) FROM corpus_capture_windows) capture_windows,(SELECT COUNT(*) FROM corpus_capture_runs) capture_runs,(SELECT COUNT(*) FROM corpus_snapshot_memberships) snapshot_memberships,(SELECT COUNT(*) FROM storm_identity_bindings) identity_bindings,(SELECT COUNT(*) FROM storm_identity_merges) identity_merges,(SELECT COUNT(*) FROM truth_datasets) truth_datasets,(SELECT COUNT(*) FROM truth_points) truth_points,(SELECT COUNT(*) FROM verification_results) verification_results,(SELECT COUNT(*) FROM agency_skill_profiles) agency_skill_profiles,(SELECT COUNT(*) FROM adaptive_weight_candidates) adaptive_weight_candidates,(SELECT COUNT(*) FROM signal_calibration_training_runs) training_runs,(SELECT COUNT(*) FROM signal_outcome_curations) curations,(SELECT COUNT(*) FROM signal_profile_promotion_events) promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) champion_profile_id;" > /tmp/ai23-runtime-prestate-raw.json
+          RAW=/tmp/ai23-runtime-prestate-raw.json OUT=/tmp/ai23-runtime-prestate.json node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const input=JSON.parse(fs.readFileSync(process.env.RAW,'utf8'));
+          const rows=value=>Array.isArray(value)?value.flatMap(rows):(value&&typeof value==='object'?(Array.isArray(value.results)?value.results:Object.values(value).flatMap(rows)):[]);
+          const all=rows(input);
+          const migrations=all.filter(row=>typeof row?.name==='string').map(row=>row.name);
+          const expectedMigrations=['0001_learning.sql','0002_analysis_cache.sql','0003_signal_risk_calibration.sql','0004_signal_training_runs.sql','0005_signal_outcome_curations.sql','0006_signal_profile_promotions.sql','0007_corpus_lifecycle.sql'];
+          if (JSON.stringify(migrations)!==JSON.stringify(expectedMigrations)) throw new Error(`unexpected migration state ${JSON.stringify(migrations)}`);
+          const state=all.find(row=>Object.hasOwn(row||{},'backfill_runs'));
+          if (!state) throw new Error('analysis state row missing');
+          for (const key of ['truth_datasets','truth_points','verification_results','agency_skill_profiles','adaptive_weight_candidates','training_runs','curations','promotion_events','generation']) {
+            if (Number(state[key])!==0) throw new Error(`AI-23 runtime activation refuses unexpected ${key}=${state[key]}`);
+          }
+          if (state.champion_profile_id!=null) throw new Error('AI-23 runtime activation refuses pre-existing Champion');
+          const normalized={migrations,state};
+          fs.writeFileSync(process.env.OUT,`${JSON.stringify(normalized,null,2)}\n`);
+          console.log(JSON.stringify(normalized));
+          NODE
+          echo 'AI23_RUNTIME_PRESTATE_CAPTURED=true'
+
+      - name: Require activation secrets before Worker deployment
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]]
+          [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]
+          [[ -n "${ANALYSIS_ADMIN_TOKEN:-}" ]]
+          echo 'AI23_RUNTIME_SECRETS_PRESENT=true'
+
+      - name: Deploy independent storm-analysis Worker code only
+        id: deploy
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        run: npx wrangler deploy --experimental-provision=false --message "AI-23 generic truth and verification runtime"
+
+      - name: Verify deployed runtime and authorization boundaries
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          health="$(curl --fail --retry 10 --retry-delay 2 --retry-all-errors -sS "${WORKER_URL}/health")"
+          printf '%s' "$health" | jq -e '.ok==true and .service=="storm-analysis" and .analysisDbBound==true and .analysisAdminEnabled==true and .verificationPersistenceVersion=="verification-result-repository/v1" and .truthAugmentationVersion=="ai23-truth-augmentation-repository/v1" and .workersAiEnabled==false and .automaticPromotionEnabled==false and .productionStormWorkerModified==false' >/dev/null
+          for endpoint in /api/admin/verification/preview /api/admin/verification/persist /api/admin/truth/augmentation/preview /api/admin/truth/augmentation/import; do
+            status="$(curl -sS -o /tmp/ai23-auth-body.json -w '%{http_code}' -X POST "${WORKER_URL}${endpoint}" -H 'content-type: application/json' --data '{}')"
+            [[ "$status" == "401" ]] || { echo "Unexpected unauthenticated status $status for $endpoint" >&2; cat /tmp/ai23-auth-body.json; exit 1; }
+          done
+          echo 'AI23_RUNTIME_AUTH_BOUNDARIES_VERIFIED=true'
+
+      - name: Exercise authenticated verification preview without writes
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/ai23-verification-preview.json <<'JSON'
+          {"rows":[{"table":"verification_results","primaryKey":"ai23_runtime_preview_only","values":{"verification_id":"ai23_runtime_preview_only","storm_key":"PREVIEW-ONLY","snapshot_id":"preview-snapshot","truth_dataset_id":"preview-truth","verification_version":"forecast-verification/v1","verified_at":"2026-08-21T09:00:00.000Z","result_json":"{}","calibration_record_json":null,"fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}]}
+          JSON
+          status="$(curl -sS -o /tmp/ai23-verification-preview-result.json -w '%{http_code}' -X POST "${WORKER_URL}/api/admin/verification/preview" -H "authorization: Bearer ${ANALYSIS_ADMIN_TOKEN}" -H 'content-type: application/json' --data-binary @/tmp/ai23-verification-preview.json)"
+          [[ "$status" == "200" ]]
+          jq -e '.ok==true and .preview.ok==true and .preview.dryRun==true and .preview.writesPerformed==false and .preview.rowCount==1' /tmp/ai23-verification-preview-result.json >/dev/null
+          echo 'AI23_RUNTIME_LIVE_VERIFICATION_PREVIEW_NO_WRITE=true'
+
+      - name: Exercise authenticated truth route validation without D1 write
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -o /tmp/ai23-truth-validation.json -w '%{http_code}' -X POST "${WORKER_URL}/api/admin/truth/augmentation/preview" -H "authorization: Bearer ${ANALYSIS_ADMIN_TOKEN}" -H 'content-type: application/json' --data '{}')"
+          [[ "$status" == "400" ]]
+          jq -e '.ok==false and .error=="invalid-truth-augmentation-request"' /tmp/ai23-truth-validation.json >/dev/null
+          echo 'AI23_RUNTIME_LIVE_TRUTH_ROUTE_VALIDATED_NO_WRITE=true'
+
+      - name: Verify deployment caused zero D1 mutation
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT name FROM d1_migrations ORDER BY id; SELECT (SELECT COUNT(*) FROM backfill_runs) backfill_runs,(SELECT COUNT(*) FROM historical_storms) historical_storms,(SELECT COUNT(*) FROM forecast_snapshots) forecast_snapshots,(SELECT COUNT(*) FROM corpus_capture_windows) capture_windows,(SELECT COUNT(*) FROM corpus_capture_runs) capture_runs,(SELECT COUNT(*) FROM corpus_snapshot_memberships) snapshot_memberships,(SELECT COUNT(*) FROM storm_identity_bindings) identity_bindings,(SELECT COUNT(*) FROM storm_identity_merges) identity_merges,(SELECT COUNT(*) FROM truth_datasets) truth_datasets,(SELECT COUNT(*) FROM truth_points) truth_points,(SELECT COUNT(*) FROM verification_results) verification_results,(SELECT COUNT(*) FROM agency_skill_profiles) agency_skill_profiles,(SELECT COUNT(*) FROM adaptive_weight_candidates) adaptive_weight_candidates,(SELECT COUNT(*) FROM signal_calibration_training_runs) training_runs,(SELECT COUNT(*) FROM signal_outcome_curations) curations,(SELECT COUNT(*) FROM signal_profile_promotion_events) promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) champion_profile_id;" > /tmp/ai23-runtime-poststate-raw.json
+          RAW=/tmp/ai23-runtime-poststate-raw.json OUT=/tmp/ai23-runtime-poststate.json node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const input=JSON.parse(fs.readFileSync(process.env.RAW,'utf8'));
+          const rows=value=>Array.isArray(value)?value.flatMap(rows):(value&&typeof value==='object'?(Array.isArray(value.results)?value.results:Object.values(value).flatMap(rows)):[]);
+          const all=rows(input);
+          const migrations=all.filter(row=>typeof row?.name==='string').map(row=>row.name);
+          const state=all.find(row=>Object.hasOwn(row||{},'backfill_runs'));
+          if (!state) throw new Error('analysis post-state row missing');
+          fs.writeFileSync(process.env.OUT,`${JSON.stringify({migrations,state},null,2)}\n`);
+          NODE
+          diff -u /tmp/ai23-runtime-prestate.json /tmp/ai23-runtime-poststate.json
+          echo 'AI23_RUNTIME_D1_MUTATIONS_PERFORMED=false'
+
+      - name: Record successful AI-23 runtime activation
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(jq -c '.state' /tmp/ai23-runtime-poststate.json)"
+          cat > docs/AI23_RUNTIME_ACTIVATION_RESULT.md <<EOF
+          # AI-23 — Generic Truth & Verification Runtime Activation Result
+
+          Status: **runtime activated; no truth or verification dataset imported**
+
+          - Source commit: \`${GITHUB_SHA}\`
+          - Actions run: \`${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\`
+          - Worker: \`storm-analysis\` code deployed and smoke-tested
+          - D1 migration performed by this checkpoint: \`false\`
+          - Verification persistence runtime: \`verification-result-repository/v1\`
+          - Truth augmentation runtime: \`ai23-truth-augmentation-repository/v1\`
+          - Authenticated verification preview: \`dryRun=true / writesPerformed=false\`
+          - Authenticated truth route validation: \`400 invalid request / no D1 write\`
+          - Remote D1 pre/post state: byte-equivalent normalized counts and migration list
+          - Truth / verification / training / promotion writes: \`0\`
+          - Production \`storm-track-db\`: not mutated
+          - Production Storm Worker modified: \`false\`
+
+          Post-deployment normalized state:
+
+          \`\`\`json
+          ${state}
+          \`\`\`
+
+          The runtime is now capable of controlled generic truth augmentation and verification persistence, but real truth import remains blocked until a reviewed JMA identity and finalized official truth are available.
+          EOF
+          printf '%s\n' 'COMPLETED_AI23_RUNTIME' > .github/ai23-runtime-trigger.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/AI23_RUNTIME_ACTIVATION_RESULT.md .github/ai23-runtime-trigger.txt
+          git commit -m 'AI-23: record generic truth verification runtime activation [skip ci]'
+          git push origin HEAD:feature/ai-analysis-engine
+
+      - name: Confirm mutation gate is closed
+        if: steps.gate.outputs.requested != 'true'
+        run: |
+          echo 'AI23_RUNTIME_REMOTE_MUTATION_REQUESTED=false'
+          echo 'AI23_RUNTIME_WORKER_DEPLOYED_BY_THIS_RUN=false'
+          echo 'AI23_RUNTIME_D1_MIGRATION_PERFORMED=false'
+          echo 'AI23_RUNTIME_TRUTH_IMPORT_PERFORMED=false'
+          echo 'AI23_RUNTIME_VERIFICATION_PERSISTED=false'
