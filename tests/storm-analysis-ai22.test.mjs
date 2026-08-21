@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { buildLifecycleCapture, stableLifecycleSnapshotId } from '../workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs';
 import { SOURCE_DB } from '../workers/storm-analysis/scripts/ai21-build-forecast-corpus.mjs';
-import { classifySnapshotAgainstExisting, validateLifecycleTransition } from '../workers/storm-analysis/src/corpus-lifecycle-repository.js';
+import { classifySnapshotAgainstExisting, validateLifecycleTransition, CORPUS_CAPTURE_VERSION } from '../workers/storm-analysis/src/corpus-lifecycle-repository.js';
+import { handleRequest } from '../workers/storm-analysis/src/index.js';
 
 const H64 = 'a'.repeat(64);
 
@@ -143,5 +144,54 @@ assert.deepEqual(validateLifecycleTransition('active', 'quiescent'), { from: 'ac
 assert.deepEqual(validateLifecycleTransition('quiescent', 'active'), { from: 'quiescent', to: 'active', noop: false });
 assert.equal(validateLifecycleTransition('active', 'closed').to, 'frozen');
 assert.throws(() => validateLifecycleTransition('frozen', 'active'), error => error?.code === 'invalid-lifecycle-transition');
+
+const routeCalls = [];
+const routeRepository = {
+  async previewCapture(body) { routeCalls.push(['preview', body]); return { ok: true, dryRun: true, writesPerformed: false }; },
+  async capture(body) { routeCalls.push(['capture', body]); return { ok: true, status: 'completed', writesPerformed: true }; },
+  async transitionWindow(body) { routeCalls.push(['transition', body]); return { status: 'transitioned', windowId: body.windowId, state: body.toState }; },
+  async recordIdentityBinding(body) { routeCalls.push(['bind', body]); return { status: 'recorded', bindingId: body.bindingId }; },
+  async recordStormMerge(body) { routeCalls.push(['merge', body]); return { status: 'recorded', mergeId: body.mergeId }; }
+};
+const routeDependencies = { createCorpusLifecycleRepository: () => routeRepository };
+const routeEnv = { ANALYSIS_DB: {}, BACKFILL_TOKEN: 'backfill-secret', ANALYSIS_ADMIN_TOKEN: 'admin-secret' };
+
+const health = await handleRequest(new Request('https://example.test/health'), routeEnv, routeDependencies);
+assert.equal(health.status, 200);
+assert.equal((await health.json()).corpusLifecycleVersion, CORPUS_CAPTURE_VERSION);
+
+const unauthPreview = await handleRequest(new Request('https://example.test/api/corpus/capture/preview', {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ test: true })
+}), routeEnv, routeDependencies);
+assert.equal(unauthPreview.status, 401);
+
+const previewRoute = await handleRequest(new Request('https://example.test/api/corpus/capture/preview', {
+  method: 'POST', headers: { authorization: 'Bearer backfill-secret', 'content-type': 'application/json' }, body: JSON.stringify({ step: 'preview' })
+}), routeEnv, routeDependencies);
+assert.equal(previewRoute.status, 200);
+assert.deepEqual(await previewRoute.json(), { ok: true, dryRun: true, writesPerformed: false });
+
+const captureRoute = await handleRequest(new Request('https://example.test/api/corpus/capture', {
+  method: 'POST', headers: { authorization: 'Bearer backfill-secret', 'content-type': 'application/json' }, body: JSON.stringify({ step: 'capture' })
+}), routeEnv, routeDependencies);
+assert.equal(captureRoute.status, 200);
+assert.equal((await captureRoute.json()).status, 'completed');
+
+for (const [path, body, callName] of [
+  ['/api/admin/corpus/lifecycle/transition', { windowId: 'w', toState: 'quiescent' }, 'transition'],
+  ['/api/admin/corpus/identity/bind', { bindingId: 'b' }, 'bind'],
+  ['/api/admin/corpus/identity/merge', { mergeId: 'm' }, 'merge']
+]) {
+  const denied = await handleRequest(new Request(`https://example.test${path}`, {
+    method: 'POST', headers: { authorization: 'Bearer backfill-secret', 'content-type': 'application/json' }, body: JSON.stringify(body)
+  }), routeEnv, routeDependencies);
+  assert.equal(denied.status, 401, `${path} must require analysis-admin authorization, not backfill authorization`);
+
+  const allowed = await handleRequest(new Request(`https://example.test${path}`, {
+    method: 'POST', headers: { authorization: 'Bearer admin-secret', 'content-type': 'application/json' }, body: JSON.stringify(body)
+  }), routeEnv, routeDependencies);
+  assert.equal(allowed.status, 200);
+  assert.ok(routeCalls.some(([name]) => name === callName));
+}
 
 console.log('storm-analysis AI-22 corpus lifecycle tests passed');
