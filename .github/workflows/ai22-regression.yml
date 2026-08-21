@@ -13,15 +13,21 @@ on:
       - tests/storm-analysis-ai23.test.mjs
       - tests/storm-analysis-ai23-api.test.mjs
       - workers/storm-analysis/package.json
+      - workers/storm-analysis/wrangler.jsonc
       - workers/storm-analysis/schema/0007_corpus_lifecycle.sql
+      - workers/storm-analysis/scripts/check-deploy-config.mjs
       - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
       - workers/storm-analysis/scripts/ai23-build-generic-truth-augmentation.mjs
       - workers/storm-analysis/scripts/ai23-build-generic-verification.mjs
       - workers/storm-analysis/src/corpus-lifecycle-repository.js
       - workers/storm-analysis/src/verification-result-repository.js
+      - workers/storm-analysis/src/truth-augmentation-repository.js
+      - workers/storm-analysis/src/index-base.js
+      - workers/storm-analysis/src/index-ai23.js
       - workers/storm-analysis/src/index.js
       - workers/storm-analysis/test/corpus-lifecycle-repository.integration.test.js
       - workers/storm-analysis/test/verification-result-repository.integration.test.js
+      - workers/storm-analysis/test/truth-augmentation-repository.integration.test.js
   pull_request:
     branches:
       - feature/ai-analysis-engine
@@ -34,15 +40,21 @@ on:
       - tests/storm-analysis-ai23.test.mjs
       - tests/storm-analysis-ai23-api.test.mjs
       - workers/storm-analysis/package.json
+      - workers/storm-analysis/wrangler.jsonc
       - workers/storm-analysis/schema/0007_corpus_lifecycle.sql
+      - workers/storm-analysis/scripts/check-deploy-config.mjs
       - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
       - workers/storm-analysis/scripts/ai23-build-generic-truth-augmentation.mjs
       - workers/storm-analysis/scripts/ai23-build-generic-verification.mjs
       - workers/storm-analysis/src/corpus-lifecycle-repository.js
       - workers/storm-analysis/src/verification-result-repository.js
+      - workers/storm-analysis/src/truth-augmentation-repository.js
+      - workers/storm-analysis/src/index-base.js
+      - workers/storm-analysis/src/index-ai23.js
       - workers/storm-analysis/src/index.js
       - workers/storm-analysis/test/corpus-lifecycle-repository.integration.test.js
       - workers/storm-analysis/test/verification-result-repository.integration.test.js
+      - workers/storm-analysis/test/truth-augmentation-repository.integration.test.js
   workflow_dispatch:
 
 permissions:
@@ -71,7 +83,7 @@ jobs:
         working-directory: workers/storm-analysis
         run: npm test
 
-      - name: Run isolated D1 integration suite including lifecycle and verification persistence
+      - name: Run isolated D1 integration suite including lifecycle, truth and verification persistence
         working-directory: workers/storm-analysis
         run: npm run test:integration
 
