@@ -45,7 +45,7 @@ assert.ok(workflow.includes(".github/ai22-lifecycle-trigger.txt)\" == \"PENDING_
 assert.ok(workflow.includes(".github/ai20-truth-trigger.txt)\" == \"PENDING_AI20\""), 'AI-20 truth import must remain locked');
 assert.ok(workflow.includes(".github/ai22-runtime-trigger.txt)\" == \"COMPLETED_AI22_RUNTIME\""), 'runtime activation must be completed before capture');
 assert.ok(workflow.includes('$trigger\" == \"ACTIVATE_AI22_WP16_CAPTURE\"'), 'capture requires explicit push activation');
-assert.match(workflow, /if: steps\.gate\.outputs\.requested == 'true'[\s\S]*?Perform first bounded WP-2026-16 lifecycle capture/);
+assert.match(workflow, /- name: Perform first bounded WP-2026-16 lifecycle capture[\s\S]*?if: steps\.gate\.outputs\.requested == 'true'/);
 assert.match(workflow, /Live pre-capture preview must be four appends and zero writes[\s\S]*?\/api\/corpus\/capture\/preview/);
 assert.match(workflow, /Perform first bounded WP-2026-16 lifecycle capture[\s\S]*?\/api\/corpus\/capture\"/);
 assert.match(workflow, /Replay exact capture and require zero semantic writes[\s\S]*?\/api\/corpus\/capture\"/);
