@@ -1,6 +1,7 @@
 import { createBackfillRepository, previewImportPlan } from './backfill-repository.js';
 import { createModelRepository } from './model-repository.js';
-import { createAnalysisOrchestrator } from './analysis-orchestrator.js';
+import { createAnalysisOrchestrator, ORCHESTRATION_VERSION } from './analysis-orchestrator.js';
+import { createAnalysisCacheRepository, buildAnalysisCacheIdentity } from './analysis-cache-repository.js';
 
 const SERVICE = 'storm-analysis';
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -79,7 +80,56 @@ async function requireBackfillAuthorization(request, env) {
 function factories(dependencies = {}) {
   return {
     modelRepository: dependencies.createModelRepository || createModelRepository,
-    orchestrator: dependencies.createAnalysisOrchestrator || createAnalysisOrchestrator
+    orchestrator: dependencies.createAnalysisOrchestrator || createAnalysisOrchestrator,
+    cacheRepository: dependencies.createAnalysisCacheRepository || createAnalysisCacheRepository,
+    cacheIdentity: dependencies.buildAnalysisCacheIdentity || buildAnalysisCacheIdentity
+  };
+}
+
+async function runAnalysisWithCache(body, db, factory) {
+  const modelRepository = factory.modelRepository(db);
+  const model = await modelRepository.getChampion();
+  const identity = await factory.cacheIdentity(body, model, ORCHESTRATION_VERSION);
+  const cache = factory.cacheRepository(db);
+  let cacheReadError = false;
+  try {
+    const hit = await cache.get(identity.cacheKey);
+    if (hit) {
+      return {
+        analysis: hit.result,
+        cache: {
+          status: 'hit',
+          cacheKey: identity.cacheKey,
+          advisoryFingerprint: identity.advisoryFingerprint,
+          modelVersion: model.modelVersion,
+          createdAt: hit.createdAt ?? null
+        }
+      };
+    }
+  } catch (error) {
+    cacheReadError = true;
+    console.error(JSON.stringify({ event: 'analysis-cache-read-failed', cacheKey: identity.cacheKey, error: String(error) }));
+  }
+
+  const orchestrator = factory.orchestrator({ modelRepository });
+  const analysis = await orchestrator.run(body, { model });
+  let status = cacheReadError ? 'bypass-read-error' : 'miss';
+  try {
+    await cache.put(identity, analysis);
+    status = cacheReadError ? 'bypass-read-error-stored' : 'miss-stored';
+  } catch (error) {
+    status = cacheReadError ? 'bypass-read-and-write-error' : 'miss-store-failed';
+    console.error(JSON.stringify({ event: 'analysis-cache-write-failed', cacheKey: identity.cacheKey, error: String(error) }));
+  }
+  return {
+    analysis,
+    cache: {
+      status,
+      cacheKey: identity.cacheKey,
+      advisoryFingerprint: identity.advisoryFingerprint,
+      modelVersion: model.modelVersion,
+      createdAt: null
+    }
   };
 }
 
@@ -88,7 +138,7 @@ async function route(request, env, dependencies) {
   const factory = factories(dependencies);
 
   if (url.pathname === '/health' && request.method === 'GET') {
-    return json({ ok: true, service: SERVICE, analysisDbBound: Boolean(env?.ANALYSIS_DB), importEnabled: typeof env?.BACKFILL_TOKEN === 'string' && env.BACKFILL_TOKEN.length > 0, deterministicAnalysisVersion: 'storm-analysis-orchestration/v1', workersAiEnabled: false, productionStormWorkerModified: false });
+    return json({ ok: true, service: SERVICE, analysisDbBound: Boolean(env?.ANALYSIS_DB), importEnabled: typeof env?.BACKFILL_TOKEN === 'string' && env.BACKFILL_TOKEN.length > 0, deterministicAnalysisVersion: ORCHESTRATION_VERSION, analysisCacheVersion: 'analysis-cache/v1', workersAiEnabled: false, productionStormWorkerModified: false });
   }
 
   if (url.pathname === '/api/backfill/plan') {
@@ -121,9 +171,9 @@ async function route(request, env, dependencies) {
 
   if (url.pathname === '/api/analysis/run') {
     if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
-    const repository = factory.modelRepository(requireAnalysisDb(env));
-    const orchestrator = factory.orchestrator({ modelRepository: repository });
-    return json({ ok: true, analysis: await orchestrator.run(await readJsonWithLimit(request)) });
+    const body = await readJsonWithLimit(request);
+    const result = await runAnalysisWithCache(body, requireAnalysisDb(env), factory);
+    return json({ ok: true, ...result });
   }
 
   return json({ ok: false, error: 'not-found' }, { status: 404 });
@@ -135,4 +185,4 @@ export async function handleRequest(request, env, dependencies = {}) {
 }
 
 export default { async fetch(request, env) { return handleRequest(request, env); } };
-export { MAX_BODY_BYTES, constantTimeSecretEqual, readJsonWithLimit };
+export { MAX_BODY_BYTES, constantTimeSecretEqual, readJsonWithLimit, runAnalysisWithCache };

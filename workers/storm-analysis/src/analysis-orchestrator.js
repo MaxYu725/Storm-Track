@@ -1,7 +1,8 @@
 import { getDeterministicEngines } from './deterministic-engines.js';
 import { AGENCIES, selectWeightsForLead } from './model-repository.js';
+import { buildWeightedConsensusTrack, buildWeightedHongKongImpact } from './weighted-consensus.js';
 
-const ORCHESTRATION_VERSION = 'storm-analysis-orchestration/v1';
+const ORCHESTRATION_VERSION = 'storm-analysis-orchestration/v2';
 
 function weightedComparison(snapshot, model, haversineKm) {
   const entries = Array.isArray(snapshot?.comparison?.entries) ? snapshot.comparison.entries : [];
@@ -45,13 +46,23 @@ function weightedComparison(snapshot, model, haversineKm) {
   };
 }
 
+function weightedTrackUnavailable(modelVersion) {
+  return {
+    schemaVersion: 'weighted-consensus-track/v1',
+    modelVersion,
+    available: false,
+    points: [],
+    reason: 'track-helpers-unavailable'
+  };
+}
+
 export function createAnalysisOrchestrator({ modelRepository, engines } = {}) {
   if (!modelRepository || typeof modelRepository.getChampion !== 'function') throw new Error('modelRepository is required');
   const deterministic = engines ?? getDeterministicEngines();
   return Object.freeze({
-    async run(input) {
+    async run(input, options = {}) {
       if (!input?.sourceGroup || typeof input.sourceGroup !== 'object') throw new Error('sourceGroup is required');
-      const model = await modelRepository.getChampion();
+      const model = options.model ?? await modelRepository.getChampion();
       const snapshotOptions = {
         ...(input.snapshotOptions || {}),
         ...(input.generatedAt ? { generatedAt: input.generatedAt } : {}),
@@ -66,6 +77,22 @@ export function createAnalysisOrchestrator({ modelRepository, engines } = {}) {
         input.signalOptions || {}
       );
       const weighted = weightedComparison(snapshot, model, deterministic.snapshot.haversineKm);
+      const trackHelpersAvailable = typeof deterministic.impact?.buildSourceTrack === 'function'
+        && typeof deterministic.impact?.interpolateTrackAtTime === 'function'
+        && typeof deterministic.impact?.calculateContinuousNearest === 'function'
+        && typeof deterministic.impact?.calculateBandIntervals === 'function';
+      const weightedTrack = trackHelpersAvailable
+        ? buildWeightedConsensusTrack(snapshot, model, deterministic.impact, input.weightedTrackOptions || {})
+        : weightedTrackUnavailable(model.modelVersion);
+      const weightedImpact = trackHelpersAvailable
+        ? buildWeightedHongKongImpact(weightedTrack, snapshot.referencePoint, deterministic.impact, input.weightedTrackOptions || {})
+        : {
+            schemaVersion: 'weighted-hk-impact/v1',
+            sourceTrackVersion: weightedTrack.schemaVersion,
+            available: false,
+            closestApproach: null,
+            distanceBands: {}
+          };
       return {
         schemaVersion: ORCHESTRATION_VERSION,
         generatedAt: snapshot.generatedAt,
@@ -81,12 +108,16 @@ export function createAnalysisOrchestrator({ modelRepository, engines } = {}) {
           snapshot,
           impact,
           signalInputs,
-          weightedComparison: weighted
+          weightedComparison: weighted,
+          weightedConsensusTrack: weightedTrack,
+          weightedHongKongImpact: weightedImpact
         },
         semantics: {
           deterministic: true,
           officialAgencyDataRemainSeparate: true,
           weightedComparisonIsAppComputed: true,
+          weightedTrackIsAppComputed: true,
+          weightedHongKongImpactIsAppComputed: true,
           unweightedAnalysisPreserved: true,
           championModelReadOnly: true,
           modelPromotionPerformed: false,
