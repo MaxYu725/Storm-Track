@@ -47,4 +47,5 @@ assert.ok(workflow.includes('storm-track-db --remote --json --experimental-provi
 assert.ok(!workflow.includes('wrangler deploy --name storm'), 'workflow must never deploy the production Storm Worker');
 assert.ok(!workflow.includes('d1 migrations apply storm-track-db'), 'workflow must never migrate the production source D1');
 
+// CI probe only: forces pull_request validation while workflow checks out the canonical feature branch.
 console.log(`storm-analysis AI-22 runtime activation guards passed (${trigger})`);
