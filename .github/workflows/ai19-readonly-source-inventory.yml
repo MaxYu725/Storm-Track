@@ -1,0 +1,165 @@
+name: AI-19 Read-only historical source inventory
+
+on:
+  push:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai19-readonly-source-inventory.yml
+      - .github/ai19-backfill-trigger.txt
+      - docs/AI19_CONTROLLED_HISTORICAL_BACKFILL_PILOT.md
+      - tests/storm-analysis-ai19.test.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai19-readonly-source-inventory
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: github.ref == 'refs/heads/feature/ai-analysis-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      WORKER_URL: https://storm-analysis.max-yu.workers.dev
+    steps:
+      - name: Checkout AI branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Wrangler
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run existing checkpoint suite
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Run AI-19 inventory guard
+        run: node tests/storm-analysis-ai19.test.mjs
+
+      - name: Run Workers Vitest / Miniflare D1 integration
+        working-directory: workers/storm-analysis
+        run: npm run test:integration
+
+      - name: Run bundle-only Wrangler dry run
+        working-directory: workers/storm-analysis
+        run: npm run deploy:dry-run
+
+      - name: Verify lifecycle interlocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < .github/ai18-activation-trigger.txt)" == "COMPLETED_AI18" ]]
+          [[ "$(tr -d '\r\n' < .github/ai19-backfill-trigger.txt)" == "PENDING_AI19" ]]
+          echo 'AI19_IMPORT_LOCKED=true'
+
+      - name: Verify analysis Worker readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          health="$(curl --fail --retry 5 --retry-delay 2 --retry-all-errors -sS "${WORKER_URL}/health")"
+          printf '%s' "$health" | jq -e '
+            .ok == true and
+            .service == "storm-analysis" and
+            .analysisDbBound == true and
+            .importEnabled == true and
+            .analysisAdminEnabled == true and
+            .workersAiEnabled == false and
+            .automaticPromotionEnabled == false and
+            .productionStormWorkerModified == false
+          ' >/dev/null
+          echo 'AI19_ANALYSIS_WORKER_READY=true'
+
+      - name: Inventory D1 sources using read-only SQL only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$CLOUDFLARE_ACCOUNT_ID" && -n "$CLOUDFLARE_API_TOKEN" ]]
+          npx wrangler whoami >/dev/null
+
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          printf '%s' "$databases" | jq -c '[.[] | {name,uuid:(.uuid // .id // null),created_at:(.created_at // null)}]' 
+
+          : > /tmp/ai19-candidates.ndjson
+          while IFS=$'\t' read -r name uuid; do
+            [[ -n "$name" ]] || continue
+            [[ "$name" != "storm-analysis" ]] || continue
+
+            safe="$(printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '_')"
+            set +e
+            npx wrangler d1 execute "$name" --remote --json --experimental-provision=false \
+              --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('storms','advisories','track_points') ORDER BY name;" \
+              > "/tmp/ai19-schema-${safe}.json" 2> "/tmp/ai19-schema-${safe}.err"
+            rc=$?
+            set -e
+            if [[ $rc -ne 0 ]]; then
+              echo "AI19_DB_INSPECT_SKIPPED=${name}:query-failed"
+              continue
+            fi
+
+            tables="$(jq -c '[.. | objects | select(has("name")) | .name] | unique' "/tmp/ai19-schema-${safe}.json")"
+            echo "AI19_DB_REQUIRED_TABLES=${name}:${tables}"
+            if printf '%s' "$tables" | jq -e 'index("storms") != null and index("advisories") != null and index("track_points") != null' >/dev/null; then
+              jq -cn --arg name "$name" --arg uuid "$uuid" '{name:$name,uuid:$uuid}' >> /tmp/ai19-candidates.ndjson
+
+              npx wrangler d1 execute "$name" --remote --json --experimental-provision=false --command "PRAGMA table_info(storms);" > "/tmp/ai19-${safe}-storms-columns.json"
+              npx wrangler d1 execute "$name" --remote --json --experimental-provision=false --command "PRAGMA table_info(advisories);" > "/tmp/ai19-${safe}-advisories-columns.json"
+              npx wrangler d1 execute "$name" --remote --json --experimental-provision=false --command "PRAGMA table_info(track_points);" > "/tmp/ai19-${safe}-track-points-columns.json"
+              npx wrangler d1 execute "$name" --remote --json --experimental-provision=false --command "SELECT COUNT(*) AS row_count FROM storms;" > "/tmp/ai19-${safe}-storms-count.json"
+              npx wrangler d1 execute "$name" --remote --json --experimental-provision=false --command "SELECT COUNT(*) AS row_count FROM advisories;" > "/tmp/ai19-${safe}-advisories-count.json"
+              npx wrangler d1 execute "$name" --remote --json --experimental-provision=false --command "SELECT COUNT(*) AS row_count FROM track_points;" > "/tmp/ai19-${safe}-track-points-count.json"
+              npx wrangler d1 execute "$name" --remote --json --experimental-provision=false --command "SELECT * FROM storms LIMIT 10;" > "/tmp/ai19-${safe}-storms-sample.json"
+
+              echo "AI19_CANDIDATE_DB=${name}:${uuid}"
+              echo "AI19_STORMS_COLUMNS=${name}:$(jq -c '[.. | objects | select(has("name") and has("type")) | {name,type,pk}]' "/tmp/ai19-${safe}-storms-columns.json")"
+              echo "AI19_ADVISORIES_COLUMNS=${name}:$(jq -c '[.. | objects | select(has("name") and has("type")) | {name,type,pk}]' "/tmp/ai19-${safe}-advisories-columns.json")"
+              echo "AI19_TRACK_POINTS_COLUMNS=${name}:$(jq -c '[.. | objects | select(has("name") and has("type")) | {name,type,pk}]' "/tmp/ai19-${safe}-track-points-columns.json")"
+              echo "AI19_STORMS_COUNT=${name}:$(jq -c '[.. | objects | select(has("row_count")) | .row_count]' "/tmp/ai19-${safe}-storms-count.json")"
+              echo "AI19_ADVISORIES_COUNT=${name}:$(jq -c '[.. | objects | select(has("row_count")) | .row_count]' "/tmp/ai19-${safe}-advisories-count.json")"
+              echo "AI19_TRACK_POINTS_COUNT=${name}:$(jq -c '[.. | objects | select(has("row_count")) | .row_count]' "/tmp/ai19-${safe}-track-points-count.json")"
+              echo "AI19_STORMS_SAMPLE=${name}:$(jq -c '[.. | objects | select(has("storm_id") or has("id") or has("storm_key"))] | .[:10]' "/tmp/ai19-${safe}-storms-sample.json")"
+            fi
+          done < <(printf '%s' "$databases" | jq -r '.[] | [(.name // ""), (.uuid // .id // "")] | @tsv')
+
+          candidate_count="$(wc -l < /tmp/ai19-candidates.ndjson | tr -d ' ')"
+          echo "AI19_PRODUCTION_SCHEMA_CANDIDATE_COUNT=$candidate_count"
+          if [[ "$candidate_count" -gt 0 ]]; then
+            jq -s -c '.' /tmp/ai19-candidates.ndjson
+          fi
+
+      - name: Verify ANALYSIS_DB is still pristine
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false \
+            --command "SELECT (SELECT COUNT(*) FROM backfill_runs) AS backfill_runs, (SELECT COUNT(*) FROM historical_storms) AS historical_storms, (SELECT COUNT(*) FROM truth_datasets) AS truth_datasets, (SELECT COUNT(*) FROM truth_points) AS truth_points, (SELECT COUNT(*) FROM forecast_snapshots) AS forecast_snapshots, (SELECT COUNT(*) FROM signal_outcomes) AS signal_outcomes, (SELECT COUNT(*) FROM verification_results) AS verification_results, (SELECT COUNT(*) FROM agency_skill_profiles) AS agency_skill_profiles, (SELECT COUNT(*) FROM adaptive_weight_candidates) AS adaptive_weight_candidates, (SELECT COUNT(*) FROM signal_calibration_training_runs) AS training_runs, (SELECT COUNT(*) FROM signal_outcome_curations) AS curations, (SELECT COUNT(*) FROM signal_profile_promotion_events) AS promotion_events, (SELECT generation FROM signal_calibration_state WHERE state_id = 1) AS generation, (SELECT champion_profile_id FROM signal_calibration_state WHERE state_id = 1) AS champion_profile_id;" \
+            > /tmp/ai19-analysis-state.json
+          jq -c '[.. | objects | select(has("backfill_runs"))]' /tmp/ai19-analysis-state.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const data = JSON.parse(fs.readFileSync('/tmp/ai19-analysis-state.json', 'utf8'));
+          const walk = value => Array.isArray(value) ? value.flatMap(walk) : value && typeof value === 'object' ? (Array.isArray(value.results) ? value.results : Object.values(value).flatMap(walk)) : [];
+          const row = walk(data).find(item => item && Object.hasOwn(item, 'backfill_runs'));
+          if (!row) throw new Error('AI-19 could not resolve analysis state row');
+          for (const key of ['backfill_runs','historical_storms','truth_datasets','truth_points','forecast_snapshots','signal_outcomes','verification_results','agency_skill_profiles','adaptive_weight_candidates','training_runs','curations','promotion_events','generation']) {
+            if (Number(row[key]) !== 0) throw new Error(`AI-19 requires pristine ${key}=0 before pilot`);
+          }
+          if (row.champion_profile_id != null) throw new Error('AI-19 requires no signal Champion before pilot');
+          NODE
+          echo 'AI19_ANALYSIS_DB_PRISTINE=true'
+          echo 'DIAG_MUTATIONS_PERFORMED=false'
