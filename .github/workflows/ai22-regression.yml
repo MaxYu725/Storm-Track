@@ -1,4 +1,4 @@
-name: AI-22 corpus lifecycle regression
+name: AI-22/23 analysis regression
 
 on:
   push:
@@ -10,11 +10,18 @@ on:
       - docs/AI22_CORPUS_LIFECYCLE_IDENTITY.md
       - docs/AI22_COMPLETION_RESULT.md
       - tests/storm-analysis-ai22.test.mjs
+      - tests/storm-analysis-ai23.test.mjs
+      - tests/storm-analysis-ai23-api.test.mjs
       - workers/storm-analysis/package.json
       - workers/storm-analysis/schema/0007_corpus_lifecycle.sql
       - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
+      - workers/storm-analysis/scripts/ai23-build-generic-truth-augmentation.mjs
+      - workers/storm-analysis/scripts/ai23-build-generic-verification.mjs
       - workers/storm-analysis/src/corpus-lifecycle-repository.js
+      - workers/storm-analysis/src/verification-result-repository.js
+      - workers/storm-analysis/src/index.js
       - workers/storm-analysis/test/corpus-lifecycle-repository.integration.test.js
+      - workers/storm-analysis/test/verification-result-repository.integration.test.js
   pull_request:
     branches:
       - feature/ai-analysis-engine
@@ -24,11 +31,18 @@ on:
       - docs/AI22_CORPUS_LIFECYCLE_IDENTITY.md
       - docs/AI22_COMPLETION_RESULT.md
       - tests/storm-analysis-ai22.test.mjs
+      - tests/storm-analysis-ai23.test.mjs
+      - tests/storm-analysis-ai23-api.test.mjs
       - workers/storm-analysis/package.json
       - workers/storm-analysis/schema/0007_corpus_lifecycle.sql
       - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
+      - workers/storm-analysis/scripts/ai23-build-generic-truth-augmentation.mjs
+      - workers/storm-analysis/scripts/ai23-build-generic-verification.mjs
       - workers/storm-analysis/src/corpus-lifecycle-repository.js
+      - workers/storm-analysis/src/verification-result-repository.js
+      - workers/storm-analysis/src/index.js
       - workers/storm-analysis/test/corpus-lifecycle-repository.integration.test.js
+      - workers/storm-analysis/test/verification-result-repository.integration.test.js
   workflow_dispatch:
 
 permissions:
@@ -53,17 +67,21 @@ jobs:
         working-directory: workers/storm-analysis
         run: npm install --no-audit --no-fund
 
-      - name: Run complete regression suite through AI-22
+      - name: Run complete regression suite through AI-23
         working-directory: workers/storm-analysis
         run: npm test
 
-      - name: Run isolated D1 integration suite including migration 0007
+      - name: Run isolated D1 integration suite including lifecycle and verification persistence
         working-directory: workers/storm-analysis
         run: npm run test:integration
 
       - name: Validate independent deployment configuration
         working-directory: workers/storm-analysis
         run: npm run check:config
+
+      - name: Build Worker deployment dry-run without provisioning
+        working-directory: workers/storm-analysis
+        run: npm run deploy:dry-run
 
       - name: Verify phase locks remain safe
         shell: bash
@@ -72,11 +90,10 @@ jobs:
           [[ "$(tr -d '\r\n' < .github/ai19-backfill-trigger.txt)" == "COMPLETED_AI19" ]]
           [[ "$(tr -d '\r\n' < .github/ai20-truth-trigger.txt)" == "PENDING_AI20" ]]
           [[ "$(tr -d '\r\n' < .github/ai21-corpus-trigger.txt)" == "COMPLETED_AI21" ]]
-          lifecycle="$(tr -d '\r\n' < .github/ai22-lifecycle-trigger.txt)"
-          [[ "$lifecycle" == "PENDING_AI22" || "$lifecycle" == "COMPLETED_AI22" ]]
-          echo "AI22_LIFECYCLE_PHASE=$lifecycle"
-          echo 'AI22_TRUTH_IMPORT_PERFORMED=false'
-          echo 'AI22_VERIFICATION_PERSISTED=false'
-          echo 'AI22_TRAINING_PERFORMED=false'
-          echo 'AI22_PROMOTION_PERFORMED=false'
-          echo 'AI22_PRODUCTION_STORM_WORKER_MODIFIED=false'
+          [[ "$(tr -d '\r\n' < .github/ai22-lifecycle-trigger.txt)" == "COMPLETED_AI22" ]]
+          echo 'AI22_LIFECYCLE_PHASE=COMPLETED_AI22'
+          echo 'AI23_REMOTE_TRUTH_IMPORT_PERFORMED=false'
+          echo 'AI23_REMOTE_VERIFICATION_PERSISTED=false'
+          echo 'AI23_TRAINING_PERFORMED=false'
+          echo 'AI23_PROMOTION_PERFORMED=false'
+          echo 'AI23_PRODUCTION_STORM_WORKER_MODIFIED=false'
