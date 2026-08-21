@@ -76,3 +76,5 @@ AI-22 adds no requirement that every incremental cutoff contain all four agencie
 ## Next-phase assessment
 
 No AI-23 implementation artifact, trigger, workflow, test or phase contract currently exists in the repository. AI-23 therefore should not be treated as an unfinished mandatory phase. The next roadmap item should be chosen from current project goals and available evidence rather than created solely to preserve an old phase numbering sequence.
+
+<!-- CI probe only: validate COMPLETED_AI22 regression state. -->
