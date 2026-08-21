@@ -22,11 +22,9 @@ jobs:
           base='https://storm.max-yu.workers.dev'
           echo '=== HEALTH ==='
           curl --fail -sS "$base/health" | jq .
-          for path in /probe/identity /probe/cma /probe/jma /probe/cwa /api/cwa; do
-            echo "=== ${path} ==="
-            curl --fail -sS "$base${path}" | head -c 20000
-            echo
-          done
-          echo '=== HKO TC LIST VIA WORKER PROXY ==='
-          curl --fail -sS --get "$base/" --data-urlencode 'url=https://www.weather.gov.hk/wxinfo/currwx/tc_list.xml' | head -c 20000
+          echo '=== HKO TC 2629 TRACK ==='
+          curl --fail -sS --get "$base/" --data-urlencode 'url=https://www.weather.gov.hk/wxinfo/currwx/hko_tctrack_2629.xml' | head -c 30000
+          echo
+          echo '=== CMA NAMELESS 3304364 ==='
+          curl --fail -sS --get "$base/" --data-urlencode 'url=https://typhoon.nmc.cn/weatherservice/typhoon/jsons/view_3304364?callback=typhoon_jsons_view_3304364' | head -c 30000
           echo
