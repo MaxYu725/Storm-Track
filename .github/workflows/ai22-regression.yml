@@ -8,6 +8,7 @@ on:
       - .github/ai22-lifecycle-trigger.txt
       - .github/workflows/ai22-regression.yml
       - docs/AI22_CORPUS_LIFECYCLE_IDENTITY.md
+      - docs/AI22_COMPLETION_RESULT.md
       - tests/storm-analysis-ai22.test.mjs
       - workers/storm-analysis/package.json
       - workers/storm-analysis/schema/0007_corpus_lifecycle.sql
@@ -21,6 +22,7 @@ on:
       - .github/ai22-lifecycle-trigger.txt
       - .github/workflows/ai22-regression.yml
       - docs/AI22_CORPUS_LIFECYCLE_IDENTITY.md
+      - docs/AI22_COMPLETION_RESULT.md
       - tests/storm-analysis-ai22.test.mjs
       - workers/storm-analysis/package.json
       - workers/storm-analysis/schema/0007_corpus_lifecycle.sql
@@ -70,9 +72,11 @@ jobs:
           [[ "$(tr -d '\r\n' < .github/ai19-backfill-trigger.txt)" == "COMPLETED_AI19" ]]
           [[ "$(tr -d '\r\n' < .github/ai20-truth-trigger.txt)" == "PENDING_AI20" ]]
           [[ "$(tr -d '\r\n' < .github/ai21-corpus-trigger.txt)" == "COMPLETED_AI21" ]]
-          [[ "$(tr -d '\r\n' < .github/ai22-lifecycle-trigger.txt)" == "PENDING_AI22" ]]
-          echo 'AI22_REMOTE_CAPTURE_LOCKED=true'
+          lifecycle="$(tr -d '\r\n' < .github/ai22-lifecycle-trigger.txt)"
+          [[ "$lifecycle" == "PENDING_AI22" || "$lifecycle" == "COMPLETED_AI22" ]]
+          echo "AI22_LIFECYCLE_PHASE=$lifecycle"
           echo 'AI22_TRUTH_IMPORT_PERFORMED=false'
           echo 'AI22_VERIFICATION_PERSISTED=false'
           echo 'AI22_TRAINING_PERFORMED=false'
           echo 'AI22_PROMOTION_PERFORMED=false'
+          echo 'AI22_PRODUCTION_STORM_WORKER_MODIFIED=false'
