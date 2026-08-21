@@ -82,6 +82,20 @@ The deployed Worker must return healthy metadata from `/health`, the built-in eq
 
 Unauthenticated write-capable requests are checked without executing a real import, training run, promotion or rollback. They must return `503` while application secrets are absent, or `401` once the two application secrets are configured.
 
+## Pre-provisioning evidence
+
+Immediately before first provisioning, GitHub Actions read-only diagnostic run `32444782761` verified:
+
+- the full Node checkpoint suite passed;
+- Workers Vitest / Miniflare D1 integration passed `4/4`;
+- Wrangler bundle-only dry-run passed with only the intended `ANALYSIS_DB` D1 binding;
+- the rotated Cloudflare API token is valid and has effective D1 access (`wrangler d1 list` returned success);
+- there is no pre-existing D1 database named `storm-analysis`;
+- there is no pre-existing `storm-analysis` Worker;
+- `storm-analysis.max-yu.workers.dev/health` is still `404` before provisioning.
+
+This evidence authorizes the first push-triggered provisioning run while preserving the hard isolation boundary above.
+
 ## Deployment result
 
 On successful completion, the workflow creates `docs/AI17_DEPLOYMENT_RESULT.md` containing only non-secret evidence: Worker URL, D1 UUID, migration state, application-secret activation status and workflow run reference. It also commits the real `ANALYSIS_DB` UUID into `workers/storm-analysis/wrangler.jsonc`.
