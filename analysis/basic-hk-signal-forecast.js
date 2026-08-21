@@ -93,7 +93,7 @@
     return 'unlikely';
   }
 
-  function fallbackAssessment({ impact, weightedImpact, signalInputs, referenceTime, closest }) {
+  function fallbackAssessment({ impact, signalInputs, referenceTime, closest }) {
     const featureVector = signalInputs?.featureVector || {};
     const currentDistanceKm = finite(featureVector.currentDistanceMedianKm) ?? closest.distanceKm;
     const minimumLead = leadHours(referenceTime, closest.time);
@@ -127,11 +127,70 @@
         quasiStationary: { confidence: 0 },
         forecastEdge: { confidence: 0 },
         agencyDisagreement: { confidence: disagreement },
-        windField: { confidence: windField, representativeWindMs: windMs, coverageAgencyCount: coverage }
+        windField: { confidence: windField, representativeWindMs: windMs, coverageAgencyCount: coverage },
+        rapidEvolution: { confidence: 0 }
       },
       timeline: [],
       semantics: { hardThreatGateUsed: false, timeWeightingIsContinuous: true }
     };
+  }
+
+  function checkpointEvidence(checkpoint, signal) {
+    const distanceKm = finite(checkpoint?.distanceMedianKm);
+    const windMs = finite(checkpoint?.windMedianMs);
+    const timeRelevance = clamp(finite(checkpoint?.timeRelevance) ?? softTimeRelevance(finite(checkpoint?.leadHours)));
+    const agreement = clamp(finite(checkpoint?.agreementIndex) ?? 0.5);
+    const rapid = clamp(finite(checkpoint?.rapidEvolutionIndex) ?? 0);
+    let proximity;
+    let windEvidence;
+    if (signal === 'T8') {
+      proximity = smoothCloser(distanceKm, 300);
+      windEvidence = Number.isFinite(windMs) ? clamp((windMs - 20) / 22) : 0;
+    } else if (signal === 'T3') {
+      proximity = smoothCloser(distanceKm, 500);
+      windEvidence = Number.isFinite(windMs) ? clamp((windMs - 12) / 18) : 0;
+    } else {
+      proximity = smoothCloser(distanceKm, 800);
+      windEvidence = Number.isFinite(windMs) ? clamp((windMs - 10) / 25) : 0;
+    }
+    const raw = signal === 'T8'
+      ? proximity * 0.38 + windEvidence * 0.34 + rapid * 0.18 + agreement * 0.10
+      : (signal === 'T3'
+        ? proximity * 0.40 + windEvidence * 0.28 + rapid * 0.20 + agreement * 0.12
+        : proximity * 0.48 + windEvidence * 0.14 + rapid * 0.24 + agreement * 0.14);
+    return clamp(raw * (0.55 + 0.45 * timeRelevance));
+  }
+
+  function timelineSignalSummary(timeline, signal) {
+    const entries = (Array.isArray(timeline) ? timeline : [])
+      .filter(item => Number.isFinite(finite(item?.leadHours)) && finite(item.leadHours) >= 0)
+      .map(item => ({ checkpoint: item, evidence: checkpointEvidence(item, signal) }));
+    if (!entries.length) return { maxEvidence: 0, strongest: null, firstPossible: null, firstLikely: null };
+    const strongest = entries.reduce((best, item) => item.evidence > best.evidence ? item : best, entries[0]);
+    return {
+      maxEvidence: strongest.evidence,
+      strongest,
+      firstPossible: entries.find(item => item.evidence >= (signal === 'T8' ? 0.40 : signal === 'T3' ? 0.38 : 0.35)) ?? null,
+      firstLikely: entries.find(item => item.evidence >= (signal === 'T8' ? 0.70 : signal === 'T3' ? 0.65 : 0.58)) ?? null
+    };
+  }
+
+  function timelineAnchor(summary, likelihood) {
+    const selected = likelihood === 'likely' ? (summary.firstLikely ?? summary.firstPossible) : summary.firstPossible;
+    return selected?.checkpoint?.validTime ?? selected?.checkpoint?.time ?? null;
+  }
+
+  function timelineWindow(anchor, timeline, defaultBefore = 4, defaultAfter = 6) {
+    if (!anchor) return null;
+    const anchorMs = timeMs(anchor);
+    if (!Number.isFinite(anchorMs)) return null;
+    const index = (Array.isArray(timeline) ? timeline : []).findIndex(item => timeMs(item?.validTime ?? item?.time) === anchorMs);
+    const previousGap = index > 0 ? finite(timeline[index]?.intervalFromPreviousHours) : null;
+    const nextGap = index >= 0 && index + 1 < timeline.length
+      ? finite(timeline[index + 1]?.intervalFromPreviousHours) : null;
+    const before = Number.isFinite(previousGap) ? clamp(previousGap / 2, 2, 6) : defaultBefore;
+    const after = Number.isFinite(nextGap) ? clamp(nextGap / 2, 2, 8) : defaultAfter;
+    return windowAround(anchor, before, after);
   }
 
   function buildBasicHkSignalForecast({ impact, weightedImpact, signalInputs, threatAssessment, generatedAt } = {}) {
@@ -148,9 +207,10 @@
     const referenceTime = generatedAt ?? signalInputs?.generatedAt ?? impact?.generatedAt ?? null;
     const assessment = threatAssessment?.available === true
       ? threatAssessment
-      : fallbackAssessment({ impact, weightedImpact, signalInputs, referenceTime, closest });
+      : fallbackAssessment({ impact, signalInputs, referenceTime, closest });
     const summary = assessment.summary || {};
     const analyzers = assessment.analyzers || {};
+    const timeline = Array.isArray(assessment.timeline) ? assessment.timeline : [];
     const currentDistanceKm = finite(summary.currentDistanceKm) ?? closest.distanceKm;
     const minimumDistanceKm = finite(summary.representativeMinimum?.distanceKm)
       ?? finite(summary.forecastMinimumKm)
@@ -165,45 +225,56 @@
     const forecastEdge = clamp(finite(analyzers.forecastEdge?.confidence) ?? 0);
     const disagreement = clamp(finite(analyzers.agencyDisagreement?.confidence) ?? 0.35);
     const windFieldConfidence = clamp(finite(analyzers.windField?.confidence) ?? 0);
+    const rapidEvolution = clamp(finite(analyzers.rapidEvolution?.confidence) ?? 0);
     const windMs = finite(analyzers.windField?.representativeWindMs)
       ?? finite(signalInputs?.featureVector?.closestMaximumWindMedianMs)
       ?? finite(signalInputs?.featureVector?.currentMaximumWindMedianMs);
     const agreement = 1 - disagreement;
     const trajectory = clamp(Math.max(directApproach, reApproach * 0.85, quasiStationary * 0.25));
 
+    const t1Timeline = timelineSignalSummary(timeline, 'T1');
+    const t3Timeline = timelineSignalSummary(timeline, 'T3');
+    const t8Timeline = timelineSignalSummary(timeline, 'T8');
+
     const currentT1Proximity = smoothCloser(currentDistanceKm, 800);
     const futureT1Proximity = smoothCloser(minimumDistanceKm, 650) * timeRelevance;
-    const t1RiskIndex = clamp(
+    const staticT1Risk = clamp(
       currentT1Proximity * 0.18
       + futureT1Proximity * 0.42
-      + trajectory * 0.25
+      + trajectory * 0.20
+      + rapidEvolution * 0.05
       + windFieldConfidence * 0.10
       + agreement * 0.05
     );
+    const t1RiskIndex = clamp(Math.max(staticT1Risk, t1Timeline.maxEvidence));
 
     const currentT3Proximity = smoothCloser(currentDistanceKm, 550);
     const futureT3Proximity = smoothCloser(minimumDistanceKm, 450) * timeRelevance;
     const strongWindEvidence = Number.isFinite(windMs) ? clamp((windMs - 12) / 18) : 0;
-    const t3RiskIndex = clamp(
+    const staticT3Risk = clamp(
       currentT3Proximity * 0.12
       + futureT3Proximity * 0.34
-      + trajectory * 0.16
+      + trajectory * 0.14
+      + rapidEvolution * 0.06
       + strongWindEvidence * 0.22
-      + windFieldConfidence * 0.11
+      + windFieldConfidence * 0.07
       + agreement * 0.05
     );
+    const t3RiskIndex = clamp(Math.max(staticT3Risk, t3Timeline.maxEvidence));
 
     const currentT8Proximity = smoothCloser(currentDistanceKm, 350);
     const futureT8Proximity = smoothCloser(minimumDistanceKm, 280) * timeRelevance;
     const galeEvidence = Number.isFinite(windMs) ? clamp((windMs - 20) / 22) : 0;
-    const t8RiskIndex = clamp(
+    const staticT8Risk = clamp(
       currentT8Proximity * 0.10
-      + futureT8Proximity * 0.34
-      + trajectory * 0.13
-      + galeEvidence * 0.25
-      + windFieldConfidence * 0.13
+      + futureT8Proximity * 0.30
+      + trajectory * 0.11
+      + rapidEvolution * 0.08
+      + galeEvidence * 0.24
+      + windFieldConfidence * 0.12
       + agreement * 0.05
     );
+    const t8RiskIndex = clamp(Math.max(staticT8Risk, t8Timeline.maxEvidence));
 
     const t1Likelihood = likelihoodFromIndex(t1RiskIndex, 0.58, 0.35);
     const t3Likelihood = likelihoodFromIndex(t3RiskIndex, 0.65, 0.38);
@@ -220,9 +291,12 @@
       const lead = leadHours(referenceTime, entry?.time);
       return Number.isFinite(lead) && lead >= 0 ? entry.time : null;
     };
-    const t1Anchor = futureEntry(entry800) ?? addHours(minimumTime, -24);
-    const t3Anchor = futureEntry(entry500) ?? addHours(minimumTime, -12);
-    const t8Anchor = futureEntry(entry300) ?? addHours(minimumTime, -6);
+    const t1TimelineAnchor = timelineAnchor(t1Timeline, t1Likelihood);
+    const t3TimelineAnchor = timelineAnchor(t3Timeline, t3Likelihood);
+    const t8TimelineAnchor = timelineAnchor(t8Timeline, t8Likelihood);
+    const t1Anchor = t1TimelineAnchor ?? futureEntry(entry800) ?? addHours(minimumTime, -24);
+    const t3Anchor = t3TimelineAnchor ?? futureEntry(entry500) ?? addHours(minimumTime, -12);
+    const t8Anchor = t8TimelineAnchor ?? futureEntry(entry300) ?? addHours(minimumTime, -6);
 
     const commonBasis = [
       `current-distance:${Math.round(currentDistanceKm)}km`,
@@ -232,11 +306,18 @@
       `direct-approach:${directApproach.toFixed(3)}`,
       `re-approach:${reApproach.toFixed(3)}`,
       `quasi-stationary:${quasiStationary.toFixed(3)}`,
+      `rapid-evolution:${rapidEvolution.toFixed(3)}`,
       `forecast-edge:${forecastEdge.toFixed(3)}`,
       `agency-disagreement:${disagreement.toFixed(3)}`,
       Number.isFinite(windMs) ? `representative-wind:${windMs.toFixed(1)}m/s` : 'representative-wind:unavailable',
       `wind-field:${windFieldConfidence.toFixed(3)}`
     ];
+
+    const signalWindow = (likelihood, timelineAnchorValue, fallbackAnchor, before, after) => {
+      if (likelihood === 'unlikely') return null;
+      if (timelineAnchorValue) return timelineWindow(timelineAnchorValue, timeline, before, after);
+      return fallbackAnchor ? windowAround(fallbackAnchor, before, after) : null;
+    };
 
     return {
       schemaVersion: VERSION,
@@ -256,25 +337,40 @@
         T1: {
           likelihood: t1Likelihood,
           riskIndex: t1RiskIndex,
-          estimatedWindow: t1Likelihood === 'unlikely' || !t1Anchor ? null : windowAround(t1Anchor, 6, 6),
-          basis: [...commonBasis, `t1-risk-index:${t1RiskIndex.toFixed(3)}`]
+          estimatedWindow: signalWindow(t1Likelihood, t1TimelineAnchor, t1Anchor, 6, 6),
+          strongestCheckpoint: t1Timeline.strongest ? {
+            label: t1Timeline.strongest.checkpoint.label,
+            validTime: t1Timeline.strongest.checkpoint.validTime,
+            evidence: t1Timeline.strongest.evidence
+          } : null,
+          basis: [...commonBasis, `timeline-evidence:${t1Timeline.maxEvidence.toFixed(3)}`, `t1-risk-index:${t1RiskIndex.toFixed(3)}`]
         },
         T3: {
           likelihood: t3Likelihood,
           riskIndex: t3RiskIndex,
-          estimatedWindow: t3Likelihood === 'unlikely' || !t3Anchor ? null : windowAround(t3Anchor, 6, 9),
-          basis: [...commonBasis, `t3-risk-index:${t3RiskIndex.toFixed(3)}`]
+          estimatedWindow: signalWindow(t3Likelihood, t3TimelineAnchor, t3Anchor, 6, 9),
+          strongestCheckpoint: t3Timeline.strongest ? {
+            label: t3Timeline.strongest.checkpoint.label,
+            validTime: t3Timeline.strongest.checkpoint.validTime,
+            evidence: t3Timeline.strongest.evidence
+          } : null,
+          basis: [...commonBasis, `timeline-evidence:${t3Timeline.maxEvidence.toFixed(3)}`, `t3-risk-index:${t3RiskIndex.toFixed(3)}`]
         },
         T8: {
           likelihood: t8Likelihood,
           riskIndex: t8RiskIndex,
-          estimatedWindow: t8Likelihood === 'unlikely' || !t8Anchor ? null : windowAround(t8Anchor, 6, 9),
-          basis: [...commonBasis, `t8-risk-index:${t8RiskIndex.toFixed(3)}`]
+          estimatedWindow: signalWindow(t8Likelihood, t8TimelineAnchor, t8Anchor, 6, 9),
+          strongestCheckpoint: t8Timeline.strongest ? {
+            label: t8Timeline.strongest.checkpoint.label,
+            validTime: t8Timeline.strongest.checkpoint.validTime,
+            evidence: t8Timeline.strongest.evidence
+          } : null,
+          basis: [...commonBasis, `timeline-evidence:${t8Timeline.maxEvidence.toFixed(3)}`, `t8-risk-index:${t8RiskIndex.toFixed(3)}`]
         }
       },
       assessment: {
         schemaVersion: assessment.schemaVersion ?? null,
-        timeline: Array.isArray(assessment.timeline) ? assessment.timeline : [],
+        timeline,
         analyzers
       },
       semantics: {
@@ -282,6 +378,8 @@
         firstVersionHeuristic: true,
         evidenceCombination: true,
         hardThreatGateUsed: false,
+        fixedDayBucketsUsed: false,
+        timelineCanDriveSignalRisk: timeline.length > 0,
         timeWeightingIsContinuous: true,
         softTimeScaleHours: SOFT_TIME_SCALE_HOURS,
         historicalCalibrationRequired: false,
