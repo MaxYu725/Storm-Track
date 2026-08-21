@@ -15,6 +15,8 @@ const repoRoot = path.resolve(workerRoot, '../..');
 export const AI20_AUGMENTATION_VERSION = 'ai20-jma-truth-augmentation/v1';
 export const TARGET_STORM_KEY = 'WP-2026-15';
 export const TARGET_INTERNATIONAL_NUMBER = '2615';
+export const EXPECTED_AI19_RUN_ID = 'ai19_chanhom_forecast_21b774c59c7773cd';
+export const EXPECTED_AI19_PLAN_SHA256 = '98a3a2d6c20e5a4704604ef7c58df49a7703b93f9399e2e74962bcd76d74573a';
 export const MAX_TRUTH_POINTS = 64;
 
 function assert(condition, message) {
@@ -34,6 +36,15 @@ function stableJson(value) {
   return `${JSON.stringify(JSON.parse(importer.stableStringify(value)), null, 2)}\n`;
 }
 
+function parseNullableJson(value, label) {
+  if (value == null) return null;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    throw new Error(`invalid ${label} JSON in AI-19 canonical plan: ${error.message}`);
+  }
+}
+
 function snapshotRows(plan) {
   return plan.rows.filter(row => row.table === 'forecast_snapshots')
     .slice()
@@ -51,18 +62,63 @@ function assertSnapshotRowsPreserved(ai19Plan, ai20Plan) {
   }
 }
 
+function reconstructStormFromCanonicalPlan(ai19Plan) {
+  const planSha256 = sha256(ai19Plan);
+  assert(planSha256 === EXPECTED_AI19_PLAN_SHA256, `AI-19 canonical plan SHA mismatch: ${planSha256}`);
+  assert(ai19Plan?.runId === EXPECTED_AI19_RUN_ID, 'unexpected AI-19 canonical plan identity');
+
+  const historicalRows = ai19Plan.rows.filter(row => row.table === 'historical_storms');
+  assert(historicalRows.length === 1, 'AI-19 canonical plan must contain exactly one historical storm row');
+  const historical = historicalRows[0].values;
+  assert(historical.storm_key === TARGET_STORM_KEY, `AI-20 requires ${TARGET_STORM_KEY}`);
+  assert(historical.backfill_mode === 'forecast-only' && Number(historical.agency_skill_eligible) === 0, 'AI-19 baseline must remain forecast-only and not agency-skill eligible');
+
+  const rows = snapshotRows(ai19Plan);
+  const predictionCases = rows.map(row => {
+    const values = row.values;
+    const snapshot = parseNullableJson(values.snapshot_json, `${row.primaryKey}.snapshot_json`);
+    assert(snapshot && typeof snapshot === 'object', `missing snapshot JSON for ${row.primaryKey}`);
+    assert(snapshot?.storm?.key === TARGET_STORM_KEY, `snapshot ${row.primaryKey} storm identity mismatch`);
+    return {
+      caseId: values.snapshot_id,
+      asOf: values.as_of,
+      snapshot,
+      impact: parseNullableJson(values.impact_json, `${row.primaryKey}.impact_json`),
+      signalInputs: parseNullableJson(values.signal_inputs_json, `${row.primaryKey}.signal_inputs_json`),
+      sourceAvailability: parseNullableJson(values.source_availability_json, `${row.primaryKey}.source_availability_json`),
+      provenance: {
+        type: values.provenance_type,
+        dataRole: 'forecast',
+        source: values.provenance_source,
+        sourceUrl: values.provenance_source_url,
+        archiveId: values.archive_id,
+        originalIssuedAt: values.original_issued_at,
+        archiveCapturedAt: values.archive_captured_at,
+        payloadHash: values.payload_hash
+      }
+    };
+  });
+
+  return {
+    ai19PlanSha256: planSha256,
+    storm: {
+      stormKey: historical.storm_key,
+      nameTc: historical.name_tc,
+      nameEn: historical.name_en,
+      season: historical.season,
+      basin: historical.basin,
+      predictionCases
+    }
+  };
+}
+
 export function buildTruthAugmentationPlan({
   bestTrackText,
   positionTableHtml,
   retrievedAt,
-  ai19Input,
   ai19Plan
 }) {
-  assert(ai19Input?.storms?.length === 1, 'AI-20 requires exactly one canonical AI-19 storm input');
-  assert(ai19Input.storms[0].stormKey === TARGET_STORM_KEY, `AI-20 requires ${TARGET_STORM_KEY}`);
-  assert(Array.isArray(ai19Input.storms[0].predictionCases) && ai19Input.storms[0].predictionCases.length === 4, 'AI-20 requires the four AI-19 historical forecast cases');
-  assert(ai19Plan?.runId === 'ai19_chanhom_forecast_21b774c59c7773cd', 'unexpected AI-19 canonical plan identity');
-
+  const canonicalBaseline = reconstructStormFromCanonicalPlan(ai19Plan);
   const truth = buildCanonicalTruth({
     bestTrackText,
     positionTableHtml,
@@ -76,7 +132,7 @@ export function buildTruthAugmentationPlan({
   assert(truth.track.length > 0 && truth.track.length <= MAX_TRUTH_POINTS, `AI-20 finalized truth point count must be 1..${MAX_TRUTH_POINTS}`);
 
   const truthSha256 = sha256(truth);
-  const ai19PlanSha256 = sha256(ai19Plan);
+  const ai19PlanSha256 = canonicalBaseline.ai19PlanSha256;
   const runSource = `ai20-finalized-jma-truth/${truthSha256}/ai19-plan/${ai19PlanSha256}`;
   const runId = `ai20_chanhom_truth_${truthSha256.slice(0, 16)}`;
   const combinedInput = {
@@ -84,7 +140,7 @@ export function buildTruthAugmentationPlan({
     generatedAt: truth.retrievedAt,
     runId,
     storms: [{
-      ...ai19Input.storms[0],
+      ...canonicalBaseline.storm,
       truth
     }]
   };
@@ -136,6 +192,7 @@ export function buildTruthAugmentationPlan({
       semantics: {
         finalizedJmaTruthRequired: true,
         preliminaryTruthRejected: true,
+        ai19CanonicalPlanHashPinned: true,
         ai19SnapshotsPreservedByteForByte: true,
         augmentationNotReplacement: true,
         localPreviewOnly: true,
@@ -160,16 +217,14 @@ async function main() {
   const bestTrackPath = args.bestTrack;
   const positionTablePath = args.positionTable;
   const retrievedAt = args.retrievedAt;
-  const ai19InputPath = path.resolve(args.ai19Input ?? path.join(repoRoot, 'data/ai19/chan-hom-pilot-input.json'));
   const ai19PlanPath = path.resolve(args.ai19Plan ?? path.join(repoRoot, 'data/ai19/chan-hom-import-plan.json'));
   if (!bestTrackPath || !positionTablePath || !retrievedAt) {
-    throw new Error('usage: ai20-build-truth-augmentation-plan.mjs --bestTrack <file> --positionTable <file> --retrievedAt <ISO> [--ai19Input file] [--ai19Plan file] [--output dir]');
+    throw new Error('usage: ai20-build-truth-augmentation-plan.mjs --bestTrack <file> --positionTable <file> --retrievedAt <ISO> [--ai19Plan file] [--output dir]');
   }
   const result = buildTruthAugmentationPlan({
     bestTrackText: fs.readFileSync(bestTrackPath, 'utf8'),
     positionTableHtml: fs.readFileSync(positionTablePath, 'utf8'),
     retrievedAt,
-    ai19Input: readJson(ai19InputPath),
     ai19Plan: readJson(ai19PlanPath)
   });
 
