@@ -7,6 +7,7 @@
 
   const VERSION = 'basic-hk-signal-forecast/v1';
   const HOUR_MS = 60 * 60 * 1000;
+  const NEAR_TERM_HOURS = 72;
 
   function finite(value) {
     const number = Number(value);
@@ -27,6 +28,13 @@
   function addHours(value, hours) {
     const ms = timeMs(value);
     return Number.isFinite(ms) ? iso(ms + hours * HOUR_MS) : null;
+  }
+
+  function leadHours(reference, target) {
+    const referenceMs = timeMs(reference);
+    const targetMs = timeMs(target);
+    if (!Number.isFinite(referenceMs) || !Number.isFinite(targetMs)) return null;
+    return (targetMs - referenceMs) / HOUR_MS;
   }
 
   function representativeClosest(impact, weightedImpact) {
@@ -69,6 +77,25 @@
     return 'unlikely';
   }
 
+  function westernSideMajority(signalInputs) {
+    const agencies = Object.values(signalInputs?.agencies || {})
+      .filter(item => item?.state === 'ok' && item?.current?.sectorFromHongKong);
+    if (agencies.length < 2) return false;
+    const west = new Set(['W', 'SW', 'NW']);
+    const western = agencies.filter(item => west.has(item.current.sectorFromHongKong)).length;
+    return western > agencies.length / 2;
+  }
+
+  function isNearTerm(referenceTime, targetTime, horizonHours = NEAR_TERM_HOURS) {
+    const lead = leadHours(referenceTime, targetTime);
+    return Number.isFinite(lead) && lead >= -1 && lead <= horizonHours;
+  }
+
+  function futureAnchor(entry, fallback, referenceTime) {
+    if (entry?.time && isNearTerm(referenceTime, entry.time, NEAR_TERM_HOURS)) return entry.time;
+    return fallback;
+  }
+
   function buildBasicHkSignalForecast({ impact, weightedImpact, signalInputs, generatedAt } = {}) {
     const closest = representativeClosest(impact, weightedImpact);
     if (!closest) {
@@ -80,9 +107,12 @@
       };
     }
 
+    const referenceTime = generatedAt ?? signalInputs?.generatedAt ?? impact?.generatedAt ?? null;
     const distanceKm = closest.distanceKm;
+    const closestLeadHours = leadHours(referenceTime, closest.time);
     const trend = impact?.trend?.aggregate ?? 'unavailable';
     const featureVector = signalInputs?.featureVector || {};
+    const currentDistanceKm = finite(featureVector.currentDistanceMedianKm) ?? distanceKm;
     const windMs = finite(featureVector.closestMaximumWindMedianMs)
       ?? finite(featureVector.currentMaximumWindMedianMs);
     const windCoverageCount = finite(featureVector.closestTimeWindFieldCoverageAgencyCount) ?? 0;
@@ -93,80 +123,108 @@
     const entry800 = firstBandEntry(impact, weightedImpact, [800]);
     const entry500 = firstBandEntry(impact, weightedImpact, [500, 400]);
     const entry300 = firstBandEntry(impact, weightedImpact, [300, 200]);
+    const entry500LeadHours = leadHours(referenceTime, entry500?.time);
+    const entry300LeadHours = leadHours(referenceTime, entry300?.time);
     const approaching = trend === 'approaching';
+    const westernMajority = westernSideMajority(signalInputs);
+    const nearTermClosest500 = distanceKm <= 500 && isNearTerm(referenceTime, closest.time, NEAR_TERM_HOURS);
+    const nearTerm500Entry = isNearTerm(referenceTime, entry500?.time, NEAR_TERM_HOURS);
+    const nearTerm300Entry = isNearTerm(referenceTime, entry300?.time, 48);
+    const directWindEvidence = windCoverageCount > 0;
+    const nearTermThreat = nearTermClosest500 || nearTerm500Entry || directWindEvidence;
 
-    let impactScore = distanceKm <= 800 ? 3 : (distanceKm <= 1000 ? 2 : (distanceKm <= 1200 ? 1 : 0));
-    if (approaching) impactScore += 1;
-    if (entry800) impactScore += 1;
-    const impactLikelihood = likelihood(impactScore, 3, 1);
+    let impactLikelihood = 'unlikely';
+    if (currentDistanceKm <= 800) impactLikelihood = nearTermThreat ? 'likely' : 'possible';
+    else if (currentDistanceKm <= 1000) impactLikelihood = nearTermThreat ? 'possible' : 'unlikely';
+    else if (currentDistanceKm <= 1200 && nearTermThreat) impactLikelihood = 'possible';
 
-    let t1Score = distanceKm <= 800 ? 3 : (distanceKm <= 1000 ? 2 : (distanceKm <= 1200 ? 1 : 0));
-    if (approaching) t1Score += 1;
-    if (entry800) t1Score += 1;
+    let t1Score = currentDistanceKm <= 800 ? 2 : (currentDistanceKm <= 1000 ? 1 : 0);
+    if (nearTermThreat) t1Score += 2;
+    if (approaching && Number.isFinite(closestLeadHours) && closestLeadHours <= NEAR_TERM_HOURS) t1Score += 1;
+    let t1Likelihood = likelihood(t1Score, 4, 2);
+    if (westernMajority && !nearTermThreat) t1Likelihood = 'unlikely';
+    else if (!nearTermThreat && t1Likelihood === 'likely') t1Likelihood = 'possible';
 
     let t3Score = distanceKm <= 400 ? 3 : (distanceKm <= 600 ? 2 : (distanceKm <= 800 ? 1 : 0));
     if (approaching) t3Score += 1;
     if (Number.isFinite(windMs) && windMs >= 17.5) t3Score += 1;
-    if (windCoverageCount > 0) t3Score += 1;
+    if (directWindEvidence) t3Score += 1;
+    const t3Threat = nearTerm500Entry
+      || (currentDistanceKm <= 500 && approaching)
+      || (nearTermClosest500 && Number.isFinite(windMs) && windMs >= 17.5)
+      || directWindEvidence;
+    const t3Likelihood = t3Threat ? likelihood(t3Score, 4, 2) : 'unlikely';
 
     let t8Score = distanceKm <= 200 ? 3 : (distanceKm <= 300 ? 2 : (distanceKm <= 450 ? 1 : 0));
     if (approaching) t8Score += 1;
     if (Number.isFinite(windMs) && windMs >= 25) t8Score += 1;
     if (Number.isFinite(windMs) && windMs >= 33) t8Score += 1;
-    if (windCoverageCount > 0) t8Score += 1;
+    if (directWindEvidence) t8Score += 1;
+    const t8Threat = nearTerm300Entry
+      || (currentDistanceKm <= 300 && Number.isFinite(windMs) && windMs >= 25)
+      || (directWindEvidence && currentDistanceKm <= 450);
+    const t8SeverityEvidence = (Number.isFinite(windMs) && windMs >= 25) || directWindEvidence;
+    const t8Likelihood = t8Threat
+      ? (t8Score >= 4 && t8SeverityEvidence ? 'likely' : likelihood(t8Score, 99, 2))
+      : 'unlikely';
 
-    const t1Likelihood = likelihood(t1Score, 3, 1);
-    const t3Likelihood = likelihood(t3Score, 4, 2);
-    const t8SeverityEvidence = (Number.isFinite(windMs) && windMs >= 25) || windCoverageCount > 0;
-    const t8Likelihood = t8Score >= 4 && t8SeverityEvidence ? 'likely' : likelihood(t8Score, 99, 2);
-
-    const t1Anchor = entry800?.time ?? addHours(closest.time, -24);
-    const t3Anchor = entry500?.time ?? addHours(closest.time, -12);
-    const t8Anchor = entry300?.time ?? addHours(closest.time, -6);
+    const t1Fallback = nearTermThreat ? addHours(closest.time, -24) : null;
+    const t3Fallback = t3Threat ? addHours(closest.time, -12) : null;
+    const t8Fallback = t8Threat ? addHours(closest.time, -6) : null;
+    const t1Anchor = futureAnchor(entry800, t1Fallback, referenceTime);
+    const t3Anchor = futureAnchor(entry500, t3Fallback, referenceTime);
+    const t8Anchor = futureAnchor(entry300, t8Fallback, referenceTime);
 
     const reasons = {
       common: [
+        `current-distance:${Math.round(currentDistanceKm)}km`,
         `closest:${Math.round(distanceKm)}km`,
+        Number.isFinite(closestLeadHours) ? `closest-lead:${closestLeadHours.toFixed(1)}h` : 'closest-lead:unavailable',
         `trend:${trend}`,
+        `western-side-majority:${westernMajority}`,
+        `near-term-threat:${nearTermThreat}`,
         Number.isFinite(windMs) ? `representative-wind:${windMs.toFixed(1)}m/s` : 'representative-wind:unavailable',
         `wind-field-coverage-agencies:${windCoverageCount}`,
         `usable-agencies:${usableAgencyCount}`
       ],
       T1: entry800 ? [`800km-entry:${entry800.time}`] : [],
-      T3: entry500 ? [`${entry500.thresholdKm}km-entry:${entry500.time}`] : [],
-      T8: entry300 ? [`${entry300.thresholdKm}km-entry:${entry300.time}`] : []
+      T3: entry500 ? [`${entry500.thresholdKm}km-entry:${entry500.time}`, Number.isFinite(entry500LeadHours) ? `entry-lead:${entry500LeadHours.toFixed(1)}h` : 'entry-lead:unavailable'] : [],
+      T8: entry300 ? [`${entry300.thresholdKm}km-entry:${entry300.time}`, Number.isFinite(entry300LeadHours) ? `entry-lead:${entry300LeadHours.toFixed(1)}h` : 'entry-lead:unavailable'] : []
     };
 
     return {
       schemaVersion: VERSION,
       available: true,
-      generatedAt: generatedAt ?? signalInputs?.generatedAt ?? impact?.generatedAt ?? null,
+      generatedAt: referenceTime,
       impact: {
         likelihood: impactLikelihood,
         expected: impactLikelihood !== 'unlikely',
         closestApproach: closest,
+        currentDistanceKm,
+        nearTermThreat,
         uncertainty: impact?.uncertainty?.level ?? 'unknown'
       },
       signals: {
         T1: {
           likelihood: t1Likelihood,
-          estimatedWindow: t1Likelihood === 'unlikely' ? null : windowAround(t1Anchor, 6, 6),
+          estimatedWindow: t1Likelihood === 'unlikely' || !t1Anchor ? null : windowAround(t1Anchor, 6, 6),
           basis: [...reasons.common, ...reasons.T1]
         },
         T3: {
           likelihood: t3Likelihood,
-          estimatedWindow: t3Likelihood === 'unlikely' ? null : windowAround(t3Anchor, 6, 9),
+          estimatedWindow: t3Likelihood === 'unlikely' || !t3Anchor ? null : windowAround(t3Anchor, 6, 9),
           basis: [...reasons.common, ...reasons.T3]
         },
         T8: {
           likelihood: t8Likelihood,
-          estimatedWindow: t8Likelihood === 'unlikely' ? null : windowAround(t8Anchor, 6, 9),
+          estimatedWindow: t8Likelihood === 'unlikely' || !t8Anchor ? null : windowAround(t8Anchor, 6, 9),
           basis: [...reasons.common, ...reasons.T8]
         }
       },
       semantics: {
         deterministic: true,
         firstVersionHeuristic: true,
+        nearTermThreatHorizonHours: NEAR_TERM_HOURS,
         historicalCalibrationRequired: false,
         probabilityOutputIncluded: false,
         estimatedWindowsAreBroadGuidance: true,
@@ -178,5 +236,5 @@
     };
   }
 
-  return Object.freeze({ VERSION, buildBasicHkSignalForecast });
+  return Object.freeze({ VERSION, NEAR_TERM_HOURS, buildBasicHkSignalForecast });
 });
