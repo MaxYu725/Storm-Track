@@ -72,8 +72,8 @@ const result = buildIncrementalLifecycleEvidence(input, { windowId: 'wp-2026-16-
 assert.equal(result.summary.existingCutoffCount, 2);
 assert.deepEqual(result.summary.existingCutoffs, ['2026-08-20T00:00:00.000Z', '2026-08-20T06:00:00.000Z']);
 assert.equal(result.summary.newCutoff.asOf, '2026-08-20T18:00:00.000Z', 'incremental selector should take the latest genuinely new usable cutoff');
-assert.deepEqual(result.summary.newCutoff.agencies, ['JMA']);
-assert.equal(result.summary.newAgencyCount, 1, 'incremental append must not require a new multi-agency gate');
+assert.deepEqual(result.summary.newCutoff.agencies, ['CMA', 'JMA'], 'all agencies with still-valid forecast state at the new cutoff must be retained');
+assert.equal(result.summary.newAgencyCount, 2, 'incremental append accepts the actual usable agency set without imposing a minimum beyond one');
 assert.equal(result.summary.selectedSnapshotCount, 3);
 assert.deepEqual(result.evidence.storms[0].cutoffs, [
   '2026-08-20T00:00:00.000Z',
