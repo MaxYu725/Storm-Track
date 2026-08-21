@@ -97,3 +97,4 @@ duplicateExisting.existingCutoffs = ['2026-08-20T00:00:00.000Z', '2026-08-20T00:
 assert.throws(() => buildIncrementalLifecycleEvidence(duplicateExisting), /existing cutoffs must be unique/);
 
 console.log('storm-analysis AI-22 incremental cutoff selector tests passed');
+// CI probe only: exercise the read-only AI-22F workflow from a draft PR.
