@@ -42,8 +42,11 @@ function snapshot(confirmed) {
     generatedAt: BASE,
     referencePoint: HK,
     sources: {
+      // Stage 1: CMA already publishes an official +12h point while HKO/CWA still
+      // require interpolation across a sparse 24h chord. Stage 2: all three agencies
+      // publish intermediate points confirming the same dangerous geometry.
       HKO: source({ confirmed, latOffset: 0.04, lonOffset: 0.03 }),
-      CMA: source({ confirmed, latOffset: 0, lonOffset: 0 }),
+      CMA: source({ confirmed: true, latOffset: 0, lonOffset: 0 }),
       CWA: source({ confirmed, latOffset: -0.04, lonOffset: -0.03 }),
       JMA: { state: 'missing' }
     }
@@ -108,12 +111,12 @@ const confirmed = run(true);
 
 const sparse12 = sparse.assessment.timeline.find(item => item.label === '+12h');
 const confirmed12 = confirmed.assessment.timeline.find(item => item.label === '+12h');
-assert.ok(sparse12 && confirmed12, 'both variants should expose +12h');
-assert.equal(sparse12.exactOfficialSupportCount, 0,
-  'sparse variant should derive +12h entirely from interpolation');
+assert.ok(sparse12 && confirmed12, 'both variants should expose +12h through CMA official timing');
+assert.equal(sparse12.exactOfficialSupportCount, 1,
+  'stage-one +12h should have one exact official point and two interpolated agency positions');
 assert.equal(confirmed12.exactOfficialSupportCount, 3,
   'confirmed variant should have three exact official +12h positions');
-assert.ok(confirmed12.interpolationReliability > sparse12.interpolationReliability + 0.4,
+assert.ok(confirmed12.interpolationReliability > sparse12.interpolationReliability + 0.2,
   `official confirmation should materially restore reliability: sparse=${sparse12.interpolationReliability.toFixed(3)} confirmed=${confirmed12.interpolationReliability.toFixed(3)}`);
 
 // The same physical straight-line scenario remains visible before confirmation, but
@@ -124,10 +127,12 @@ assert.notEqual(sparse.forecast.signals.T3.likelihood, 'unlikely',
   'sparse dangerous scenario should remain visible at least as possible T3');
 assert.notEqual(sparse.forecast.signals.T8.likelihood, 'unlikely',
   'sparse dangerous scenario should remain visible at least as possible T8');
+assert.notEqual(sparse.forecast.signals.T1.likelihood, 'likely',
+  `partly interpolated route should not prematurely become likely T1; got ${sparse.forecast.signals.T1.likelihood}`);
 assert.notEqual(sparse.forecast.signals.T3.likelihood, 'likely',
-  `unconfirmed interpolated route should not prematurely become likely T3; got ${sparse.forecast.signals.T3.likelihood}`);
+  `partly interpolated route should not prematurely become likely T3; got ${sparse.forecast.signals.T3.likelihood}`);
 assert.notEqual(sparse.forecast.signals.T8.likelihood, 'likely',
-  `unconfirmed interpolated route should not prematurely become likely T8; got ${sparse.forecast.signals.T8.likelihood}`);
+  `partly interpolated route should not prematurely become likely T8; got ${sparse.forecast.signals.T8.likelihood}`);
 
 // Once multiple official intermediate points confirm the same dangerous geometry,
 // the credibility penalty must lift. The model must be able to promote rather than
