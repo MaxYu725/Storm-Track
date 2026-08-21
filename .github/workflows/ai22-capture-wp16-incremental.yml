@@ -1,0 +1,261 @@
+name: AI-22F Capture WP-2026-16 incremental lifecycle append
+
+on:
+  push:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai22-capture-wp16-incremental.yml
+      - .github/ai22-wp16-incremental-trigger.txt
+      - tests/storm-analysis-ai22-incremental-capture.test.mjs
+      - workers/storm-analysis/package.json
+      - workers/storm-analysis/scripts/ai22-select-incremental-cutoff.mjs
+      - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
+      - workers/storm-analysis/src/corpus-lifecycle-repository.js
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai22-capture-wp16-incremental.yml
+      - tests/storm-analysis-ai22-incremental-capture.test.mjs
+      - workers/storm-analysis/package.json
+      - workers/storm-analysis/scripts/ai22-select-incremental-cutoff.mjs
+      - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
+      - workers/storm-analysis/src/corpus-lifecycle-repository.js
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai22-wp16-incremental-capture
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  BACKFILL_TOKEN: ${{ secrets.BACKFILL_TOKEN }}
+  WORKER_URL: https://storm-analysis.max-yu.workers.dev
+  SOURCE_DB_ID: eb0bf995-3ea7-4bf6-bbca-b425892c4d7e
+  ANALYSIS_DB_ID: 99c692b2-c932-4774-bf8d-2d7f10f6c6f8
+  STORM_KEY: WP-2026-16
+  WINDOW_ID: wp-2026-16-operational-202608
+  EXPECTED_NEW_CUTOFF: 2026-08-21T06:45:00.000Z
+  EXPECTED_RUN_ID: ai22_capture_30492e45e4045121
+  EXPECTED_EVIDENCE_SHA256: 30492e45e4045121849a4f77bc86c279fd1a2f45cd91612ae6c2555cd3fd61f2
+  EXPECTED_PLAN_SHA256: a30b2c7aabd51983633423a1729040ac61c55eebed453e140febf7042d08939e
+  EXPECTED_CAPTURE_FINGERPRINT: b6695485cc40e8b54dfd97f47f208793221c31dcc949f0c39616722c4dc88487
+
+jobs:
+  validate-and-capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout canonical AI branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Worker toolchain
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run complete pre-capture regression gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd workers/storm-analysis && npm test)
+          (cd workers/storm-analysis && npm run test:integration)
+          (cd workers/storm-analysis && npm run check:config)
+
+      - name: Verify phase locks, resources and deployed runtime
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < ../../.github/ai19-backfill-trigger.txt)" == "COMPLETED_AI19" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai20-truth-trigger.txt)" == "PENDING_AI20" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai21-corpus-trigger.txt)" == "COMPLETED_AI21" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai22-lifecycle-trigger.txt)" == "PENDING_AI22" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai22-runtime-trigger.txt)" == "COMPLETED_AI22_RUNTIME" ]]
+          [[ "$(tr -d '\r\n' < ../../.github/ai22-wp16-capture-trigger.txt)" == "COMPLETED_AI22_WP16_CAPTURE" ]]
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          source_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-track-db") | (.uuid // .id // empty)')"
+          analysis_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-analysis") | (.uuid // .id // empty)')"
+          [[ "$source_id" == "$SOURCE_DB_ID" ]]
+          [[ "$analysis_id" == "$ANALYSIS_DB_ID" ]]
+          health="$(curl --fail --retry 5 --retry-delay 2 --retry-all-errors -sS "${WORKER_URL}/health")"
+          printf '%s' "$health" | jq -e '.ok==true and .service=="storm-analysis" and .analysisDbBound==true and .importEnabled==true and .corpusLifecycleVersion=="corpus-lifecycle-capture/v1" and .workersAiEnabled==false and .automaticPromotionEnabled==false and .productionStormWorkerModified==false' >/dev/null
+          echo 'AI22F_RUNTIME_AND_RESOURCES_VERIFIED=true'
+
+      - name: Verify exact four-snapshot prestate using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT snapshot_id,storm_key,as_of,fingerprint,payload_hash FROM forecast_snapshots WHERE storm_key='${STORM_KEY}' ORDER BY as_of,snapshot_id;" > /tmp/ai22f-existing-raw.json
+          jq '[.. | objects | select(.storm_key == "WP-2026-16" and has("snapshot_id") and has("as_of"))]' /tmp/ai22f-existing-raw.json > /tmp/ai22f-existing.json
+          jq -e 'length==4 and map(.as_of)==["2026-08-05T12:45:00.000Z","2026-08-07T02:45:00.000Z","2026-08-09T07:00:00.000Z","2026-08-12T12:00:00.000Z"]' /tmp/ai22f-existing.json >/dev/null
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM backfill_runs) backfill_runs,(SELECT COUNT(*) FROM historical_storms) historical_storms,(SELECT COUNT(*) FROM forecast_snapshots) forecast_snapshots,(SELECT COUNT(*) FROM forecast_snapshots WHERE storm_key='WP-2026-16') wp16_snapshots,(SELECT COUNT(*) FROM corpus_capture_windows) capture_windows,(SELECT COUNT(*) FROM corpus_capture_runs) capture_runs,(SELECT COUNT(*) FROM corpus_snapshot_memberships) snapshot_memberships,(SELECT COUNT(*) FROM corpus_lifecycle_events) lifecycle_events,(SELECT COUNT(*) FROM storm_identity_bindings) identity_bindings,(SELECT COUNT(*) FROM storm_identity_bindings WHERE review_status='reviewed') reviewed_identity_bindings,(SELECT COUNT(*) FROM storm_identity_merges) identity_merges,(SELECT COUNT(*) FROM truth_datasets) truth_datasets,(SELECT COUNT(*) FROM truth_points) truth_points,(SELECT COUNT(*) FROM verification_results) verification_results,(SELECT COUNT(*) FROM agency_skill_profiles) agency_skill_profiles,(SELECT COUNT(*) FROM adaptive_weight_candidates) adaptive_weight_candidates,(SELECT COUNT(*) FROM signal_calibration_training_runs) training_runs,(SELECT COUNT(*) FROM signal_outcome_curations) curations,(SELECT COUNT(*) FROM signal_profile_promotion_events) promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) champion_profile_id;" > /tmp/ai22f-prestate.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai22f-prestate.json | head -n1)"
+          ROW="$row" node --input-type=module <<'NODE'
+          const row=JSON.parse(process.env.ROW);
+          const expected={backfill_runs:3,historical_storms:3,forecast_snapshots:12,wp16_snapshots:4,capture_windows:1,capture_runs:1,snapshot_memberships:4,lifecycle_events:1,identity_bindings:1,reviewed_identity_bindings:0,identity_merges:0,truth_datasets:0,truth_points:0,verification_results:0,agency_skill_profiles:0,adaptive_weight_candidates:0,training_runs:0,curations:0,promotion_events:0,generation:0};
+          for (const [key,value] of Object.entries(expected)) if (Number(row?.[key])!==value) throw new Error(`AI-22F refuses ${key}=${row?.[key]}; expected ${value}`);
+          if (row.champion_profile_id!=null) throw new Error('AI-22F refuses Champion drift');
+          NODE
+          echo 'AI22F_PRESTATE_VERIFIED=true'
+
+      - name: Rebuild exact five-cutoff request from production SELECTs
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT id,name_zh,name_en,status,international_number,merged_into_id,created_at,updated_at FROM storms WHERE id='${STORM_KEY}' LIMIT 1;" > /tmp/ai22f-storm-raw.json
+          jq '[.. | objects | select(.id == "WP-2026-16" and has("status"))] | first' /tmp/ai22f-storm-raw.json > /tmp/ai22f-storm.json
+          jq -e '.id=="WP-2026-16" and (.merged_into_id==null) and (.status!="merged")' /tmp/ai22f-storm.json >/dev/null
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT a.id,a.storm_id,a.agency,a.issued_at,a.fetched_at,a.source_code,a.source_url,a.source_hash,a.raw_object_key,a.parser_version FROM advisories a WHERE a.storm_id='${STORM_KEY}' AND EXISTS (SELECT 1 FROM track_points tp WHERE tp.advisory_id=a.id AND tp.point_type='forecast' AND tp.valid_at>a.issued_at) ORDER BY a.issued_at,a.agency,a.id;" > /tmp/ai22f-advisories-raw.json
+          jq '[.. | objects | select(.storm_id == "WP-2026-16" and has("agency") and has("source_hash"))]' /tmp/ai22f-advisories-raw.json > /tmp/ai22f-advisories.json
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT a.storm_id,a.agency,tp.advisory_id,tp.valid_at,tp.forecast_hour,tp.latitude,tp.longitude,tp.pressure_hpa,tp.wind_ms,tp.gust_ms,tp.wind_averaging_minutes,tp.intensity_code,tp.intensity_label,tp.probability_radius_km,tp.source_order FROM advisories a JOIN track_points tp ON tp.advisory_id=a.id WHERE a.storm_id='${STORM_KEY}' AND tp.point_type='forecast' ORDER BY a.issued_at,a.agency,tp.valid_at,tp.source_order;" > /tmp/ai22f-points-raw.json
+          jq '[.. | objects | select(.storm_id == "WP-2026-16" and has("advisory_id") and has("valid_at"))]' /tmp/ai22f-points-raw.json > /tmp/ai22f-points.json
+          node scripts/ai22-select-incremental-cutoff.mjs --storm /tmp/ai22f-storm.json --advisories /tmp/ai22f-advisories.json --points /tmp/ai22f-points.json --existing /tmp/ai22f-existing.json --window-id "$WINDOW_ID" --output /tmp/ai22f-evidence.json --summary /tmp/ai22f-selection.json > /tmp/ai22f-selection-stdout.json
+          rm -rf /tmp/ai22f-build
+          node scripts/ai22-build-lifecycle-capture.mjs --evidence /tmp/ai22f-evidence.json --output /tmp/ai22f-build > /tmp/ai22f-summary.json
+          jq -e '.existingCutoffCount==4 and .selectedSnapshotCount==5 and .newCutoff.asOf=="2026-08-21T06:45:00.000Z" and .newCutoff.agencies==["CMA","CWA","JMA"] and .semantics.preservesExistingCutoffs==true and .semantics.appendsExactlyOneNewCutoff==true' /tmp/ai22f-selection.json >/dev/null
+          [[ "$(jq -r '.runId' /tmp/ai22f-summary.json)" == "$EXPECTED_RUN_ID" ]]
+          [[ "$(jq -r '.evidenceSha256' /tmp/ai22f-summary.json)" == "$EXPECTED_EVIDENCE_SHA256" ]]
+          [[ "$(jq -r '.planSha256' /tmp/ai22f-summary.json)" == "$EXPECTED_PLAN_SHA256" ]]
+          [[ "$(jq -r '.captureFingerprint' /tmp/ai22f-summary.json)" == "$EXPECTED_CAPTURE_FINGERPRINT" ]]
+          jq -e '.snapshotCount==5 and .identityProposalCount==1 and .tableCounts.forecast_snapshots==5 and .remoteWritesPerformed==false' /tmp/ai22f-summary.json >/dev/null
+          jq -e '(.identityProposals|length)==1 and .identityProposals[0].stormKey=="WP-2026-16" and .identityProposals[0].identityValue=="18" and .identityProposals[0].reviewStatus=="unreviewed"' /tmp/ai22f-build/lifecycle-capture-request.json >/dev/null
+          [[ "$(wc -c < /tmp/ai22f-build/lifecycle-capture-request.json)" -lt 1000000 ]]
+          echo 'AI22F_CANONICAL_INCREMENTAL_REQUEST_VERIFIED=true'
+
+      - name: Live preview must remain four existing and one append
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${BACKFILL_TOKEN:-}" ]]
+          status="$(curl -sS -o /tmp/ai22f-preview.json -w '%{http_code}' -X POST "${WORKER_URL}/api/corpus/capture/preview" -H "authorization: Bearer ${BACKFILL_TOKEN}" -H 'content-type: application/json' --data-binary @/tmp/ai22f-build/lifecycle-capture-request.json)"
+          [[ "$status" == "200" ]]
+          jq -e '.ok==true and .dryRun==true and .runId=="ai22_capture_30492e45e4045121" and .snapshotCount==5 and .existingSnapshotCount==4 and .appendedSnapshotCount==1 and .writesPerformed==false and .storms["WP-2026-16"].existingState=="active" and .storms["WP-2026-16"].existing==4 and .storms["WP-2026-16"].appended==1' /tmp/ai22f-preview.json >/dev/null
+          echo 'AI22F_LIVE_PREVIEW_READY=true'
+
+      - name: Resolve explicit incremental mutation request
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          trigger="$(tr -d '\r\n' < .github/ai22-wp16-incremental-trigger.txt)"
+          [[ "$trigger" == "PENDING_AI22_WP16_INCREMENTAL" || "$trigger" == "ACTIVATE_AI22_WP16_INCREMENTAL" || "$trigger" == "COMPLETED_AI22_WP16_INCREMENTAL" ]]
+          requested=false
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/feature/ai-analysis-engine" && "$trigger" == "ACTIVATE_AI22_WP16_INCREMENTAL" ]]; then
+            requested=true
+          fi
+          echo "requested=$requested" >> "$GITHUB_OUTPUT"
+          echo "AI22F_INCREMENTAL_LIFECYCLE=$trigger"
+          echo "AI22F_REMOTE_CAPTURE_REQUESTED=$requested"
+
+      - name: Perform bounded incremental lifecycle capture
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -o /tmp/ai22f-capture.json -w '%{http_code}' -X POST "${WORKER_URL}/api/corpus/capture" -H "authorization: Bearer ${BACKFILL_TOKEN}" -H 'content-type: application/json' --data-binary @/tmp/ai22f-build/lifecycle-capture-request.json)"
+          [[ "$status" == "200" ]]
+          jq -e '.ok==true and .status=="completed" and .runId=="ai22_capture_30492e45e4045121" and .snapshotCount==5 and .appendedSnapshotCount==1 and .existingSnapshotCount==4 and .writesPerformed==true and .storms["WP-2026-16"].windowId=="wp-2026-16-operational-202608" and .storms["WP-2026-16"].existingState=="active" and (.identityResults|length)==1 and .identityResults[0].reviewStatus=="unreviewed" and .identityResults[0].canonical==false and .semantics.historicalSnapshotRewrite==false and .semantics.truthWritten==false and .semantics.trainingWritten==false and .semantics.promotionWritten==false' /tmp/ai22f-capture.json >/dev/null
+          echo 'AI22F_INCREMENTAL_CAPTURE_COMPLETED=true'
+
+      - name: Replay exact incremental capture and require zero semantic writes
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -o /tmp/ai22f-replay.json -w '%{http_code}' -X POST "${WORKER_URL}/api/corpus/capture" -H "authorization: Bearer ${BACKFILL_TOKEN}" -H 'content-type: application/json' --data-binary @/tmp/ai22f-build/lifecycle-capture-request.json)"
+          [[ "$status" == "200" ]]
+          jq -e '.ok==true and .status=="already-imported" and .runId=="ai22_capture_30492e45e4045121" and .snapshotCount==5 and .appendedSnapshotCount==0 and .existingSnapshotCount==5 and .writesPerformed==false and (.identityResults|length)==1 and .identityResults[0].writesPerformed==false' /tmp/ai22f-replay.json >/dev/null
+          echo 'AI22F_EXACT_REPLAY_ZERO_WRITE=true'
+
+      - name: Verify immutable originals and exact post-capture state
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT snapshot_id,storm_key,as_of,fingerprint,payload_hash FROM forecast_snapshots WHERE storm_key='${STORM_KEY}' ORDER BY as_of,snapshot_id;" > /tmp/ai22f-post-snapshots-raw.json
+          jq '[.. | objects | select(.storm_key == "WP-2026-16" and has("snapshot_id") and has("as_of"))]' /tmp/ai22f-post-snapshots-raw.json > /tmp/ai22f-post-snapshots.json
+          PRE=/tmp/ai22f-existing.json POST=/tmp/ai22f-post-snapshots.json node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const pre=JSON.parse(fs.readFileSync(process.env.PRE,'utf8'));
+          const post=JSON.parse(fs.readFileSync(process.env.POST,'utf8'));
+          if (pre.length!==4 || post.length!==5) throw new Error(`unexpected snapshot lengths ${pre.length}/${post.length}`);
+          const byAsOf=new Map(post.map(row=>[row.as_of,row]));
+          for (const row of pre) {
+            const current=byAsOf.get(row.as_of);
+            if (!current) throw new Error(`missing original cutoff ${row.as_of}`);
+            for (const key of ['snapshot_id','fingerprint','payload_hash']) if (current[key]!==row[key]) throw new Error(`immutable snapshot changed ${row.as_of} ${key}`);
+          }
+          const added=post.filter(row=>!pre.some(old=>old.as_of===row.as_of));
+          if (added.length!==1 || added[0].as_of!==process.env.EXPECTED_NEW_CUTOFF) throw new Error(`unexpected appended cutoff ${JSON.stringify(added)}`);
+          NODE
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM backfill_runs) backfill_runs,(SELECT COUNT(*) FROM backfill_runs WHERE run_id='${EXPECTED_RUN_ID}' AND status='completed') ai22f_run_completed,(SELECT COUNT(*) FROM historical_storms) historical_storms,(SELECT COUNT(*) FROM forecast_snapshots) forecast_snapshots,(SELECT COUNT(*) FROM forecast_snapshots WHERE storm_key='WP-2026-16') wp16_snapshots,(SELECT COUNT(*) FROM corpus_capture_windows) capture_windows,(SELECT COUNT(*) FROM corpus_capture_windows WHERE window_id='${WINDOW_ID}' AND storm_key='WP-2026-16' AND lifecycle_state='active' AND last_capture_run_id='${EXPECTED_RUN_ID}') wp16_window_ok,(SELECT COUNT(*) FROM corpus_capture_runs) capture_runs,(SELECT COUNT(*) FROM corpus_capture_runs WHERE capture_run_id='${EXPECTED_RUN_ID}' AND fingerprint='${EXPECTED_CAPTURE_FINGERPRINT}' AND status='completed') wp16_capture_run_ok,(SELECT COUNT(*) FROM corpus_snapshot_memberships) snapshot_memberships,(SELECT COUNT(*) FROM corpus_snapshot_memberships WHERE capture_run_id='${EXPECTED_RUN_ID}' AND window_id='${WINDOW_ID}' AND disposition='existing') current_existing_memberships,(SELECT COUNT(*) FROM corpus_snapshot_memberships WHERE capture_run_id='${EXPECTED_RUN_ID}' AND window_id='${WINDOW_ID}' AND disposition='appended') current_appended_memberships,(SELECT COUNT(*) FROM corpus_lifecycle_events) lifecycle_events,(SELECT COUNT(*) FROM storm_identity_bindings) identity_bindings,(SELECT COUNT(*) FROM storm_identity_bindings WHERE storm_key='WP-2026-16' AND identity_type='production-international-number' AND identity_value='18' AND review_status='unreviewed') wp16_identity_unreviewed,(SELECT COUNT(*) FROM storm_identity_bindings WHERE review_status='reviewed') reviewed_identity_bindings,(SELECT COUNT(*) FROM storm_identity_merges) identity_merges,(SELECT COUNT(*) FROM truth_datasets) truth_datasets,(SELECT COUNT(*) FROM truth_points) truth_points,(SELECT COUNT(*) FROM verification_results) verification_results,(SELECT COUNT(*) FROM agency_skill_profiles) agency_skill_profiles,(SELECT COUNT(*) FROM adaptive_weight_candidates) adaptive_weight_candidates,(SELECT COUNT(*) FROM signal_calibration_training_runs) training_runs,(SELECT COUNT(*) FROM signal_outcome_curations) curations,(SELECT COUNT(*) FROM signal_profile_promotion_events) promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) champion_profile_id;" > /tmp/ai22f-poststate.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai22f-poststate.json | head -n1)"
+          ROW="$row" node --input-type=module <<'NODE'
+          const row=JSON.parse(process.env.ROW);
+          const expected={backfill_runs:4,ai22f_run_completed:1,historical_storms:3,forecast_snapshots:13,wp16_snapshots:5,capture_windows:1,wp16_window_ok:1,capture_runs:2,wp16_capture_run_ok:1,snapshot_memberships:9,current_existing_memberships:4,current_appended_memberships:1,lifecycle_events:1,identity_bindings:2,wp16_identity_unreviewed:2,reviewed_identity_bindings:0,identity_merges:0,truth_datasets:0,truth_points:0,verification_results:0,agency_skill_profiles:0,adaptive_weight_candidates:0,training_runs:0,curations:0,promotion_events:0,generation:0};
+          for (const [key,value] of Object.entries(expected)) if (Number(row[key])!==value) throw new Error(`AI-22F post-state ${key}=${row[key]}; expected ${value}`);
+          if (row.champion_profile_id!=null) throw new Error('AI-22F changed Champion');
+          NODE
+          echo 'AI22F_POSTSTATE_AND_IMMUTABILITY_VERIFIED=true'
+
+      - name: Record successful incremental append proof
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > docs/AI22_WP16_INCREMENTAL_CAPTURE_RESULT.md <<EOF
+          # AI-22F — WP-2026-16 Incremental Lifecycle Append Result
+
+          Status: **incremental append proof completed; AI-22 lifecycle closeout still pending**
+
+          - Source commit: \`${GITHUB_SHA}\`
+          - Actions run: \`${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\`
+          - Storm key: \`WP-2026-16\`
+          - Capture window: \`${WINDOW_ID}\`
+          - New cutoff: \`${EXPECTED_NEW_CUTOFF}\`
+          - New cutoff agencies: \`CMA / CWA / JMA\`
+          - Run ID: \`${EXPECTED_RUN_ID}\`
+          - Evidence SHA-256: \`${EXPECTED_EVIDENCE_SHA256}\`
+          - Plan SHA-256: \`${EXPECTED_PLAN_SHA256}\`
+          - Capture fingerprint: \`${EXPECTED_CAPTURE_FINGERPRINT}\`
+          - Incremental classification: \`4 existing / 1 appended\`
+          - Exact replay: \`5 existing / 0 appended / writesPerformed=false\`
+          - Original four snapshots: \`snapshot_id / fingerprint / payload_hash unchanged\`
+          - Remote forecast snapshots total / WP-2026-16: \`13 / 5\`
+          - Identity evidence for production number \`18\`: \`2 unreviewed / 0 reviewed\`
+          - Identity merges: \`0\`
+          - Truth / verification / training / promotion rows: \`0\`
+          - Signal Champion: \`NONE / generation 0\`
+          - Production \`storm-track-db\`: read-only
+          - Production Storm Worker modified: \`false\`
+
+          AI-22 remains open only for lifecycle closeout/transition proof and final phase assessment. No requirement is added that a new cutoff contain all agencies; this append used the actual usable CMA/CWA/JMA state.
+          EOF
+          printf '%s\n' 'COMPLETED_AI22_WP16_INCREMENTAL' > .github/ai22-wp16-incremental-trigger.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/AI22_WP16_INCREMENTAL_CAPTURE_RESULT.md .github/ai22-wp16-incremental-trigger.txt
+          git commit -m 'AI-22F: record WP-2026-16 incremental append proof [skip ci]'
+          git push origin HEAD:feature/ai-analysis-engine
+
+      - name: Confirm mutation gate is closed
+        if: steps.gate.outputs.requested != 'true'
+        run: |
+          echo 'AI22F_REMOTE_CAPTURE_REQUESTED=false'
+          echo 'AI22F_CORPUS_WRITES_PERFORMED=false'
+          echo 'AI22F_TRUTH_VERIFICATION_TRAINING_PROMOTION_WRITES=false'
