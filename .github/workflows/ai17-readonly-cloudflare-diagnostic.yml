@@ -13,7 +13,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -32,11 +32,24 @@ jobs:
           [[ -n "$CLOUDFLARE_API_TOKEN" ]] || { echo 'DIAG_CLOUDFLARE_API_TOKEN=missing'; exit 1; }
           echo 'DIAG_CLOUDFLARE_CREDENTIALS=present'
 
-      - name: Install pinned Wrangler
+      - name: Install pinned deployment toolchain
         working-directory: workers/storm-analysis
         run: npm install --no-audit --no-fund
 
+      - name: Run full Node checkpoint suite
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Run Workers Vitest / Miniflare D1 integration
+        working-directory: workers/storm-analysis
+        run: npm run test:integration
+
+      - name: Run bundle-only Wrangler dry run
+        working-directory: workers/storm-analysis
+        run: npm run deploy:dry-run
+
       - name: Inspect Cloudflare authentication and state without writes
+        if: always()
         working-directory: workers/storm-analysis
         shell: bash
         run: |
@@ -85,7 +98,7 @@ jobs:
           if [[ $deployment_rc -eq 0 ]]; then
             printf '%s\n' "$deployment" | jq -c '{id: (.id // .deployment_id // null), source: (.source // null), strategy: (.strategy // null)}' 2>/dev/null || echo 'DIAG_DEPLOYMENT_STATUS=present'
           else
-            grep -E 'Authentication error|code:|ERROR|not found' /tmp/deployment-error.log | tail -n 6 || true
+            grep -E 'Authentication error|code:|ERROR|not found|does not exist' /tmp/deployment-error.log | tail -n 6 || true
           fi
 
           subdomain="$(jq -r '.result.subdomain // empty' /tmp/subdomain.json 2>/dev/null)"
@@ -100,5 +113,5 @@ jobs:
             echo 'DIAG_HEALTH_HTTP=not-tested-no-subdomain-access'
           fi
 
-          # Diagnostic intentionally succeeds after reporting read-only results.
+          # Read-only Cloudflare inspection intentionally does not mutate resources.
           exit 0
