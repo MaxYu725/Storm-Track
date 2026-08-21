@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 
-const EXPECTED_MIGRATIONS = [
+const AI16_BASELINE_MIGRATIONS = [
   '0001_learning.sql',
   '0002_analysis_cache.sql',
   '0003_signal_risk_calibration.sql',
@@ -17,9 +17,13 @@ async function rows(sql, ...params) {
 }
 
 describe('AI-16 local Workers + D1 integration', () => {
-  it('applies the complete migration chain in order', async () => {
+  it('preserves the AI-16 migration baseline and applies the full contiguous chain in order', async () => {
     const migrations = await rows('SELECT name FROM d1_migrations ORDER BY id');
-    expect(migrations.map(row => row.name)).toEqual(EXPECTED_MIGRATIONS);
+    const migrationNames = migrations.map(row => row.name);
+    expect(migrationNames.slice(0, AI16_BASELINE_MIGRATIONS.length)).toEqual(AI16_BASELINE_MIGRATIONS);
+    const migrationNumbers = migrationNames.map(name => Number(/^([0-9]{4})_/.exec(name)?.[1]));
+    expect(migrationNumbers.every(Number.isInteger)).toBe(true);
+    expect(migrationNumbers).toEqual(migrationNumbers.map((_, index) => index + 1));
 
     const tables = await rows("SELECT name FROM sqlite_master WHERE type = 'table'");
     const names = new Set(tables.map(row => row.name));
