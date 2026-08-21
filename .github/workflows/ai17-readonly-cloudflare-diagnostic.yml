@@ -36,41 +36,69 @@ jobs:
         working-directory: workers/storm-analysis
         run: npm install --no-audit --no-fund
 
-      - name: Inspect Cloudflare state without writes
+      - name: Inspect Cloudflare authentication and state without writes
         working-directory: workers/storm-analysis
         shell: bash
         run: |
-          set -euo pipefail
-          dbs="$(npx wrangler d1 list --json --experimental-provision=false)"
-          count="$(printf '%s' "$dbs" | jq '[.[] | select(.name == "storm-analysis")] | length')"
-          echo "DIAG_STORM_ANALYSIS_D1_COUNT=$count"
-          if [[ "$count" == "1" ]]; then
-            id="$(printf '%s' "$dbs" | jq -r '.[] | select(.name == "storm-analysis") | (.uuid // .id // empty)')"
-            echo "DIAG_STORM_ANALYSIS_D1_ID=$id"
+          set -u
+
+          set +e
+          whoami="$(npx wrangler whoami 2>&1)"
+          whoami_rc=$?
+          set -e
+          echo "DIAG_WHOAMI_RC=$whoami_rc"
+          printf '%s\n' "$whoami" | sed -E 's/[0-9a-f]{32}/<account-id>/g' | tail -n 12
+
+          token_http="$(curl -sS -o /tmp/token-verify.json -w '%{http_code}' \
+            'https://api.cloudflare.com/client/v4/user/tokens/verify' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")"
+          echo "DIAG_TOKEN_VERIFY_HTTP=$token_http"
+          jq -c '{success,errors,messages,status:(.result.status // null)}' /tmp/token-verify.json || true
+
+          subdomain_http="$(curl -sS -o /tmp/subdomain.json -w '%{http_code}' \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")"
+          echo "DIAG_WORKERS_SUBDOMAIN_HTTP=$subdomain_http"
+          jq -c '{success,errors,messages,subdomain:(.result.subdomain // null)}' /tmp/subdomain.json || true
+
+          set +e
+          dbs="$(npx wrangler d1 list --json --experimental-provision=false 2>/tmp/d1-error.log)"
+          d1_rc=$?
+          set -e
+          echo "DIAG_D1_LIST_RC=$d1_rc"
+          if [[ $d1_rc -eq 0 ]]; then
+            count="$(printf '%s' "$dbs" | jq '[.[] | select(.name == "storm-analysis")] | length')"
+            echo "DIAG_STORM_ANALYSIS_D1_COUNT=$count"
+            if [[ "$count" == "1" ]]; then
+              id="$(printf '%s' "$dbs" | jq -r '.[] | select(.name == "storm-analysis") | (.uuid // .id // empty)')"
+              echo "DIAG_STORM_ANALYSIS_D1_ID=$id"
+            fi
+          else
+            grep -E 'Authentication error|code:|ERROR' /tmp/d1-error.log | tail -n 6 || true
           fi
 
           set +e
-          deployment="$(npx wrangler deployments status --name storm-analysis --json --experimental-provision=false 2>&1)"
-          rc=$?
+          deployment="$(npx wrangler deployments status --name storm-analysis --json --experimental-provision=false 2>/tmp/deployment-error.log)"
+          deployment_rc=$?
           set -e
-          echo "DIAG_DEPLOYMENT_STATUS_RC=$rc"
-          if [[ $rc -eq 0 ]]; then
+          echo "DIAG_DEPLOYMENT_STATUS_RC=$deployment_rc"
+          if [[ $deployment_rc -eq 0 ]]; then
             printf '%s\n' "$deployment" | jq -c '{id: (.id // .deployment_id // null), source: (.source // null), strategy: (.strategy // null)}' 2>/dev/null || echo 'DIAG_DEPLOYMENT_STATUS=present'
           else
-            echo 'DIAG_DEPLOYMENT_STATUS=absent-or-unavailable'
+            grep -E 'Authentication error|code:|ERROR|not found' /tmp/deployment-error.log | tail -n 6 || true
           fi
 
-          curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" > /tmp/subdomain.json
-          subdomain="$(jq -r '.result.subdomain // empty' /tmp/subdomain.json)"
-          echo "DIAG_WORKERS_SUBDOMAIN=$subdomain"
+          subdomain="$(jq -r '.result.subdomain // empty' /tmp/subdomain.json 2>/dev/null)"
           if [[ -n "$subdomain" ]]; then
             url="https://storm-analysis.${subdomain}.workers.dev/health"
-            set +e
-            code="$(curl -sS -o /tmp/health.json -w '%{http_code}' "$url")"
-            set -e
-            echo "DIAG_HEALTH_HTTP=$code"
-            if [[ "$code" == "200" ]]; then
+            health_http="$(curl -sS -o /tmp/health.json -w '%{http_code}' "$url")"
+            echo "DIAG_HEALTH_HTTP=$health_http"
+            if [[ "$health_http" == "200" ]]; then
               jq -c '{ok,service,analysisDbBound,importEnabled,analysisAdminEnabled,workersAiEnabled,promotionApiEnabled,automaticPromotionEnabled,productionStormWorkerModified}' /tmp/health.json
             fi
+          else
+            echo 'DIAG_HEALTH_HTTP=not-tested-no-subdomain-access'
           fi
+
+          # Diagnostic intentionally succeeds after reporting read-only results.
+          exit 0
