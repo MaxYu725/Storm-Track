@@ -7,6 +7,7 @@ const basic = require('../analysis/basic-hk-signal-forecast.js');
 const BASE = '2026-08-21T00:00:00.000Z';
 const HK = { lat: 22.3023, lon: 114.1746 };
 const time = hours => new Date(Date.parse(BASE) + hours * 3600000).toISOString();
+const likelihoodRank = { unlikely: 0, possible: 1, likely: 2 };
 
 function stateAt(hour, latOffset = 0, lonOffset = 0) {
   const ratio = hour / 24;
@@ -37,17 +38,17 @@ function source({ confirmed, latOffset = 0, lonOffset = 0 }) {
   };
 }
 
-function snapshot(confirmed) {
+function snapshot(confirmationLevel) {
   return {
     generatedAt: BASE,
     referencePoint: HK,
     sources: {
-      // Stage 1: CMA already publishes an official +12h point while HKO/CWA still
-      // require interpolation across a sparse 24h chord. Stage 2: all three agencies
-      // publish intermediate points confirming the same dangerous geometry.
-      HKO: source({ confirmed, latOffset: 0.04, lonOffset: 0.03 }),
+      // CMA confirms the intermediate trajectory first, HKO second, CWA third.
+      // Geometry is identical at every level: only the amount of direct official
+      // support changes, so raw physical threat should remain invariant.
+      HKO: source({ confirmed: confirmationLevel >= 2, latOffset: 0.04, lonOffset: 0.03 }),
       CMA: source({ confirmed: true, latOffset: 0, lonOffset: 0 }),
-      CWA: source({ confirmed, latOffset: -0.04, lonOffset: -0.03 }),
+      CWA: source({ confirmed: confirmationLevel >= 3, latOffset: -0.04, lonOffset: -0.03 }),
       JMA: { state: 'missing' }
     }
   };
@@ -90,9 +91,9 @@ const signalInputs = {
   }
 };
 
-function run(confirmed) {
+function run(confirmationLevel) {
   const assessment = threat.buildHkThreatAssessment({
-    snapshot: snapshot(confirmed),
+    snapshot: snapshot(confirmationLevel),
     impact,
     signalInputs
   });
@@ -106,43 +107,71 @@ function run(confirmed) {
   return { assessment, forecast };
 }
 
-const sparse = run(false);
-const confirmed = run(true);
+const stage1 = run(1);
+const stage2 = run(2);
+const stage3 = run(3);
 
-const sparse12 = sparse.assessment.timeline.find(item => item.label === '+12h');
-const confirmed12 = confirmed.assessment.timeline.find(item => item.label === '+12h');
-assert.ok(sparse12 && confirmed12, 'both variants should expose +12h through CMA official timing');
-assert.equal(sparse12.exactOfficialSupportCount, 1,
-  'stage-one +12h should have one exact official point and two interpolated agency positions');
-assert.equal(confirmed12.exactOfficialSupportCount, 3,
-  'confirmed variant should have three exact official +12h positions');
-assert.ok(confirmed12.interpolationReliability > sparse12.interpolationReliability + 0.2,
-  `official confirmation should materially restore reliability: sparse=${sparse12.interpolationReliability.toFixed(3)} confirmed=${confirmed12.interpolationReliability.toFixed(3)}`);
+const stage1Point = stage1.assessment.timeline.find(item => item.label === '+12h');
+const stage2Point = stage2.assessment.timeline.find(item => item.label === '+12h');
+const stage3Point = stage3.assessment.timeline.find(item => item.label === '+12h');
+assert.ok(stage1Point && stage2Point && stage3Point,
+  'all confirmation levels should expose +12h through the common official timing');
+assert.equal(stage1Point.exactOfficialSupportCount, 1,
+  'stage one should have one exact official +12h point');
+assert.equal(stage2Point.exactOfficialSupportCount, 2,
+  'stage two should have two exact official +12h points');
+assert.equal(stage3Point.exactOfficialSupportCount, 3,
+  'stage three should have three exact official +12h points');
+assert.ok(stage1Point.interpolationReliability < stage2Point.interpolationReliability,
+  'second official confirmation should increase checkpoint reliability');
+assert.ok(stage2Point.interpolationReliability < stage3Point.interpolationReliability,
+  'third official confirmation should further increase checkpoint reliability');
 
-// T1 may escalate earlier because one agency already directly confirms the close pass.
-// Higher warning levels should preserve the danger as possible without treating two
-// sparse interpolated trajectories as equivalent to additional official confirmations.
-assert.notEqual(sparse.forecast.signals.T1.likelihood, 'unlikely',
-  'partly confirmed dangerous scenario should remain visible for T1');
-assert.notEqual(sparse.forecast.signals.T3.likelihood, 'unlikely',
-  'partly confirmed dangerous scenario should remain visible at least as possible T3');
-assert.notEqual(sparse.forecast.signals.T8.likelihood, 'unlikely',
-  'partly confirmed dangerous scenario should remain visible at least as possible T8');
-assert.notEqual(sparse.forecast.signals.T3.likelihood, 'likely',
-  `partly interpolated route should not prematurely become likely T3; got ${sparse.forecast.signals.T3.likelihood}`);
-assert.notEqual(sparse.forecast.signals.T8.likelihood, 'likely',
-  `partly interpolated route should not prematurely become likely T8; got ${sparse.forecast.signals.T8.likelihood}`);
+// Interpolation reliability is confidence metadata, not physical storm evidence.
+// Adding official intermediate points that lie on the same trajectory must not alter
+// the raw T3/T8 risk magnitude.
+assert.ok(Math.abs(stage1.forecast.signals.T3.riskIndex - stage2.forecast.signals.T3.riskIndex) < 1e-9);
+assert.ok(Math.abs(stage2.forecast.signals.T3.riskIndex - stage3.forecast.signals.T3.riskIndex) < 1e-9);
+assert.ok(Math.abs(stage1.forecast.signals.T8.riskIndex - stage2.forecast.signals.T8.riskIndex) < 1e-9);
+assert.ok(Math.abs(stage2.forecast.signals.T8.riskIndex - stage3.forecast.signals.T8.riskIndex) < 1e-9);
+
+assert.ok(stage1.assessment.summary.confidenceIndex < stage2.assessment.summary.confidenceIndex,
+  'confidence should rise after the second official confirmation');
+assert.ok(stage2.assessment.summary.confidenceIndex < stage3.assessment.summary.confidenceIndex,
+  'confidence should rise again after the third official confirmation');
+
+// Stage one already contains one direct official close-pass confirmation, so T1 may
+// legitimately escalate early. Higher signal states must preserve the threat without
+// treating sparse interpolated trajectories as equivalent to direct confirmation.
+assert.notEqual(stage1.forecast.signals.T1.likelihood, 'unlikely');
+assert.notEqual(stage1.forecast.signals.T3.likelihood, 'unlikely');
+assert.notEqual(stage1.forecast.signals.T8.likelihood, 'unlikely');
+assert.notEqual(stage1.forecast.signals.T3.likelihood, 'likely',
+  `one-confirmation route should not prematurely become likely T3; got ${stage1.forecast.signals.T3.likelihood}`);
+assert.notEqual(stage1.forecast.signals.T8.likelihood, 'likely',
+  `one-confirmation route should not prematurely become likely T8; got ${stage1.forecast.signals.T8.likelihood}`);
+
+// Reliability is continuous rather than a hidden N-agency gate. More direct official
+// confirmation must never reduce the warning likelihood for otherwise identical data.
+for (const signal of ['T1', 'T3', 'T8']) {
+  assert.ok(
+    likelihoodRank[stage2.forecast.signals[signal].likelihood] >= likelihoodRank[stage1.forecast.signals[signal].likelihood],
+    `${signal} likelihood must not fall from stage 1 to stage 2`
+  );
+  assert.ok(
+    likelihoodRank[stage3.forecast.signals[signal].likelihood] >= likelihoodRank[stage2.forecast.signals[signal].likelihood],
+    `${signal} likelihood must not fall from stage 2 to stage 3`
+  );
+}
 
 // Once all three agencies publish intermediate points confirming the same dangerous
 // geometry, the interpolation penalty must lift. T8 may use reliable confirmed peak
 // evidence as well as persistence, so a short but extreme close pass is not suppressed.
-assert.equal(confirmed.forecast.signals.T1.likelihood, 'likely',
-  `confirmed direct route should support likely T1; got ${confirmed.forecast.signals.T1.likelihood}`);
-assert.equal(confirmed.forecast.signals.T3.likelihood, 'likely',
-  `confirmed direct route should support likely T3; got ${confirmed.forecast.signals.T3.likelihood}`);
-assert.equal(confirmed.forecast.signals.T8.likelihood, 'likely',
-  `confirmed direct route should support likely T8; got ${confirmed.forecast.signals.T8.likelihood}`);
-assert.ok(confirmed.assessment.summary.confidenceIndex > sparse.assessment.summary.confidenceIndex,
-  'official intermediate confirmation should restore assessment confidence');
+assert.equal(stage3.forecast.signals.T1.likelihood, 'likely',
+  `fully confirmed direct route should support likely T1; got ${stage3.forecast.signals.T1.likelihood}`);
+assert.equal(stage3.forecast.signals.T3.likelihood, 'likely',
+  `fully confirmed direct route should support likely T3; got ${stage3.forecast.signals.T3.likelihood}`);
+assert.equal(stage3.forecast.signals.T8.likelihood, 'likely',
+  `fully confirmed direct route should support likely T8; got ${stage3.forecast.signals.T8.likelihood}`);
 
 console.log('HK interpolation confirmation escalation: OK');
