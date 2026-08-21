@@ -13,7 +13,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -22,6 +22,9 @@ jobs:
       WORKER_URL: https://storm-analysis.max-yu.workers.dev
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
 
       - uses: actions/setup-node@v5
         with:
@@ -31,68 +34,79 @@ jobs:
         working-directory: workers/storm-analysis
         run: npm install --no-audit --no-fund
 
-      - name: Inspect post-activation state without writes
+      - name: Run final complete Node checkpoint suite
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Run final Workers Vitest / Miniflare D1 integration
+        working-directory: workers/storm-analysis
+        run: npm run test:integration
+
+      - name: Run final Wrangler dry run with required secrets declared
+        working-directory: workers/storm-analysis
+        run: npm run deploy:dry-run
+
+      - name: Inspect final AI-18 state without writes
         working-directory: workers/storm-analysis
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
 
-          format_ok=true
-          [[ "$BACKFILL_TOKEN" =~ ^[0-9a-fA-F]{64}$ ]] || format_ok=false
-          [[ "$ANALYSIS_ADMIN_TOKEN" =~ ^[0-9a-fA-F]{64}$ ]] || format_ok=false
-          [[ -n "$BACKFILL_TOKEN" && "$BACKFILL_TOKEN" != "$ANALYSIS_ADMIN_TOKEN" ]] || format_ok=false
-          echo "DIAG_APP_SECRETS_FORMAT_OK=$format_ok"
+          [[ "$BACKFILL_TOKEN" =~ ^[0-9a-fA-F]{64}$ ]]
+          [[ "$ANALYSIS_ADMIN_TOKEN" =~ ^[0-9a-fA-F]{64}$ ]]
+          [[ "$BACKFILL_TOKEN" != "$ANALYSIS_ADMIN_TOKEN" ]]
+          echo 'DIAG_APP_SECRETS_FORMAT_OK=true'
 
-          set +e
-          npx wrangler secret list --format json --experimental-provision=false > /tmp/ai18-secret-list.json 2>/tmp/ai18-secret-list.err
-          secret_rc=$?
-          set -e
-          echo "DIAG_SECRET_LIST_RC=$secret_rc"
-          if [[ $secret_rc -eq 0 ]]; then
-            echo "DIAG_BACKFILL_SECRET_COUNT=$(jq '[.[] | select(.name == "BACKFILL_TOKEN")] | length' /tmp/ai18-secret-list.json)"
-            echo "DIAG_ADMIN_SECRET_COUNT=$(jq '[.[] | select(.name == "ANALYSIS_ADMIN_TOKEN")] | length' /tmp/ai18-secret-list.json)"
-          fi
+          npx wrangler secret list --format json --experimental-provision=false > /tmp/ai18-secret-list.json
+          echo "DIAG_BACKFILL_SECRET_COUNT=$(jq '[.[] | select(.name == "BACKFILL_TOKEN")] | length' /tmp/ai18-secret-list.json)"
+          echo "DIAG_ADMIN_SECRET_COUNT=$(jq '[.[] | select(.name == "ANALYSIS_ADMIN_TOKEN")] | length' /tmp/ai18-secret-list.json)"
 
           health_http="$(curl -sS -o /tmp/ai18-health.json -w '%{http_code}' "${WORKER_URL}/health")"
           echo "DIAG_HEALTH_HTTP=$health_http"
-          if [[ "$health_http" == "200" ]]; then
-            jq -c '{ok,service,analysisDbBound,importEnabled,analysisAdminEnabled,workersAiEnabled,promotionApiEnabled,automaticPromotionEnabled,productionStormWorkerModified}' /tmp/ai18-health.json
-          fi
+          jq -c '{ok,service,analysisDbBound,importEnabled,analysisAdminEnabled,workersAiEnabled,promotionApiEnabled,automaticPromotionEnabled,productionStormWorkerModified}' /tmp/ai18-health.json
 
-          set +e
-          deployment="$(npx wrangler deployments status --name storm-analysis --json --experimental-provision=false 2>/tmp/ai18-deployment.err)"
-          deployment_rc=$?
-          set -e
-          echo "DIAG_DEPLOYMENT_RC=$deployment_rc"
-          if [[ $deployment_rc -eq 0 ]]; then
-            printf '%s\n' "$deployment" | jq -c '{id:(.id // .deployment_id // null),source:(.source // null),strategy:(.strategy // null)}' || true
-          fi
+          deployment="$(npx wrangler deployments status --name storm-analysis --json --experimental-provision=false)"
+          printf '%s\n' "$deployment" | jq -c '{id:(.id // .deployment_id // null),source:(.source // null),strategy:(.strategy // null)}'
 
-          if [[ "$format_ok" == "true" ]]; then
-            for endpoint in /api/backfill/import /api/admin/signal-training/preview /api/admin/signal-risk/promotion/preview; do
-              status="$(curl -sS -o /tmp/ai18-unauth.json -w '%{http_code}' -X POST "${WORKER_URL}${endpoint}")"
-              echo "DIAG_UNAUTH_STATUS=${endpoint}:${status}"
-            done
-            status="$(curl -sS -o /tmp/ai18-cross.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/import" -H "Authorization: Bearer ${ANALYSIS_ADMIN_TOKEN}")"
-            echo "DIAG_CROSS_ADMIN_TO_BACKFILL=$status"
-            status="$(curl -sS -o /tmp/ai18-cross.json -w '%{http_code}' -X POST "${WORKER_URL}/api/admin/signal-training/preview" -H "Authorization: Bearer ${BACKFILL_TOKEN}")"
-            echo "DIAG_CROSS_BACKFILL_TO_ADMIN=$status"
-            status="$(curl -sS -o /tmp/ai18-correct.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/import" -H "Authorization: Bearer ${BACKFILL_TOKEN}")"
-            echo "DIAG_CORRECT_BACKFILL_NO_BODY=${status}:$(jq -r '.error // empty' /tmp/ai18-correct.json 2>/dev/null || true)"
-            status="$(curl -sS -o /tmp/ai18-correct.json -w '%{http_code}' -X POST "${WORKER_URL}/api/admin/signal-training/preview" -H "Authorization: Bearer ${ANALYSIS_ADMIN_TOKEN}")"
-            echo "DIAG_CORRECT_ADMIN_NO_BODY=${status}:$(jq -r '.error // empty' /tmp/ai18-correct.json 2>/dev/null || true)"
-          fi
+          for endpoint in /api/backfill/import /api/admin/signal-training/preview /api/admin/signal-risk/promotion/preview; do
+            status="$(curl -sS -o /tmp/ai18-unauth.json -w '%{http_code}' -X POST "${WORKER_URL}${endpoint}")"
+            echo "DIAG_UNAUTH_STATUS=${endpoint}:${status}"
+            [[ "$status" == "401" ]]
+          done
 
-          set +e
+          status="$(curl -sS -o /tmp/ai18-cross.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/import" -H "Authorization: Bearer ${ANALYSIS_ADMIN_TOKEN}")"
+          echo "DIAG_CROSS_ADMIN_TO_BACKFILL=$status"
+          [[ "$status" == "401" ]]
+          status="$(curl -sS -o /tmp/ai18-cross.json -w '%{http_code}' -X POST "${WORKER_URL}/api/admin/signal-training/preview" -H "Authorization: Bearer ${BACKFILL_TOKEN}")"
+          echo "DIAG_CROSS_BACKFILL_TO_ADMIN=$status"
+          [[ "$status" == "401" ]]
+
+          status="$(curl -sS -o /tmp/ai18-correct.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/import" -H "Authorization: Bearer ${BACKFILL_TOKEN}")"
+          error="$(jq -r '.error // empty' /tmp/ai18-correct.json)"
+          echo "DIAG_CORRECT_BACKFILL_NO_BODY=${status}:${error}"
+          [[ "$status" == "400" && ( "$error" == "missing-body" || "$error" == "invalid-json" ) ]]
+          status="$(curl -sS -o /tmp/ai18-correct.json -w '%{http_code}' -X POST "${WORKER_URL}/api/admin/signal-training/preview" -H "Authorization: Bearer ${ANALYSIS_ADMIN_TOKEN}")"
+          error="$(jq -r '.error // empty' /tmp/ai18-correct.json)"
+          echo "DIAG_CORRECT_ADMIN_NO_BODY=${status}:${error}"
+          [[ "$status" == "400" && ( "$error" == "missing-body" || "$error" == "invalid-json" ) ]]
+
           npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false \
             --command "SELECT (SELECT COUNT(*) FROM backfill_runs) AS backfill_runs, (SELECT COUNT(*) FROM historical_storms) AS historical_storms, (SELECT COUNT(*) FROM signal_calibration_training_runs) AS training_runs, (SELECT COUNT(*) FROM signal_outcome_curations) AS curations, (SELECT COUNT(*) FROM signal_profile_promotion_events) AS promotion_events, (SELECT generation FROM signal_calibration_state WHERE state_id = 1) AS generation, (SELECT champion_profile_id FROM signal_calibration_state WHERE state_id = 1) AS champion_profile_id;" \
-            > /tmp/ai18-db.json 2>/tmp/ai18-db.err
-          db_rc=$?
-          set -e
-          echo "DIAG_DB_RC=$db_rc"
-          if [[ $db_rc -eq 0 ]]; then
-            jq -c '[.. | objects | select(has("backfill_runs")) | {backfill_runs,historical_storms,training_runs,curations,promotion_events,generation,champion_profile_id}]' /tmp/ai18-db.json
-          fi
-          echo 'DIAG_MUTATIONS_PERFORMED=false'
+            > /tmp/ai18-db.json
+          jq -c '[.. | objects | select(has("backfill_runs")) | {backfill_runs,historical_storms,training_runs,curations,promotion_events,generation,champion_profile_id}]' /tmp/ai18-db.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const data = JSON.parse(fs.readFileSync('/tmp/ai18-db.json','utf8'));
+          const walk = v => Array.isArray(v) ? v.flatMap(walk) : v && typeof v === 'object' ? (Array.isArray(v.results) ? v.results : Object.values(v).flatMap(walk)) : [];
+          const row = walk(data).find(v => v && Object.hasOwn(v,'backfill_runs'));
+          if (!row) throw new Error('missing AI-18 DB state row');
+          for (const key of ['backfill_runs','historical_storms','training_runs','curations','promotion_events','generation']) if (Number(row[key]) !== 0) throw new Error(`${key} is not zero`);
+          if (row.champion_profile_id != null) throw new Error('Champion unexpectedly set');
+          NODE
 
-# Post-feature activation state check.
+          [[ "$(tr -d '\r\n' < ../../.github/ai18-activation-trigger.txt)" == "COMPLETED_AI18" ]]
+          grep -q 'BACKFILL_TOKEN' wrangler.jsonc
+          grep -q 'ANALYSIS_ADMIN_TOKEN' wrangler.jsonc
+          test -f ../../docs/AI18_ACTIVATION_RESULT.md
+          echo 'DIAG_FINAL_AI18_CHECKPOINT=true'
+          echo 'DIAG_MUTATIONS_PERFORMED=false'
