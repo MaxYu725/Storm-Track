@@ -148,4 +148,5 @@ if (trigger === 'COMPLETED_AI19') {
   assert.ok(fs.existsSync(path.join(root, 'docs/AI19_PILOT_IMPORT_RESULT.md')), 'COMPLETED_AI19 requires pilot import result evidence');
 }
 
+// Temporary PR-only trigger for the AI-19 preactivation audit. Do not merge.
 console.log(`storm-analysis AI-19 activation safety guards passed (${trigger})`);
