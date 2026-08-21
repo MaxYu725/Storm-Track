@@ -79,6 +79,6 @@ class Db{constructor(){this.calls=[];this.row=null}prepare(sql){return new State
   };
   const response=await handleRequest(new Request('https://example.test/api/analysis/run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceGroup:{key:'r'}})}),{ANALYSIS_DB:{}},deps);
   assert.equal(response.status,200);const body=await response.json();assert.equal(body.analysis.schemaVersion,'storm-analysis-orchestration/v2');assert.equal(body.cache.status,'miss-stored');
-  const health=await handleRequest(new Request('https://example.test/health'),{ANALYSIS_DB:{}},deps);const hb=await health.json();assert.equal(hb.deterministicAnalysisVersion,'storm-analysis-orchestration/v2');assert.equal(hb.analysisCacheVersion,'analysis-cache/v1');
+  const health=await handleRequest(new Request('https://example.test/health'),{ANALYSIS_DB:{}},deps);const hb=await health.json();assert.equal(hb.deterministicAnalysisVersion,'storm-analysis-orchestration/v3');assert.equal(hb.analysisCacheVersion,'analysis-cache/v1');
 }
 console.log('storm-analysis AI-10 tests: OK');
