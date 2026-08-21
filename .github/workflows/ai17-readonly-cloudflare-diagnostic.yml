@@ -79,6 +79,7 @@ jobs:
           d1_rc=$?
           set -e
           echo "DIAG_D1_LIST_RC=$d1_rc"
+          count=0
           if [[ $d1_rc -eq 0 ]]; then
             count="$(printf '%s' "$dbs" | jq '[.[] | select(.name == "storm-analysis")] | length')"
             echo "DIAG_STORM_ANALYSIS_D1_COUNT=$count"
@@ -88,6 +89,31 @@ jobs:
             fi
           else
             grep -E 'Authentication error|code:|ERROR' /tmp/d1-error.log | tail -n 6 || true
+          fi
+
+          if [[ "$count" == "1" ]]; then
+            set +e
+            npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false \
+              --command "SELECT id, name FROM d1_migrations ORDER BY id;" > /tmp/ai17-migrations.json 2>/tmp/ai17-migrations.err
+            migrations_rc=$?
+            npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false \
+              --command "SELECT state_id, champion_profile_id, generation FROM signal_calibration_state ORDER BY state_id;" > /tmp/ai17-state.json 2>/tmp/ai17-state.err
+            state_rc=$?
+            set -e
+            echo "DIAG_MIGRATIONS_RC=$migrations_rc"
+            if [[ $migrations_rc -eq 0 ]]; then
+              printf 'DIAG_MIGRATION_NAMES='
+              jq -c '[.. | objects | select(has("name")) | .name]' /tmp/ai17-migrations.json || true
+            else
+              tail -n 8 /tmp/ai17-migrations.err || true
+            fi
+            echo "DIAG_CALIBRATION_STATE_RC=$state_rc"
+            if [[ $state_rc -eq 0 ]]; then
+              printf 'DIAG_CALIBRATION_STATE='
+              jq -c '[.. | objects | select(has("state_id")) | {state_id,champion_profile_id,generation}]' /tmp/ai17-state.json || true
+            else
+              tail -n 8 /tmp/ai17-state.err || true
+            fi
           fi
 
           set +e
@@ -103,18 +129,37 @@ jobs:
 
           subdomain="$(jq -r '.result.subdomain // empty' /tmp/subdomain.json 2>/dev/null)"
           if [[ -n "$subdomain" ]]; then
-            url="https://storm-analysis.${subdomain}.workers.dev/health"
-            health_http="$(curl -sS -o /tmp/health.json -w '%{http_code}' "$url")"
+            base="https://storm-analysis.${subdomain}.workers.dev"
+            health_http="$(curl -sS -o /tmp/health.json -w '%{http_code}' "${base}/health")"
             echo "DIAG_HEALTH_HTTP=$health_http"
             if [[ "$health_http" == "200" ]]; then
               jq -c '{ok,service,analysisDbBound,importEnabled,analysisAdminEnabled,workersAiEnabled,promotionApiEnabled,automaticPromotionEnabled,productionStormWorkerModified}' /tmp/health.json
             fi
+
+            model_http="$(curl -sS -o /tmp/model.json -w '%{http_code}' "${base}/api/models/champion")"
+            echo "DIAG_MODEL_HTTP=$model_http"
+            if [[ "$model_http" == "200" ]]; then
+              jq -c '{ok,readOnly,modelVersion:(.model.modelVersion // null),persisted:(.model.persisted // null)}' /tmp/model.json
+            fi
+
+            profile_http="$(curl -sS -o /tmp/profile.json -w '%{http_code}' "${base}/api/signal-risk/profiles/champion")"
+            echo "DIAG_PROFILE_HTTP=$profile_http"
+            if [[ "$profile_http" == "200" ]]; then
+              jq -c '{ok,readOnly,available,profile}' /tmp/profile.json
+            fi
+
+            for endpoint in \
+              /api/backfill/import \
+              /api/admin/signal-training/preview \
+              /api/admin/signal-risk/promotion/preview
+            do
+              status="$(curl -sS -o /tmp/ai17-auth-body.json -w '%{http_code}' -X POST "${base}${endpoint}" -H 'content-type: application/json' --data '{}')"
+              echo "DIAG_UNAUTH_STATUS=${endpoint}:${status}"
+            done
           else
             echo 'DIAG_HEALTH_HTTP=not-tested-no-subdomain-access'
           fi
 
           # Read-only Cloudflare inspection intentionally does not mutate resources.
-          # AI-17 permission recheck after D1 Edit was granted.
-          # AI-17 token was rotated in GitHub Secrets; recheck effective permissions.
-          # AI-17 post-trigger partial-state inspection.
+          # AI-17 deployment verification after first provisioning.
           exit 0
