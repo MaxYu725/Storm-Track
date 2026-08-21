@@ -1,4 +1,6 @@
 import { createBackfillRepository, previewImportPlan } from './backfill-repository.js';
+import { createModelRepository } from './model-repository.js';
+import { createAnalysisOrchestrator } from './analysis-orchestrator.js';
 
 const SERVICE = 'storm-analysis';
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -19,21 +21,22 @@ function errorResponse(error) {
   return json(payload, { status });
 }
 
+function httpError(status, code, message) {
+  const error = new Error(message);
+  error.status = status;
+  error.code = code;
+  return error;
+}
+
+function requireAnalysisDb(env) {
+  if (!env?.ANALYSIS_DB) throw httpError(503, 'analysis-db-unavailable', 'ANALYSIS_DB binding is not configured');
+  return env.ANALYSIS_DB;
+}
+
 async function readJsonWithLimit(request, limit = MAX_BODY_BYTES) {
   const declared = Number(request.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > limit) {
-    const error = new Error(`request body exceeds ${limit} bytes`);
-    error.status = 413;
-    error.code = 'body-too-large';
-    throw error;
-  }
-  if (!request.body) {
-    const error = new Error('JSON request body is required');
-    error.status = 400;
-    error.code = 'missing-body';
-    throw error;
-  }
-
+  if (Number.isFinite(declared) && declared > limit) throw httpError(413, 'body-too-large', `request body exceeds ${limit} bytes`);
+  if (!request.body) throw httpError(400, 'missing-body', 'JSON request body is required');
   const reader = request.body.getReader();
   const chunks = [];
   let length = 0;
@@ -42,32 +45,15 @@ async function readJsonWithLimit(request, limit = MAX_BODY_BYTES) {
       const { value, done } = await reader.read();
       if (done) break;
       length += value.byteLength;
-      if (length > limit) {
-        const error = new Error(`request body exceeds ${limit} bytes`);
-        error.status = 413;
-        error.code = 'body-too-large';
-        throw error;
-      }
+      if (length > limit) throw httpError(413, 'body-too-large', `request body exceeds ${limit} bytes`);
       chunks.push(value);
     }
-  } finally {
-    reader.releaseLock();
-  }
-
+  } finally { reader.releaseLock(); }
   const bytes = new Uint8Array(length);
   let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return JSON.parse(new TextDecoder().decode(bytes));
-  } catch {
-    const error = new Error('request body must contain valid JSON');
-    error.status = 400;
-    error.code = 'invalid-json';
-    throw error;
-  }
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  try { return JSON.parse(new TextDecoder().decode(bytes)); }
+  catch { throw httpError(400, 'invalid-json', 'request body must contain valid JSON'); }
 }
 
 async function digest(value) {
@@ -84,70 +70,69 @@ async function constantTimeSecretEqual(left, right) {
 
 async function requireBackfillAuthorization(request, env) {
   const secret = typeof env?.BACKFILL_TOKEN === 'string' ? env.BACKFILL_TOKEN : '';
-  if (!secret) {
-    const error = new Error('backfill import is disabled until BACKFILL_TOKEN is configured');
-    error.status = 503;
-    error.code = 'import-disabled';
-    throw error;
-  }
+  if (!secret) throw httpError(503, 'import-disabled', 'backfill import is disabled until BACKFILL_TOKEN is configured');
   const header = request.headers.get('authorization') || '';
   const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match || !(await constantTimeSecretEqual(match[1], secret))) {
-    const error = new Error('valid bearer token is required');
-    error.status = 401;
-    error.code = 'unauthorized';
-    throw error;
-  }
+  if (!match || !(await constantTimeSecretEqual(match[1], secret))) throw httpError(401, 'unauthorized', 'valid bearer token is required');
 }
 
-async function route(request, env) {
+function factories(dependencies = {}) {
+  return {
+    modelRepository: dependencies.createModelRepository || createModelRepository,
+    orchestrator: dependencies.createAnalysisOrchestrator || createAnalysisOrchestrator
+  };
+}
+
+async function route(request, env, dependencies) {
   const url = new URL(request.url);
+  const factory = factories(dependencies);
 
   if (url.pathname === '/health' && request.method === 'GET') {
-    return json({
-      ok: true,
-      service: SERVICE,
-      analysisDbBound: Boolean(env?.ANALYSIS_DB),
-      importEnabled: typeof env?.BACKFILL_TOKEN === 'string' && env.BACKFILL_TOKEN.length > 0,
-      productionStormWorkerModified: false
-    });
+    return json({ ok: true, service: SERVICE, analysisDbBound: Boolean(env?.ANALYSIS_DB), importEnabled: typeof env?.BACKFILL_TOKEN === 'string' && env.BACKFILL_TOKEN.length > 0, deterministicAnalysisVersion: 'storm-analysis-orchestration/v1', workersAiEnabled: false, productionStormWorkerModified: false });
   }
 
   if (url.pathname === '/api/backfill/plan') {
     if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
-    const body = await readJsonWithLimit(request);
-    return json(previewImportPlan(body));
+    return json(previewImportPlan(await readJsonWithLimit(request)));
   }
 
   if (url.pathname === '/api/backfill/import') {
     if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
     await requireBackfillAuthorization(request, env);
-    if (!env?.ANALYSIS_DB) {
-      const error = new Error('ANALYSIS_DB binding is not configured');
-      error.status = 503;
-      error.code = 'analysis-db-unavailable';
-      throw error;
-    }
-    const body = await readJsonWithLimit(request);
-    const repository = createBackfillRepository(env.ANALYSIS_DB);
-    return json(await repository.importPlan(body));
+    const repository = createBackfillRepository(requireAnalysisDb(env));
+    return json(await repository.importPlan(await readJsonWithLimit(request)));
+  }
+
+  if (url.pathname === '/api/models/champion') {
+    if (request.method !== 'GET') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'GET' } });
+    const repository = factory.modelRepository(requireAnalysisDb(env));
+    return json({ ok: true, model: await repository.getChampion(), readOnly: true });
+  }
+
+  if (url.pathname.startsWith('/api/models/')) {
+    if (request.method !== 'GET') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'GET' } });
+    const version = decodeURIComponent(url.pathname.slice('/api/models/'.length));
+    if (!version) throw httpError(400, 'model-version-required', 'model version is required');
+    const repository = factory.modelRepository(requireAnalysisDb(env));
+    const model = await repository.getByVersion(version);
+    if (!model) throw httpError(404, 'model-not-found', `model ${version} was not found`);
+    return json({ ok: true, model, readOnly: true });
+  }
+
+  if (url.pathname === '/api/analysis/run') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method-not-allowed' }, { status: 405, headers: { allow: 'POST' } });
+    const repository = factory.modelRepository(requireAnalysisDb(env));
+    const orchestrator = factory.orchestrator({ modelRepository: repository });
+    return json({ ok: true, analysis: await orchestrator.run(await readJsonWithLimit(request)) });
   }
 
   return json({ ok: false, error: 'not-found' }, { status: 404 });
 }
 
-export async function handleRequest(request, env) {
-  try {
-    return await route(request, env);
-  } catch (error) {
-    return errorResponse(error);
-  }
+export async function handleRequest(request, env, dependencies = {}) {
+  try { return await route(request, env, dependencies); }
+  catch (error) { return errorResponse(error); }
 }
 
-export default {
-  async fetch(request, env) {
-    return handleRequest(request, env);
-  }
-};
-
+export default { async fetch(request, env) { return handleRequest(request, env); } };
 export { MAX_BODY_BYTES, constantTimeSecretEqual, readJsonWithLimit };
