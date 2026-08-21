@@ -28,193 +28,161 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path, old, new, label):
+          def must_replace(path, old, new, label):
               text = path.read_text(encoding='utf-8')
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{label}: expected one anchor, found {count}')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{label}: expected one anchor, found {text.count(old)}')
               path.write_text(text.replace(old, new, 1), encoding='utf-8')
 
           threat = Path('analysis/hk-threat-assessment.js')
-          replace_once(threat,
-          '''    const timeline = buildTimeline(agencyTracks, normalizedReferencePoint, referenceTimeMs);
-              const strongestTimelineThreat = timeline.reduce((best, item) => item.threatIndex > (best?.threatIndex ?? -1) ? item : best, null);
-              const fastestEvolution = timeline.reduce((best, item) => item.rapidEvolutionIndex > (best?.rapidEvolutionIndex ?? -1) ? item : best, null);''',
-          '''    const fullTimeline = buildTimeline(agencyTracks, normalizedReferencePoint, referenceTimeMs);
-              const timeline = fullTimeline.filter(item => Number.isFinite(item.leadHours) && item.leadHours >= 0);
-              const recentObservedTimeline = fullTimeline.filter(item => Number.isFinite(item.leadHours) && item.leadHours < 0 && item.leadHours >= -12);
-              const strongestTimelineThreat = timeline.reduce((best, item) => item.threatIndex > (best?.threatIndex ?? -1) ? item : best, null);
-              const fastestEvolution = timeline.reduce((best, item) => item.rapidEvolutionIndex > (best?.rapidEvolutionIndex ?? -1) ? item : best, null);
-              const recentObservedEvolution = recentObservedTimeline.reduce((best, item) => item.rapidEvolutionIndex > (best?.rapidEvolutionIndex ?? -1) ? item : best, null);''',
-          'future timeline selection')
-          replace_once(threat,
-          '''        fastestEvolution: fastestEvolution ? {
-                  label: fastestEvolution.label,
-                  validTime: fastestEvolution.validTime,
-                  leadHours: fastestEvolution.leadHours,
-                  rapidEvolutionIndex: fastestEvolution.rapidEvolutionIndex,
-                  approachRateKmh: fastestEvolution.approachRateKmh,
-                  strengtheningRateMsPerHour: fastestEvolution.strengtheningRateMsPerHour
-                } : null''',
-          '''        fastestEvolution: fastestEvolution ? {
-                  label: fastestEvolution.label,
-                  validTime: fastestEvolution.validTime,
-                  leadHours: fastestEvolution.leadHours,
-                  rapidEvolutionIndex: fastestEvolution.rapidEvolutionIndex,
-                  approachRateKmh: fastestEvolution.approachRateKmh,
-                  strengtheningRateMsPerHour: fastestEvolution.strengtheningRateMsPerHour
-                } : null,
-                recentObservedEvolution: recentObservedEvolution ? {
-                  label: recentObservedEvolution.label,
-                  validTime: recentObservedEvolution.validTime,
-                  leadHours: recentObservedEvolution.leadHours,
-                  rapidEvolutionIndex: recentObservedEvolution.rapidEvolutionIndex,
-                  approachRateKmh: recentObservedEvolution.approachRateKmh,
-                  strengtheningRateMsPerHour: recentObservedEvolution.strengtheningRateMsPerHour
-                } : null''',
-          'recent observed evolution summary')
-          replace_once(threat,
-          '''        crossAgencyInterpolationIsTransparent: true,
-                  fixedDayBucketsUsed: false,''',
-          '''        crossAgencyInterpolationIsTransparent: true,
-                  pastCheckpointsExcludedFromForecastTimeline: true,
-                  recentObservedEvolutionKeptAsContext: true,
-                  fixedDayBucketsUsed: false,''',
-          'timeline semantics')
+          must_replace(
+              threat,
+              '    const timeline = buildTimeline(agencyTracks, normalizedReferencePoint, referenceTimeMs);\n',
+              '    const fullTimeline = buildTimeline(agencyTracks, normalizedReferencePoint, referenceTimeMs);\n'
+              '    const timeline = fullTimeline.filter(item => Number.isFinite(item.leadHours) && item.leadHours >= 0);\n',
+              'future-only forecast timeline'
+          )
+          must_replace(
+              threat,
+              '        crossAgencyInterpolationIsTransparent: true,\n        fixedDayBucketsUsed: false,',
+              '        crossAgencyInterpolationIsTransparent: true,\n'
+              '        pastCheckpointsExcludedFromForecastTimeline: true,\n'
+              '        fixedDayBucketsUsed: false,',
+              'timeline semantics'
+          )
 
           basic = Path('analysis/basic-hk-signal-forecast.js')
-          replace_once(basic,
-          '''    const raw = signal === 'T8'
-                ? proximity * 0.38 + windEvidence * 0.34 + rapid * 0.18 + agreement * 0.10
-                : (signal === 'T3'
-                  ? proximity * 0.40 + windEvidence * 0.28 + rapid * 0.20 + agreement * 0.12
-                  : proximity * 0.48 + windEvidence * 0.14 + rapid * 0.24 + agreement * 0.14);''',
-          '''    const exposureWind = windEvidence * proximity;
-              const exposureRapid = rapid * Math.max(proximity, 0.25);
-              const raw = signal === 'T8'
-                ? proximity * 0.42 + exposureWind * 0.30 + exposureRapid * 0.18 + agreement * 0.10
-                : (signal === 'T3'
-                  ? proximity * 0.42 + exposureWind * 0.28 + exposureRapid * 0.18 + agreement * 0.12
-                  : proximity * 0.48 + windEvidence * 0.14 + rapid * 0.24 + agreement * 0.14);''',
-          'wind exposure coupling')
-          replace_once(basic,
-          '''    const strongest = entries.reduce((best, item) => item.evidence > best.evidence ? item : best, entries[0]);
-              return {
-                maxEvidence: strongest.evidence,
-                strongest,
-                firstPossible: entries.find(item => item.evidence >= (signal === 'T8' ? 0.40 : signal === 'T3' ? 0.38 : 0.35)) ?? null,
-                firstLikely: entries.find(item => item.evidence >= (signal === 'T8' ? 0.70 : signal === 'T3' ? 0.65 : 0.58)) ?? null
-              };''',
-          '''    const strongest = entries.reduce((best, item) => item.evidence > best.evidence ? item : best, entries[0]);
-              const crossing = threshold => entries.find((item, index) => {
-                if (item.evidence < threshold) return false;
-                if (index === 0) return finite(item.checkpoint?.leadHours) > 0;
-                return entries[index - 1].evidence < threshold;
-              }) ?? null;
-              return {
-                maxEvidence: strongest.evidence,
-                strongest,
-                firstPossible: crossing(signal === 'T8' ? 0.40 : signal === 'T3' ? 0.38 : 0.35),
-                firstLikely: crossing(signal === 'T8' ? 0.70 : signal === 'T3' ? 0.65 : 0.58)
-              };''',
-          'forecast threshold crossings')
-          replace_once(basic,
-          '''  function timelineWindow(anchor, timeline, defaultBefore = 4, defaultAfter = 6) {
-              if (!anchor) return null;
-              const anchorMs = timeMs(anchor);
-              if (!Number.isFinite(anchorMs)) return null;
-              const index = (Array.isArray(timeline) ? timeline : []).findIndex(item => timeMs(item?.validTime ?? item?.time) === anchorMs);
-              const previousGap = index > 0 ? finite(timeline[index]?.intervalFromPreviousHours) : null;
-              const nextGap = index >= 0 && index + 1 < timeline.length
-                ? finite(timeline[index + 1]?.intervalFromPreviousHours) : null;
-              const before = Number.isFinite(previousGap) ? clamp(previousGap / 2, 2, 6) : defaultBefore;
-              const after = Number.isFinite(nextGap) ? clamp(nextGap / 2, 2, 8) : defaultAfter;
-              return windowAround(anchor, before, after);
-            }''',
-          '''  function timelineWindow(anchor, timeline, referenceTime, defaultBefore = 4, defaultAfter = 6) {
-              if (!anchor) return null;
-              const anchorMs = timeMs(anchor);
-              if (!Number.isFinite(anchorMs)) return null;
-              const index = (Array.isArray(timeline) ? timeline : []).findIndex(item => timeMs(item?.validTime ?? item?.time) === anchorMs);
-              const previousGap = index > 0 ? finite(timeline[index]?.intervalFromPreviousHours) : null;
-              const nextGap = index >= 0 && index + 1 < timeline.length
-                ? finite(timeline[index + 1]?.intervalFromPreviousHours) : null;
-              const before = Number.isFinite(previousGap) ? clamp(previousGap / 2, 2, 6) : defaultBefore;
-              const after = Number.isFinite(nextGap) ? clamp(nextGap / 2, 2, 8) : defaultAfter;
-              const referenceMs = timeMs(referenceTime);
-              const startMs = Math.max(anchorMs - before * HOUR_MS, Number.isFinite(referenceMs) ? referenceMs : -Infinity);
-              return { start: iso(startMs), end: iso(anchorMs + after * HOUR_MS) };
-            }''',
-          'forecast window clamp')
-          replace_once(basic,
-          '''    const signalWindow = (likelihood, timelineAnchorValue, fallbackAnchor, before, after) => {
-              if (likelihood === 'unlikely') return null;
-              if (timelineAnchorValue) return timelineWindow(timelineAnchorValue, timeline, before, after);
-              return fallbackAnchor ? windowAround(fallbackAnchor, before, after) : null;
-            };''',
-          '''    const signalWindow = (likelihood, timelineAnchorValue, fallbackAnchor, before, after) => {
-              if (likelihood === 'unlikely') return null;
-              if (timelineAnchorValue) return timelineWindow(timelineAnchorValue, timeline, referenceTime, before, after);
-              if (forecastEdge > 0.5) return null;
-              if (!fallbackAnchor) return null;
-              const fallbackWindow = windowAround(fallbackAnchor, before, after);
-              const referenceMs = timeMs(referenceTime);
-              const fallbackStartMs = timeMs(fallbackWindow?.start);
-              if (fallbackWindow && Number.isFinite(referenceMs) && Number.isFinite(fallbackStartMs) && fallbackStartMs < referenceMs) {
-                fallbackWindow.start = iso(referenceMs);
-              }
-              return fallbackWindow;
-            };''',
-          'signal window suppression')
-          replace_once(basic,
-          '''        timelineCanDriveSignalRisk: timeline.length > 0,
-                  timeWeightingIsContinuous: true,''',
-          '''        timelineCanDriveSignalRisk: timeline.length > 0,
-                  signalTimingUsesFutureThresholdCrossings: true,
-                  stormIntensityIsCoupledToHongKongExposureForT3T8: true,
-                  horizonLimitedFallbackTimingSuppressed: true,
-                  timeWeightingIsContinuous: true,''',
-          'signal semantics')
+          must_replace(
+              basic,
+              "    const raw = signal === 'T8'\n"
+              "      ? proximity * 0.38 + windEvidence * 0.34 + rapid * 0.18 + agreement * 0.10\n"
+              "      : (signal === 'T3'\n"
+              "        ? proximity * 0.40 + windEvidence * 0.28 + rapid * 0.20 + agreement * 0.12\n"
+              "        : proximity * 0.48 + windEvidence * 0.14 + rapid * 0.24 + agreement * 0.14);",
+              "    const exposureWind = windEvidence * proximity;\n"
+              "    const exposureRapid = rapid * Math.max(proximity, 0.25);\n"
+              "    const raw = signal === 'T8'\n"
+              "      ? proximity * 0.42 + exposureWind * 0.30 + exposureRapid * 0.18 + agreement * 0.10\n"
+              "      : (signal === 'T3'\n"
+              "        ? proximity * 0.42 + exposureWind * 0.28 + exposureRapid * 0.18 + agreement * 0.12\n"
+              "        : proximity * 0.48 + windEvidence * 0.14 + rapid * 0.24 + agreement * 0.14);",
+              'HK exposure coupling'
+          )
+          must_replace(
+              basic,
+              "    const strongest = entries.reduce((best, item) => item.evidence > best.evidence ? item : best, entries[0]);\n"
+              "    return {\n"
+              "      maxEvidence: strongest.evidence,\n"
+              "      strongest,\n"
+              "      firstPossible: entries.find(item => item.evidence >= (signal === 'T8' ? 0.40 : signal === 'T3' ? 0.38 : 0.35)) ?? null,\n"
+              "      firstLikely: entries.find(item => item.evidence >= (signal === 'T8' ? 0.70 : signal === 'T3' ? 0.65 : 0.58)) ?? null\n"
+              "    };",
+              "    const strongest = entries.reduce((best, item) => item.evidence > best.evidence ? item : best, entries[0]);\n"
+              "    const crossing = threshold => entries.find((item, index) => {\n"
+              "      if (item.evidence < threshold) return false;\n"
+              "      if (index === 0) return finite(item.checkpoint?.leadHours) > 0;\n"
+              "      return entries[index - 1].evidence < threshold;\n"
+              "    }) ?? null;\n"
+              "    return {\n"
+              "      maxEvidence: strongest.evidence,\n"
+              "      strongest,\n"
+              "      firstPossible: crossing(signal === 'T8' ? 0.40 : signal === 'T3' ? 0.38 : 0.35),\n"
+              "      firstLikely: crossing(signal === 'T8' ? 0.70 : signal === 'T3' ? 0.65 : 0.58)\n"
+              "    };",
+              'future threshold crossing'
+          )
+          must_replace(
+              basic,
+              '  function timelineWindow(anchor, timeline, defaultBefore = 4, defaultAfter = 6) {\n'
+              '    if (!anchor) return null;\n'
+              '    const anchorMs = timeMs(anchor);\n'
+              '    if (!Number.isFinite(anchorMs)) return null;\n'
+              '    const index = (Array.isArray(timeline) ? timeline : []).findIndex(item => timeMs(item?.validTime ?? item?.time) === anchorMs);\n'
+              '    const previousGap = index > 0 ? finite(timeline[index]?.intervalFromPreviousHours) : null;\n'
+              '    const nextGap = index >= 0 && index + 1 < timeline.length\n'
+              '      ? finite(timeline[index + 1]?.intervalFromPreviousHours) : null;\n'
+              '    const before = Number.isFinite(previousGap) ? clamp(previousGap / 2, 2, 6) : defaultBefore;\n'
+              '    const after = Number.isFinite(nextGap) ? clamp(nextGap / 2, 2, 8) : defaultAfter;\n'
+              '    return windowAround(anchor, before, after);\n'
+              '  }',
+              '  function timelineWindow(anchor, timeline, referenceTime, defaultBefore = 4, defaultAfter = 6) {\n'
+              '    if (!anchor) return null;\n'
+              '    const anchorMs = timeMs(anchor);\n'
+              '    if (!Number.isFinite(anchorMs)) return null;\n'
+              '    const index = (Array.isArray(timeline) ? timeline : []).findIndex(item => timeMs(item?.validTime ?? item?.time) === anchorMs);\n'
+              '    const previousGap = index > 0 ? finite(timeline[index]?.intervalFromPreviousHours) : null;\n'
+              '    const nextGap = index >= 0 && index + 1 < timeline.length\n'
+              '      ? finite(timeline[index + 1]?.intervalFromPreviousHours) : null;\n'
+              '    const before = Number.isFinite(previousGap) ? clamp(previousGap / 2, 2, 6) : defaultBefore;\n'
+              '    const after = Number.isFinite(nextGap) ? clamp(nextGap / 2, 2, 8) : defaultAfter;\n'
+              '    const referenceMs = timeMs(referenceTime);\n'
+              '    const startMs = Math.max(anchorMs - before * HOUR_MS, Number.isFinite(referenceMs) ? referenceMs : -Infinity);\n'
+              '    return { start: iso(startMs), end: iso(anchorMs + after * HOUR_MS) };\n'
+              '  }',
+              'forecast window clamp'
+          )
+          must_replace(
+              basic,
+              "    const signalWindow = (likelihood, timelineAnchorValue, fallbackAnchor, before, after) => {\n"
+              "      if (likelihood === 'unlikely') return null;\n"
+              "      if (timelineAnchorValue) return timelineWindow(timelineAnchorValue, timeline, before, after);\n"
+              "      return fallbackAnchor ? windowAround(fallbackAnchor, before, after) : null;\n"
+              "    };",
+              "    const signalWindow = (likelihood, timelineAnchorValue, fallbackAnchor, before, after) => {\n"
+              "      if (likelihood === 'unlikely') return null;\n"
+              "      if (timelineAnchorValue) return timelineWindow(timelineAnchorValue, timeline, referenceTime, before, after);\n"
+              "      if (forecastEdge > 0.5 || !fallbackAnchor) return null;\n"
+              "      const fallbackWindow = windowAround(fallbackAnchor, before, after);\n"
+              "      const referenceMs = timeMs(referenceTime);\n"
+              "      const fallbackStartMs = timeMs(fallbackWindow?.start);\n"
+              "      if (fallbackWindow && Number.isFinite(referenceMs) && Number.isFinite(fallbackStartMs) && fallbackStartMs < referenceMs) fallbackWindow.start = iso(referenceMs);\n"
+              "      return fallbackWindow;\n"
+              "    };",
+              'signal timing suppression'
+          )
+          must_replace(
+              basic,
+              '        timelineCanDriveSignalRisk: timeline.length > 0,\n        timeWeightingIsContinuous: true,',
+              '        timelineCanDriveSignalRisk: timeline.length > 0,\n'
+              '        signalTimingUsesFutureThresholdCrossings: true,\n'
+              '        stormIntensityIsCoupledToHongKongExposureForT3T8: true,\n'
+              '        horizonLimitedFallbackTimingSuppressed: true,\n'
+              '        timeWeightingIsContinuous: true,',
+              'signal semantics'
+          )
 
           test = Path('tests/frontend-hk-threat-ui.test.cjs')
           text = test.read_text(encoding='utf-8')
           anchor = "assert.ok(result.threatAssessment.timeline.some(item => item.rapidEvolutionIndex > 0.3));\n"
-          replacement = anchor + "assert.ok(result.threatAssessment.timeline.every(item => item.leadHours >= 0));\n"
           if text.count(anchor) != 1:
-              raise SystemExit('frontend test timeline anchor mismatch')
-          test.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
+              raise SystemExit('frontend test anchor mismatch')
+          test.write_text(text.replace(anchor, anchor + "assert.ok(result.threatAssessment.timeline.every(item => item.leadHours >= 0));\n", 1), encoding='utf-8')
 
           index = Path('index.html')
           text = index.read_text(encoding='utf-8')
           if './analysis/frontend-hk-threat-ui.js' not in text:
-              leaflet = '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>\n<script>'
-              scripts = '''<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-          <script src="./analysis/storm-analysis-core.js"></script>
-          <script src="./analysis/hk-impact-engine.js"></script>
-          <script src="./analysis/hko-signal-risk-inputs.js"></script>
-          <script src="./analysis/hk-threat-assessment.js"></script>
-          <script src="./analysis/basic-hk-signal-forecast.js"></script>
-          <script src="./analysis/frontend-hk-threat-ui.js"></script>
-          <script>'''
-              if text.count(leaflet) != 1:
-                  raise SystemExit(f'index script anchor mismatch: {text.count(leaflet)}')
-              text = text.replace(leaflet, scripts, 1)
+              anchor = '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>\n<script>'
+              insert = '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>\n' \
+                  '<script src="./analysis/storm-analysis-core.js"></script>\n' \
+                  '<script src="./analysis/hk-impact-engine.js"></script>\n' \
+                  '<script src="./analysis/hko-signal-risk-inputs.js"></script>\n' \
+                  '<script src="./analysis/hk-threat-assessment.js"></script>\n' \
+                  '<script src="./analysis/basic-hk-signal-forecast.js"></script>\n' \
+                  '<script src="./analysis/frontend-hk-threat-ui.js"></script>\n<script>'
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'index script anchor mismatch: {text.count(anchor)}')
+              text = text.replace(anchor, insert, 1)
           if 'const hkThreatHtml = globalThis.StormHkThreatUi?.renderGroupSummary(group)' not in text:
               anchor = '            const nearest = calculateGroupNearestApproach(group);\n            return `<div class="panel-storm-card"'
-              replacement = '            const nearest = calculateGroupNearestApproach(group);\n            const hkThreatHtml = globalThis.StormHkThreatUi?.renderGroupSummary(group) || \'\';\n            return `<div class="panel-storm-card"'
+              insert = '            const nearest = calculateGroupNearestApproach(group);\n            const hkThreatHtml = globalThis.StormHkThreatUi?.renderGroupSummary(group) || \'\';\n            return `<div class="panel-storm-card"'
               if text.count(anchor) != 1:
                   raise SystemExit(f'index card anchor mismatch: {text.count(anchor)}')
-              text = text.replace(anchor, replacement, 1)
-              card_tail = '''                    預測最近距港：${nearest ? `${Math.round(nearest.distance)} km（${escapeHtml(nearest.agency)}）` : '未提供'}
-                </div>
-            </div>`;'''
-              card_tail_new = '''                    預測最近距港：${nearest ? `${Math.round(nearest.distance)} km（${escapeHtml(nearest.agency)}）` : '未提供'}
-                </div>
-                ${hkThreatHtml}
-            </div>`;'''
-              if text.count(card_tail) != 1:
-                  raise SystemExit(f'index card tail mismatch: {text.count(card_tail)}')
-              text = text.replace(card_tail, card_tail_new, 1)
+              text = text.replace(anchor, insert, 1)
+              anchor = "                    預測最近距港：${nearest ? `${Math.round(nearest.distance)} km（${escapeHtml(nearest.agency)}）` : '未提供'}\n                </div>\n            </div>`;"
+              insert = "                    預測最近距港：${nearest ? `${Math.round(nearest.distance)} km（${escapeHtml(nearest.agency)}）` : '未提供'}\n                </div>\n                ${hkThreatHtml}\n            </div>`;"
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'index card tail mismatch: {text.count(anchor)}')
+              text = text.replace(anchor, insert, 1)
           index.write_text(text, encoding='utf-8')
           PY
           git diff --check
@@ -232,9 +200,6 @@ jobs:
           git config user.name 'storm-track-ci'
           git config user.email 'actions@users.noreply.github.com'
           git add -- analysis/hk-threat-assessment.js analysis/basic-hk-signal-forecast.js tests/frontend-hk-threat-ui.test.cjs index.html
-          if git diff --cached --quiet; then
-            echo 'No changes to commit'
-            exit 0
-          fi
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Refine live HK threat timing and show it in UI'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
