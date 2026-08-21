@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 path = Path('analysis/hk-threat-assessment.js')
 text = path.read_text(encoding='utf-8')
@@ -22,11 +21,14 @@ if text.count(old) != 1:
     raise SystemExit(f'followup17 interpolated return anchor mismatch: {text.count(old)}')
 text = text.replace(old, new, 1)
 
-old = """          maximumWindMs: sample.maximumWindMs,\n          exactOfficialTime: sample.exactOfficialTime === true,\n          windRadiiAvailable: sample.windRadiiAvailable === true"""
-new = """          maximumWindMs: sample.maximumWindMs,\n          exactOfficialTime: sample.exactOfficialTime === true,\n          interpolationSpanHours: finite(sample.interpolationSpanHours) ?? 0,\n          interpolationReliability: clamp(finite(sample.interpolationReliability) ?? (sample.exactOfficialTime === true ? 1 : 0.5)),\n          windRadiiAvailable: sample.windRadiiAvailable === true"""
-if text.count(old) != 1:
-    raise SystemExit(f'followup17 timeline sample anchor mismatch: {text.count(old)}')
-text = text.replace(old, new, 1)
+# The buildTimeline object has been extended by earlier follow-ups. Insert the
+# reliability metadata immediately after maximumWindMs rather than depending on the
+# surrounding field order.
+needle = "          maximumWindMs: sample.maximumWindMs,\n"
+insertion = """          maximumWindMs: sample.maximumWindMs,\n          interpolationSpanHours: finite(sample.interpolationSpanHours) ?? 0,\n          interpolationReliability: clamp(finite(sample.interpolationReliability) ?? (sample.exactOfficialTime === true ? 1 : 0.5)),\n"""
+if text.count(needle) != 1:
+    raise SystemExit(f'followup17 timeline sample anchor mismatch: {text.count(needle)}')
+text = text.replace(needle, insertion, 1)
 
 # Add checkpoint-level reliability beside exact official support. This is metadata /
 # confidence evidence only; physical distance/wind threat remains unchanged.
