@@ -1,0 +1,74 @@
+name: Frontend threat UI patch
+
+on:
+  push:
+    branches:
+      - feature/basic-hk-signal-forecast
+    paths:
+      - .github/workflows/frontend-threat-ui-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/basic-hk-signal-forecast
+          fetch-depth: 0
+      - name: Patch index.html safely
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+
+          leaflet = '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>\n<script>'
+          scripts = '''<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+          <script src="./analysis/storm-analysis-core.js"></script>
+          <script src="./analysis/hk-impact-engine.js"></script>
+          <script src="./analysis/hko-signal-risk-inputs.js"></script>
+          <script src="./analysis/hk-threat-assessment.js"></script>
+          <script src="./analysis/basic-hk-signal-forecast.js"></script>
+          <script src="./analysis/frontend-hk-threat-ui.js"></script>
+          <script>'''
+          if text.count(leaflet) != 1:
+              raise SystemExit(f'expected one Leaflet script anchor, found {text.count(leaflet)}')
+          text = text.replace(leaflet, scripts, 1)
+
+          anchor = '            const nearest = calculateGroupNearestApproach(group);\n            return `<div class="panel-storm-card"'
+          replacement = '            const nearest = calculateGroupNearestApproach(group);\n            const hkThreatHtml = globalThis.StormHkThreatUi?.renderGroupSummary(group) || \'\';\n            return `<div class="panel-storm-card"'
+          if text.count(anchor) != 1:
+              raise SystemExit(f'expected one storm-card calculation anchor, found {text.count(anchor)}')
+          text = text.replace(anchor, replacement, 1)
+
+          card_tail = '''                    預測最近距港：${nearest ? `${Math.round(nearest.distance)} km（${escapeHtml(nearest.agency)}）` : '未提供'}
+                </div>
+            </div>`;'''
+          card_tail_replacement = '''                    預測最近距港：${nearest ? `${Math.round(nearest.distance)} km（${escapeHtml(nearest.agency)}）` : '未提供'}
+                </div>
+                ${hkThreatHtml}
+            </div>`;'''
+          if text.count(card_tail) != 1:
+              raise SystemExit(f'expected one storm-card tail, found {text.count(card_tail)}')
+          text = text.replace(card_tail, card_tail_replacement, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- index.html
+      - name: Commit frontend integration
+        shell: bash
+        run: |
+          if git diff --quiet -- index.html; then
+            echo 'No frontend change required'
+            exit 0
+          fi
+          git config user.name 'storm-track-ci'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- index.html
+          git commit -m 'Show HK threat estimate in active storm cards'
+          git push origin HEAD:feature/basic-hk-signal-forecast
