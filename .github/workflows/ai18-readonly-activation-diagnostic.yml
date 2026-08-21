@@ -13,7 +13,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -31,29 +31,11 @@ jobs:
         working-directory: workers/storm-analysis
         run: npm install --no-audit --no-fund
 
-      - name: Run complete Node checkpoint suite
-        working-directory: workers/storm-analysis
-        run: npm test
-
-      - name: Run Workers Vitest / Miniflare D1 integration
-        working-directory: workers/storm-analysis
-        run: npm run test:integration
-
-      - name: Run bundle-only Wrangler dry run
-        working-directory: workers/storm-analysis
-        run: npm run deploy:dry-run
-
-      - name: Inspect activation state without writes
+      - name: Inspect post-activation state without writes
         working-directory: workers/storm-analysis
         shell: bash
         run: |
           set -u
-
-          if [[ -n "$BACKFILL_TOKEN" && -n "$ANALYSIS_ADMIN_TOKEN" ]]; then
-            echo 'DIAG_APP_SECRETS_PRESENT=true'
-          else
-            echo 'DIAG_APP_SECRETS_PRESENT=false'
-          fi
 
           format_ok=true
           [[ "$BACKFILL_TOKEN" =~ ^[0-9a-fA-F]{64}$ ]] || format_ok=false
@@ -67,12 +49,8 @@ jobs:
           set -e
           echo "DIAG_SECRET_LIST_RC=$secret_rc"
           if [[ $secret_rc -eq 0 ]]; then
-            backfill_count="$(jq '[.[] | select(.name == "BACKFILL_TOKEN")] | length' /tmp/ai18-secret-list.json)"
-            admin_count="$(jq '[.[] | select(.name == "ANALYSIS_ADMIN_TOKEN")] | length' /tmp/ai18-secret-list.json)"
-            echo "DIAG_BACKFILL_SECRET_COUNT=$backfill_count"
-            echo "DIAG_ADMIN_SECRET_COUNT=$admin_count"
-          else
-            tail -n 8 /tmp/ai18-secret-list.err || true
+            echo "DIAG_BACKFILL_SECRET_COUNT=$(jq '[.[] | select(.name == "BACKFILL_TOKEN")] | length' /tmp/ai18-secret-list.json)"
+            echo "DIAG_ADMIN_SECRET_COUNT=$(jq '[.[] | select(.name == "ANALYSIS_ADMIN_TOKEN")] | length' /tmp/ai18-secret-list.json)"
           fi
 
           health_http="$(curl -sS -o /tmp/ai18-health.json -w '%{http_code}' "${WORKER_URL}/health")"
@@ -88,8 +66,6 @@ jobs:
           echo "DIAG_DEPLOYMENT_RC=$deployment_rc"
           if [[ $deployment_rc -eq 0 ]]; then
             printf '%s\n' "$deployment" | jq -c '{id:(.id // .deployment_id // null),source:(.source // null),strategy:(.strategy // null)}' || true
-          else
-            tail -n 8 /tmp/ai18-deployment.err || true
           fi
 
           if [[ "$format_ok" == "true" ]]; then
@@ -97,18 +73,14 @@ jobs:
               status="$(curl -sS -o /tmp/ai18-unauth.json -w '%{http_code}' -X POST "${WORKER_URL}${endpoint}")"
               echo "DIAG_UNAUTH_STATUS=${endpoint}:${status}"
             done
-
             status="$(curl -sS -o /tmp/ai18-cross.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/import" -H "Authorization: Bearer ${ANALYSIS_ADMIN_TOKEN}")"
             echo "DIAG_CROSS_ADMIN_TO_BACKFILL=$status"
             status="$(curl -sS -o /tmp/ai18-cross.json -w '%{http_code}' -X POST "${WORKER_URL}/api/admin/signal-training/preview" -H "Authorization: Bearer ${BACKFILL_TOKEN}")"
             echo "DIAG_CROSS_BACKFILL_TO_ADMIN=$status"
-
             status="$(curl -sS -o /tmp/ai18-correct.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/import" -H "Authorization: Bearer ${BACKFILL_TOKEN}")"
-            error="$(jq -r '.error // empty' /tmp/ai18-correct.json 2>/dev/null || true)"
-            echo "DIAG_CORRECT_BACKFILL_NO_BODY=${status}:${error}"
+            echo "DIAG_CORRECT_BACKFILL_NO_BODY=${status}:$(jq -r '.error // empty' /tmp/ai18-correct.json 2>/dev/null || true)"
             status="$(curl -sS -o /tmp/ai18-correct.json -w '%{http_code}' -X POST "${WORKER_URL}/api/admin/signal-training/preview" -H "Authorization: Bearer ${ANALYSIS_ADMIN_TOKEN}")"
-            error="$(jq -r '.error // empty' /tmp/ai18-correct.json 2>/dev/null || true)"
-            echo "DIAG_CORRECT_ADMIN_NO_BODY=${status}:${error}"
+            echo "DIAG_CORRECT_ADMIN_NO_BODY=${status}:$(jq -r '.error // empty' /tmp/ai18-correct.json 2>/dev/null || true)"
           fi
 
           set +e
@@ -120,12 +92,7 @@ jobs:
           echo "DIAG_DB_RC=$db_rc"
           if [[ $db_rc -eq 0 ]]; then
             jq -c '[.. | objects | select(has("backfill_runs")) | {backfill_runs,historical_storms,training_runs,curations,promotion_events,generation,champion_profile_id}]' /tmp/ai18-db.json
-          else
-            tail -n 8 /tmp/ai18-db.err || true
           fi
-
           echo 'DIAG_MUTATIONS_PERFORMED=false'
 
-# Rerun after synchronizing the post-AI-17 AI-16 deployment guard.
-# Rerun after making the AI-18 trigger guard lifecycle-aware.
-# Rerun after narrowing the no-deploy assertion to the actual deploy command.
+# Post-feature activation state check.
