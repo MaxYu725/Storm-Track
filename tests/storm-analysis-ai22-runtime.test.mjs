@@ -47,4 +47,5 @@ assert.ok(workflow.includes('storm-track-db --remote --json --experimental-provi
 assert.ok(!workflow.includes('wrangler deploy --name storm'), 'workflow must never deploy the production Storm Worker');
 assert.ok(!workflow.includes('d1 migrations apply storm-track-db'), 'workflow must never migrate the production source D1');
 
+// AI-22D idempotent completion retry marker: runtime is already migrated/deployed; rerun verifies live preview and records the result.
 console.log(`storm-analysis AI-22 runtime activation guards passed (${trigger})`);
