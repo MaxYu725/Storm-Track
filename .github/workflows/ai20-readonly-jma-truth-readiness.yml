@@ -1,0 +1,98 @@
+name: AI-20 Read-only JMA truth readiness
+
+on:
+  push:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/ai20-truth-trigger.txt
+      - .github/workflows/ai20-readonly-jma-truth-readiness.yml
+      - workers/storm-analysis/scripts/ai20-jma-besttrack.mjs
+      - tests/storm-analysis-ai20.test.mjs
+      - docs/AI20_HISTORICAL_TRUTH_FINALIZATION.md
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai20-readonly-jma-truth-readiness.yml
+      - workers/storm-analysis/scripts/ai20-jma-besttrack.mjs
+      - tests/storm-analysis-ai20.test.mjs
+      - docs/AI20_HISTORICAL_TRUTH_FINALIZATION.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      BEST_TRACK_URL: https://www.jma.go.jp/jma/jma-eng/jma-center/rsmc-hp-pub-eg/Besttracks/bst2026.txt
+      POSITION_TABLE_URL: https://www.data.jma.go.jp/typhoon/position_table/table2026.html
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Worker toolchain
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run regression and AI-20 guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd workers/storm-analysis && npm test)
+          node tests/historical-backfill-importer.test.cjs
+          node tests/storm-analysis-ai19.test.mjs
+          node tests/storm-analysis-ai20.test.mjs
+          (cd workers/storm-analysis && npm run test:integration)
+          (cd workers/storm-analysis && npm run deploy:dry-run)
+
+      - name: Verify lifecycle before external truth check
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < .github/ai19-backfill-trigger.txt)" == "COMPLETED_AI19" ]]
+          ai20="$(tr -d '\r\n' < .github/ai20-truth-trigger.txt)"
+          [[ "$ai20" == "PENDING_AI20" || "$ai20" == "TRUTH_READY_AI20" ]]
+          echo "AI20_LIFECYCLE=$ai20"
+
+      - name: Fetch current official JMA finality evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --retry 4 --retry-delay 2 --retry-all-errors -A 'Storm-Track-AI20-readiness/1.0' -sS "$BEST_TRACK_URL" -o /tmp/bst2026.txt
+          curl --fail --retry 4 --retry-delay 2 --retry-all-errors -A 'Storm-Track-AI20-readiness/1.0' -sS "$POSITION_TABLE_URL" -o /tmp/table2026.html
+          [[ -s /tmp/bst2026.txt && -s /tmp/table2026.html ]]
+          node workers/storm-analysis/scripts/ai20-jma-besttrack.mjs --bestTrack /tmp/bst2026.txt --positionTable /tmp/table2026.html --target 2615 > /tmp/ai20-status.json
+          jq -e '.ok == true and .targetInternationalNumber == "2615" and .semantics.finalizedPositionTableRequired == true and .semantics.rsmcBestTrackPublicationRequired == true and .semantics.preliminaryTruthRejected == true and .semantics.truthWritePerformed == false and .semantics.verificationPerformed == false and .semantics.trainingPerformed == false and .semantics.promotionPerformed == false' /tmp/ai20-status.json >/dev/null
+          echo "AI20_JMA_STATUS=$(jq -c '.' /tmp/ai20-status.json)"
+          if [[ "$(jq -r '.readyForTruthImport' /tmp/ai20-status.json)" == "true" ]]; then
+            echo 'AI20_JMA_TRUTH_READY=true'
+          else
+            echo "AI20_JMA_TRUTH_READY=false reason=$(jq -r '.reason' /tmp/ai20-status.json)"
+          fi
+
+      - name: Verify AI-19 data remains unchanged and truth tables remain empty
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM backfill_runs) AS backfill_runs,(SELECT status FROM backfill_runs WHERE run_id='ai19_chanhom_forecast_21b774c59c7773cd') AS ai19_status,(SELECT COUNT(*) FROM historical_storms) AS historical_storms,(SELECT backfill_mode FROM historical_storms WHERE storm_key='WP-2026-15') AS backfill_mode,(SELECT agency_skill_eligible FROM historical_storms WHERE storm_key='WP-2026-15') AS agency_skill_eligible,(SELECT COUNT(*) FROM forecast_snapshots) AS forecast_snapshots,(SELECT COUNT(*) FROM truth_datasets) AS truth_datasets,(SELECT COUNT(*) FROM truth_points) AS truth_points,(SELECT COUNT(*) FROM verification_results) AS verification_results,(SELECT COUNT(*) FROM agency_skill_profiles) AS agency_skill_profiles,(SELECT COUNT(*) FROM adaptive_weight_candidates) AS adaptive_weight_candidates,(SELECT COUNT(*) FROM signal_calibration_training_runs) AS training_runs,(SELECT COUNT(*) FROM signal_outcome_curations) AS curations,(SELECT COUNT(*) FROM signal_profile_promotion_events) AS promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) AS generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) AS champion_profile_id;" > /tmp/ai20-db.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai20-db.json | head -n 1)"
+          echo "AI20_DB_STATE=$row"
+          printf '%s' "$row" | jq -e '.backfill_runs==1 and .ai19_status=="completed" and .historical_storms==1 and .backfill_mode=="forecast-only" and .agency_skill_eligible==0 and .forecast_snapshots==4 and .truth_datasets==0 and .truth_points==0 and .verification_results==0 and .agency_skill_profiles==0 and .adaptive_weight_candidates==0 and .training_runs==0 and .curations==0 and .promotion_events==0 and .generation==0 and .champion_profile_id==null' >/dev/null
+          echo 'AI20_TRUTH_WRITE_PERFORMED=false'
+          echo 'AI20_VERIFICATION_PERFORMED=false'
+          echo 'AI20_TRAINING_PERFORMED=false'
+          echo 'AI20_PROMOTION_PERFORMED=false'
+          echo 'DIAG_MUTATIONS_PERFORMED=false'
