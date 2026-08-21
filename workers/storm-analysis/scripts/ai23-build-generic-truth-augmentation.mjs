@@ -8,6 +8,7 @@ const importer = require('../../../analysis/historical-backfill-importer.js');
 
 export const AI23_TRUTH_AUGMENTATION_VERSION = 'ai23-generic-jma-truth-augmentation/v1';
 export const MAX_TRUTH_POINTS = 256;
+export const JMA_IDENTITY_TYPE = 'jma-rsmc-number';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -37,6 +38,19 @@ function normalizeHistoricalStorm(row, stormKey) {
   const values = valuesOf(row);
   assert(values && typeof values === 'object', 'historicalStorm row is required');
   assert(String(values.storm_key || '').trim() === stormKey, `historicalStorm must match ${stormKey}`);
+  return values;
+}
+
+function normalizeReviewedIdentityBinding(row, stormKey, internationalNumber) {
+  const values = valuesOf(row);
+  assert(values && typeof values === 'object', 'reviewedIdentityBinding row is required');
+  assert(String(values.storm_key || '').trim() === stormKey, `reviewed identity binding must match ${stormKey}`);
+  assert(String(values.identity_type || '').trim() === JMA_IDENTITY_TYPE, `reviewed identity binding type must be ${JMA_IDENTITY_TYPE}`);
+  assert(String(values.identity_value || '').trim() === internationalNumber, `reviewed identity binding must map ${internationalNumber}`);
+  assert(String(values.review_status || '').trim().toLowerCase() === 'reviewed', 'JMA truth attachment requires reviewed storm identity');
+  assert(String(values.reviewer || '').trim(), 'reviewed identity binding requires reviewer');
+  assert(Number.isFinite(Date.parse(values.reviewed_at)), 'reviewed identity binding requires valid reviewed_at');
+  assert(String(values.fingerprint || '').trim(), 'reviewed identity binding requires fingerprint');
   return values;
 }
 
@@ -96,6 +110,7 @@ export function buildGenericJmaTruthAugmentation({
   retrievedAt,
   stormKey,
   internationalNumber,
+  reviewedIdentityBinding,
   historicalStorm,
   snapshots
 }) {
@@ -105,6 +120,7 @@ export function buildGenericJmaTruthAugmentation({
   assert(/^\d{4}$/.test(number), 'internationalNumber must be a four-digit JMA number');
 
   const historical = normalizeHistoricalStorm(historicalStorm, key);
+  const identity = normalizeReviewedIdentityBinding(reviewedIdentityBinding, key, number);
   const existingSnapshots = normalizeSnapshots(snapshots, key);
   const truth = buildCanonicalTruth({ bestTrackText, positionTableHtml, internationalNumber: number, stormKey: key, retrievedAt });
   assert(truth.finality.status === 'finalized', 'generic truth augmentation requires finalized JMA truth');
@@ -119,8 +135,9 @@ export function buildGenericJmaTruthAugmentation({
     fingerprint: row.fingerprint,
     payload_hash: row.payload_hash
   })));
+  const identityBindingFingerprint = String(identity.fingerprint);
   const runId = `ai23_truth_${key.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${truthSha256.slice(0, 16)}`;
-  const source = `ai23-finalized-jma-truth/${key}/${number}/${truthSha256}/snapshots/${snapshotSetSha256}`;
+  const source = `ai23-finalized-jma-truth/${key}/${number}/${truthSha256}/identity/${identityBindingFingerprint}/snapshots/${snapshotSetSha256}`;
 
   const plan = importer.buildImportPlan({
     source,
@@ -152,6 +169,7 @@ export function buildGenericJmaTruthAugmentation({
     version: AI23_TRUTH_AUGMENTATION_VERSION,
     stormKey: key,
     internationalNumber: number,
+    identityBindingFingerprint,
     truth,
     truthSha256,
     snapshotSetSha256,
@@ -161,6 +179,8 @@ export function buildGenericJmaTruthAugmentation({
     summary: {
       stormKey: key,
       internationalNumber: number,
+      identityType: JMA_IDENTITY_TYPE,
+      identityBindingFingerprint,
       runId,
       source,
       truthSha256,
@@ -174,6 +194,8 @@ export function buildGenericJmaTruthAugmentation({
       semantics: {
         genericStormKey: true,
         genericInternationalNumber: true,
+        reviewedJmaIdentityRequired: true,
+        identityBindingIncludedInRunSource: true,
         priorPlanShaRequired: false,
         fixedSnapshotCountRequired: false,
         persistedSnapshotsPreservedByteForByte: true,
