@@ -18,6 +18,7 @@ on:
       - scripts/hk-threat-optimization-followup9.py
       - scripts/hk-threat-optimization-followup10.py
       - scripts/hk-threat-optimization-followup11.py
+      - scripts/hk-threat-optimization-followup12.py
       - scripts/hk-threat-optimization-diagnostics.py
       - scripts/hk-live-source-smoke.mjs
       - scripts/hk-live-engine-probe.mjs
@@ -61,6 +62,7 @@ jobs:
           python scripts/hk-threat-optimization-followup9.py
           python scripts/hk-threat-optimization-followup10.py
           python scripts/hk-threat-optimization-followup11.py
+          python scripts/hk-threat-optimization-followup12.py
           python scripts/hk-threat-optimization-diagnostics.py
           git diff --check
 
@@ -69,6 +71,8 @@ jobs:
         run: |
           node ../../tests/hk-threat-assessment.test.cjs
           node ../../tests/hk-threat-rule-scenarios.test.cjs
+          node ../../tests/hk-missing-numeric-semantics.test.cjs
+          node ../../tests/hk-agency-evidence-independence.test.cjs
           node ../../tests/basic-hk-signal-forecast.test.cjs
           node ../../tests/frontend-hk-threat-ui.test.cjs
 
