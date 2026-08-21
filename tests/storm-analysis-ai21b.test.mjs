@@ -65,4 +65,5 @@ assert.ok(verifier.includes("stormRow?.values?.backfill_mode === 'forecast-only'
 assert.ok(verifier.includes("Number(stormRow?.values?.agency_skill_eligible) === 0"));
 assert.ok(verifier.includes("Date.parse(point.time) > Date.parse(snapshot.generatedAt)"));
 
+// AI-21B preactivation audit marker: no runtime behavior change.
 console.log(`storm-analysis AI-21B controlled import guards passed (${trigger})`);
