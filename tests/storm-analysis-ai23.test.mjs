@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { buildGenericJmaTruthAugmentation } from '../workers/storm-analysis/scripts/ai23-build-generic-truth-augmentation.mjs';
+import { buildGenericJmaTruthAugmentation, JMA_IDENTITY_TYPE } from '../workers/storm-analysis/scripts/ai23-build-generic-truth-augmentation.mjs';
 import { buildGenericVerificationRows } from '../workers/storm-analysis/scripts/ai23-build-generic-verification.mjs';
 import { previewVerificationRows } from '../workers/storm-analysis/src/verification-result-repository.js';
 
@@ -16,6 +16,19 @@ const STORM_KEY = 'WP-2026-99';
 const INTERNATIONAL_NUMBER = '2699';
 const RETRIEVED_AT = '2026-10-10T00:00:00.000Z';
 const VERIFIED_AT = '2026-10-10T01:00:00.000Z';
+const REVIEWED_IDENTITY = {
+  binding_id: 'binding_ai23_fixture_2699',
+  storm_key: STORM_KEY,
+  identity_type: JMA_IDENTITY_TYPE,
+  identity_value: INTERNATIONAL_NUMBER,
+  review_status: 'reviewed',
+  source: 'synthetic-fixture',
+  evidence_sha256: 'b'.repeat(64),
+  proposed_at: '2026-10-09T00:00:00.000Z',
+  reviewed_at: '2026-10-09T01:00:00.000Z',
+  reviewer: 'ai23-test-reviewer',
+  fingerprint: 'c'.repeat(64)
+};
 
 function parseJson(value) {
   return value == null ? null : JSON.parse(value);
@@ -103,24 +116,35 @@ function buildSyntheticFinalizedBestTrack() {
   return [`66666 ${INTERNATIONAL_NUMBER} ${String(count).padStart(3, '0')} 0099 ${INTERNATIONAL_NUMBER} 0 6 GENERIC-TEST 20261009`, ...lines].join('\n');
 }
 
-const augmentation = buildGenericJmaTruthAugmentation({
-  bestTrackText: buildSyntheticFinalizedBestTrack(),
-  positionTableHtml: `<html><body>台風${INTERNATIONAL_NUMBER}号 GENERIC-TEST</body></html>`,
-  retrievedAt: RETRIEVED_AT,
-  stormKey: STORM_KEY,
-  internationalNumber: INTERNATIONAL_NUMBER,
-  historicalStorm,
-  snapshots: persistedSnapshots
-});
+function buildAugmentation(overrides = {}) {
+  return buildGenericJmaTruthAugmentation({
+    bestTrackText: buildSyntheticFinalizedBestTrack(),
+    positionTableHtml: `<html><body>台風${INTERNATIONAL_NUMBER}号 GENERIC-TEST</body></html>`,
+    retrievedAt: RETRIEVED_AT,
+    stormKey: STORM_KEY,
+    internationalNumber: INTERNATIONAL_NUMBER,
+    reviewedIdentityBinding: REVIEWED_IDENTITY,
+    historicalStorm,
+    snapshots: persistedSnapshots,
+    ...overrides
+  });
+}
+
+const augmentation = buildAugmentation();
 
 assert.equal(augmentation.ok, true);
 assert.equal(augmentation.summary.stormKey, STORM_KEY);
 assert.equal(augmentation.summary.internationalNumber, INTERNATIONAL_NUMBER);
+assert.equal(augmentation.summary.identityType, JMA_IDENTITY_TYPE);
+assert.equal(augmentation.summary.identityBindingFingerprint, REVIEWED_IDENTITY.fingerprint);
 assert.equal(augmentation.summary.forecastSnapshotCount, 2, 'generic augmentation must not require four snapshots');
 assert.equal(augmentation.summary.eligibleForecastSnapshotCount, 2);
+assert.equal(augmentation.summary.semantics.reviewedJmaIdentityRequired, true);
+assert.equal(augmentation.summary.semantics.identityBindingIncludedInRunSource, true);
 assert.equal(augmentation.summary.semantics.priorPlanShaRequired, false);
 assert.equal(augmentation.summary.semantics.fixedSnapshotCountRequired, false);
 assert.equal(augmentation.summary.semantics.persistedSnapshotsPreservedByteForByte, true);
+assert.ok(augmentation.summary.source.includes(REVIEWED_IDENTITY.fingerprint));
 assert.equal(augmentation.preview.tableCounts.truth_datasets, 1);
 assert.ok(augmentation.preview.tableCounts.truth_points > 0);
 assert.equal(augmentation.preview.tableCounts.forecast_snapshots, 2);
@@ -152,27 +176,18 @@ assert.equal(persistencePreview.dryRun, true);
 assert.equal(persistencePreview.writesPerformed, false);
 assert.equal(persistencePreview.rowCount, 2);
 
-const replay = buildGenericJmaTruthAugmentation({
-  bestTrackText: buildSyntheticFinalizedBestTrack(),
-  positionTableHtml: `<html><body>台風${INTERNATIONAL_NUMBER}号 GENERIC-TEST</body></html>`,
-  retrievedAt: RETRIEVED_AT,
-  stormKey: STORM_KEY,
-  internationalNumber: INTERNATIONAL_NUMBER,
-  historicalStorm,
-  snapshots: persistedSnapshots
-});
+const replay = buildAugmentation();
 assert.equal(replay.truthSha256, augmentation.truthSha256);
 assert.equal(replay.planSha256, augmentation.planSha256);
 assert.deepEqual(replay.plan, augmentation.plan, 'generic augmentation must be deterministic');
 
-assert.throws(() => buildGenericJmaTruthAugmentation({
-  bestTrackText: buildSyntheticFinalizedBestTrack(),
-  positionTableHtml: `<html><body>台風${INTERNATIONAL_NUMBER}号 ※</body></html>`,
-  retrievedAt: RETRIEVED_AT,
-  stormKey: STORM_KEY,
-  internationalNumber: INTERNATIONAL_NUMBER,
-  historicalStorm,
-  snapshots: persistedSnapshots
+assert.throws(() => buildAugmentation({ reviewedIdentityBinding: undefined }), /reviewedIdentityBinding row is required/);
+assert.throws(() => buildAugmentation({ reviewedIdentityBinding: { ...REVIEWED_IDENTITY, review_status: 'unreviewed', reviewed_at: null, reviewer: null } }), /requires reviewed storm identity/);
+assert.throws(() => buildAugmentation({ reviewedIdentityBinding: { ...REVIEWED_IDENTITY, identity_type: 'production-international-number' } }), /binding type must be jma-rsmc-number/);
+assert.throws(() => buildAugmentation({ reviewedIdentityBinding: { ...REVIEWED_IDENTITY, identity_value: '2698' } }), /must map 2699/);
+
+assert.throws(() => buildAugmentation({
+  positionTableHtml: `<html><body>台風${INTERNATIONAL_NUMBER}号 ※</body></html>`
 }), /not finalized/);
 
 console.log('storm-analysis AI-23 generic truth/verification tests passed');
