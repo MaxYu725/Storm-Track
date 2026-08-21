@@ -119,16 +119,16 @@ assert.equal(confirmed12.exactOfficialSupportCount, 3,
 assert.ok(confirmed12.interpolationReliability > sparse12.interpolationReliability + 0.2,
   `official confirmation should materially restore reliability: sparse=${sparse12.interpolationReliability.toFixed(3)} confirmed=${confirmed12.interpolationReliability.toFixed(3)}`);
 
-// The same physical straight-line scenario remains visible before confirmation, but
-// low interpolation credibility must prevent premature high-confidence escalation.
+// The same physical straight-line scenario remains visible before confirmation.
+// T1 is deliberately allowed to escalate earlier because one agency already provides
+// a direct official close-pass confirmation. Higher warning levels remain more
+// dependent on the credibility of the broader multi-agency trajectory evidence.
 assert.notEqual(sparse.forecast.signals.T1.likelihood, 'unlikely',
-  'sparse dangerous scenario should remain visible at least as possible T1');
+  'partly confirmed dangerous scenario should remain visible for T1');
 assert.notEqual(sparse.forecast.signals.T3.likelihood, 'unlikely',
   'sparse dangerous scenario should remain visible at least as possible T3');
 assert.notEqual(sparse.forecast.signals.T8.likelihood, 'unlikely',
   'sparse dangerous scenario should remain visible at least as possible T8');
-assert.notEqual(sparse.forecast.signals.T1.likelihood, 'likely',
-  `partly interpolated route should not prematurely become likely T1; got ${sparse.forecast.signals.T1.likelihood}`);
 assert.notEqual(sparse.forecast.signals.T3.likelihood, 'likely',
   `partly interpolated route should not prematurely become likely T3; got ${sparse.forecast.signals.T3.likelihood}`);
 assert.notEqual(sparse.forecast.signals.T8.likelihood, 'likely',
