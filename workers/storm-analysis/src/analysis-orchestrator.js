@@ -52,6 +52,21 @@ function signalRiskUnavailable(reason, profileRecord = null) {
   };
 }
 
+function threatAssessmentUnavailable(reason) {
+  return {
+    schemaVersion: 'hk-threat-assessment/v1',
+    available: false,
+    reason,
+    semantics: {
+      deterministic: true,
+      hardThreatGateUsed: false,
+      officialHkoForecast: false,
+      officialHkoDecisionInferred: false,
+      aiGenerated: false
+    }
+  };
+}
+
 function basicSignalForecastUnavailable(reason) {
   return {
     schemaVersion: 'basic-hk-signal-forecast/v1',
@@ -97,11 +112,22 @@ export function createAnalysisOrchestrator({ modelRepository, signalRiskReposito
         ? buildWeightedHongKongImpact(weightedTrack, snapshot.referencePoint, deterministic.impact, input.weightedTrackOptions || {})
         : { schemaVersion: 'weighted-hk-impact/v1', sourceTrackVersion: weightedTrack.schemaVersion, available: false, closestApproach: null, distanceBands: {} };
 
+      const threatAssessment = typeof deterministic.threatAssessment?.buildHkThreatAssessment === 'function'
+        ? deterministic.threatAssessment.buildHkThreatAssessment({
+            snapshot,
+            impact,
+            weightedImpact,
+            signalInputs,
+            generatedAt: snapshot.generatedAt
+          })
+        : threatAssessmentUnavailable('threat-assessment-engine-unavailable');
+
       const basicSignalForecast = typeof deterministic.basicSignalForecast?.buildBasicHkSignalForecast === 'function'
         ? deterministic.basicSignalForecast.buildBasicHkSignalForecast({
             impact,
             weightedImpact,
             signalInputs,
+            threatAssessment,
             generatedAt: snapshot.generatedAt
           })
         : basicSignalForecastUnavailable('basic-signal-forecast-engine-unavailable');
@@ -145,6 +171,7 @@ export function createAnalysisOrchestrator({ modelRepository, signalRiskReposito
           weightedComparison: weighted,
           weightedConsensusTrack: weightedTrack,
           weightedHongKongImpact: weightedImpact,
+          threatAssessment,
           basicSignalForecast,
           signalRisk
         },
@@ -159,6 +186,8 @@ export function createAnalysisOrchestrator({ modelRepository, signalRiskReposito
           championSignalCalibrationReadOnly: true,
           modelPromotionPerformed: false,
           signalCalibrationPromotionPerformed: false,
+          adaptiveThreatAssessmentIncluded: threatAssessment.available === true,
+          hardThreatGateUsed: false,
           stormTrackSignalRiskEstimateIncluded: signalRisk.available === true,
           signalRiskProbabilitiesAreAppComputed: signalRisk.available === true,
           basicSignalForecastIncluded: basicSignalForecast.available === true,
@@ -171,4 +200,4 @@ export function createAnalysisOrchestrator({ modelRepository, signalRiskReposito
   });
 }
 
-export { ORCHESTRATION_VERSION, weightedComparison, signalRiskUnavailable, basicSignalForecastUnavailable };
+export { ORCHESTRATION_VERSION, weightedComparison, signalRiskUnavailable, threatAssessmentUnavailable, basicSignalForecastUnavailable };
