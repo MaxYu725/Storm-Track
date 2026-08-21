@@ -1,0 +1,84 @@
+name: AI-19 Pre-activation no-write audit
+
+on:
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai19-preactivation-audit.yml
+      - tests/storm-analysis-ai19.test.mjs
+      - workers/storm-analysis/scripts/ai19-verify-canonical-plan.mjs
+      - data/ai19/chan-hom-import-plan.json
+      - data/ai19/chan-hom-pilot-summary.json
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      WORKER_URL: https://storm-analysis.max-yu.workers.dev
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Wrangler
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run complete regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd workers/storm-analysis && npm test)
+          node tests/historical-backfill-importer.test.cjs
+          node tests/storm-analysis-ai19.test.mjs
+          (cd workers/storm-analysis && npm run test:integration)
+          (cd workers/storm-analysis && npm run deploy:dry-run)
+
+      - name: Verify lifecycle and exact canonical plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < .github/ai18-activation-trigger.txt)" == "COMPLETED_AI18" ]]
+          [[ "$(tr -d '\r\n' < .github/ai19-backfill-trigger.txt)" == "PENDING_AI19" ]]
+          node workers/storm-analysis/scripts/ai19-verify-canonical-plan.mjs data/ai19 > /tmp/ai19-canonical.json
+          jq -e '.ok == true and .evidenceSha256 == "21b774c59c7773cd7ccdf03e6002deeed4035cd7ca452dc72a00115e449f591d" and .planSha256 == "98a3a2d6c20e5a4704604ef7c58df49a7703b93f9399e2e74962bcd76d74573a" and .runId == "ai19_chanhom_forecast_21b774c59c7773cd" and .rowCount == 6 and .capability.mode == "forecast-only" and .capability.eligibleForAgencySkill == false' /tmp/ai19-canonical.json >/dev/null
+          echo 'AI19_CANONICAL_PLAN_VERIFIED=true'
+
+      - name: Verify live Worker and plan dry-run
+        shell: bash
+        run: |
+          set -euo pipefail
+          health="$(curl --fail -sS "${WORKER_URL}/health")"
+          printf '%s' "$health" | jq -e '.ok == true and .analysisDbBound == true and .importEnabled == true and .analysisAdminEnabled == true and .workersAiEnabled == false and .automaticPromotionEnabled == false and .productionStormWorkerModified == false' >/dev/null
+          status="$(curl -sS -o /tmp/ai19-preview.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/plan" -H 'content-type: application/json' --data-binary @data/ai19/chan-hom-import-plan.json)"
+          [[ "$status" == "200" ]]
+          jq -e '.ok == true and .dryRun == true and .writesPerformed == false and .rowCount == 6 and .tableCounts.backfill_runs == 1 and .tableCounts.historical_storms == 1 and .tableCounts.forecast_snapshots == 4 and .tableCounts.truth_datasets == 0 and .tableCounts.truth_points == 0 and .tableCounts.signal_outcomes == 0' /tmp/ai19-preview.json >/dev/null
+          echo 'AI19_LIVE_DRY_RUN_VERIFIED=true'
+
+      - name: Verify production source identity and pristine ANALYSIS_DB
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          [[ "$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-track-db") | (.uuid // .id // empty)')" == "eb0bf995-3ea7-4bf6-bbca-b425892c4d7e" ]]
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT COUNT(*) AS advisories FROM advisories WHERE storm_id='WP-2026-15';" > /tmp/ai19-prod.json
+          [[ "$(jq -r '.. | objects | select(has("advisories")) | .advisories' /tmp/ai19-prod.json | head -n 1)" == "104" ]]
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM backfill_runs) AS backfill_runs,(SELECT COUNT(*) FROM historical_storms) AS historical_storms,(SELECT COUNT(*) FROM truth_datasets) AS truth_datasets,(SELECT COUNT(*) FROM truth_points) AS truth_points,(SELECT COUNT(*) FROM forecast_snapshots) AS forecast_snapshots,(SELECT COUNT(*) FROM signal_outcomes) AS signal_outcomes,(SELECT COUNT(*) FROM verification_results) AS verification_results,(SELECT COUNT(*) FROM agency_skill_profiles) AS agency_skill_profiles,(SELECT COUNT(*) FROM adaptive_weight_candidates) AS adaptive_weight_candidates,(SELECT COUNT(*) FROM signal_calibration_training_runs) AS training_runs,(SELECT COUNT(*) FROM signal_outcome_curations) AS curations,(SELECT COUNT(*) FROM signal_profile_promotion_events) AS promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) AS generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) AS champion_profile_id;" > /tmp/ai19-state.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai19-state.json | head -n 1)"
+          echo "AI19_PREACTIVATION_STATE=${row}"
+          printf '%s' "$row" | jq -e '.backfill_runs==0 and .historical_storms==0 and .truth_datasets==0 and .truth_points==0 and .forecast_snapshots==0 and .signal_outcomes==0 and .verification_results==0 and .agency_skill_profiles==0 and .adaptive_weight_candidates==0 and .training_runs==0 and .curations==0 and .promotion_events==0 and .generation==0 and .champion_profile_id==null' >/dev/null
+          echo 'AI19_PREACTIVATION_AUDIT=true'
+          echo 'DIAG_MUTATIONS_PERFORMED=false'
