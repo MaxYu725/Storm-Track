@@ -1,0 +1,60 @@
+name: Run HK threat optimization
+
+on:
+  push:
+    branches:
+      - feature/basic-hk-signal-forecast
+    paths:
+      - .github/workflows/hk-threat-optimization-run.yml
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/basic-hk-signal-forecast
+          fetch-depth: 0
+
+      - name: Execute optimization patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+          source = Path('.github/workflows/hk-threat-optimization.yml').read_text(encoding='utf-8')
+          marker = "          python - <<'PY'\n"
+          start = source.index(marker) + len(marker)
+          end = source.index("\n          PY", start)
+          block = textwrap.dedent(source[start:end])
+          exec(compile(block, 'hk-threat-optimization.py', 'exec'), {'__name__': '__main__'})
+          PY
+          git diff --check
+
+      - name: Run focused tests
+        working-directory: workers/storm-analysis
+        run: |
+          node ../../tests/hk-threat-assessment.test.cjs
+          node ../../tests/hk-threat-rule-scenarios.test.cjs
+          node ../../tests/basic-hk-signal-forecast.test.cjs
+          node ../../tests/frontend-hk-threat-ui.test.cjs
+
+      - name: Run full regression
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Commit validated changes
+        shell: bash
+        run: |
+          git config user.name 'storm-track-ci'
+          git config user.email 'actions@users.noreply.github.com'
+          git add analysis/hko-signal-risk-inputs.js analysis/hk-threat-assessment.js analysis/basic-hk-signal-forecast.js tests/hk-threat-rule-scenarios.test.cjs workers/storm-analysis/package.json
+          if git diff --cached --quiet; then
+            echo 'No validated product changes'
+            exit 0
+          fi
+          git commit -m 'Refine HK threat evidence model'
+          git push origin HEAD:feature/basic-hk-signal-forecast
