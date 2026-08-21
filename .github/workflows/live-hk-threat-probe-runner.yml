@@ -22,6 +22,7 @@ jobs:
       - name: Reuse live probe program in ESM mode
         shell: bash
         run: |
+          # Trigger: verify corrected future-only threat timeline and frontend output.
           python - <<'PY'
           from pathlib import Path
           source = Path('.github/workflows/live-hk-threat-probe.yml').read_text(encoding='utf-8')
