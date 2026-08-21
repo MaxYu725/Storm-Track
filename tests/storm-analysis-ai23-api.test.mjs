@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { handleRequest } from '../workers/storm-analysis/src/index.js';
+import { handleRequest, TRUTH_AUGMENTATION_REPOSITORY_VERSION } from '../workers/storm-analysis/src/index.js';
 import { VERIFICATION_RESULT_REPOSITORY_VERSION } from '../workers/storm-analysis/src/verification-result-repository.js';
 
 const rows = [{
@@ -18,10 +18,17 @@ const rows = [{
   }
 }];
 
+const truthRequest = {
+  stormKey: 'WP-2026-99',
+  internationalNumber: '2699',
+  identityBindingFingerprint: 'b'.repeat(64),
+  plan: { schemaVersion: 'historical-backfill-import/v1', runId: 'mock-run', rows: [] }
+};
+
 const calls = [];
-const repository = {
+const verificationRepository = {
   preview(received) {
-    calls.push(['preview', received]);
+    calls.push(['verification-preview', received]);
     return {
       ok: true,
       dryRun: true,
@@ -31,7 +38,7 @@ const repository = {
     };
   },
   async persist(received) {
-    calls.push(['persist', received]);
+    calls.push(['verification-persist', received]);
     return {
       ok: true,
       status: 'completed',
@@ -43,13 +50,47 @@ const repository = {
     };
   }
 };
-const dependencies = { createVerificationResultRepository: () => repository };
+const truthRepository = {
+  async preview(received) {
+    calls.push(['truth-preview', received]);
+    return {
+      ok: true,
+      dryRun: true,
+      writesPerformed: false,
+      repositoryVersion: TRUTH_AUGMENTATION_REPOSITORY_VERSION,
+      stormKey: received.stormKey,
+      internationalNumber: received.internationalNumber,
+      exactSnapshotCount: 2,
+      truthDatasetDisposition: 'appended',
+      truthPointsAppended: 12
+    };
+  },
+  async import(received) {
+    calls.push(['truth-import', received]);
+    return {
+      ok: true,
+      status: 'completed',
+      writesPerformed: true,
+      repositoryVersion: TRUTH_AUGMENTATION_REPOSITORY_VERSION,
+      stormKey: received.stormKey,
+      internationalNumber: received.internationalNumber,
+      exactSnapshotCount: 2,
+      truthDatasetDisposition: 'existing',
+      truthPointsAppended: 0
+    };
+  }
+};
+const dependencies = {
+  createVerificationResultRepository: () => verificationRepository,
+  createTruthAugmentationRepository: () => truthRepository
+};
 const env = { ANALYSIS_DB: {}, BACKFILL_TOKEN: 'backfill-secret', ANALYSIS_ADMIN_TOKEN: 'admin-secret' };
 
 const health = await handleRequest(new Request('https://example.test/health'), env, dependencies);
 assert.equal(health.status, 200);
 const healthBody = await health.json();
 assert.equal(healthBody.verificationPersistenceVersion, VERIFICATION_RESULT_REPOSITORY_VERSION);
+assert.equal(healthBody.truthAugmentationVersion, TRUTH_AUGMENTATION_REPOSITORY_VERSION);
 assert.equal(healthBody.analysisAdminEnabled, true);
 assert.equal(healthBody.productionStormWorkerModified, false);
 
@@ -75,11 +116,11 @@ for (const endpoint of ['/api/admin/verification/preview', '/api/admin/verificat
   assert.equal((await invalidShape.json()).error, 'invalid-verification-request');
 }
 
-const preview = await handleRequest(new Request('https://example.test/api/admin/verification/preview', {
+const verificationPreview = await handleRequest(new Request('https://example.test/api/admin/verification/preview', {
   method: 'POST', headers: { authorization: 'Bearer admin-secret', 'content-type': 'application/json' }, body: JSON.stringify({ rows })
 }), env, dependencies);
-assert.equal(preview.status, 200);
-assert.deepEqual(await preview.json(), {
+assert.equal(verificationPreview.status, 200);
+assert.deepEqual(await verificationPreview.json(), {
   ok: true,
   preview: {
     ok: true,
@@ -90,29 +131,66 @@ assert.deepEqual(await preview.json(), {
   }
 });
 
-const persist = await handleRequest(new Request('https://example.test/api/admin/verification/persist', {
+const verificationPersist = await handleRequest(new Request('https://example.test/api/admin/verification/persist', {
   method: 'POST', headers: { authorization: 'Bearer admin-secret', 'content-type': 'application/json' }, body: JSON.stringify({ rows })
 }), env, dependencies);
-assert.equal(persist.status, 200);
-assert.deepEqual(await persist.json(), {
+assert.equal(verificationPersist.status, 200);
+assert.equal((await verificationPersist.json()).persistence.status, 'completed');
+
+for (const endpoint of ['/api/admin/truth/augmentation/preview', '/api/admin/truth/augmentation/import']) {
+  const wrongMethod = await handleRequest(new Request(`https://example.test${endpoint}`), env, dependencies);
+  assert.equal(wrongMethod.status, 405);
+  assert.equal(wrongMethod.headers.get('allow'), 'POST');
+
+  const noToken = await handleRequest(new Request(`https://example.test${endpoint}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(truthRequest)
+  }), env, dependencies);
+  assert.equal(noToken.status, 401);
+
+  const backfillToken = await handleRequest(new Request(`https://example.test${endpoint}`, {
+    method: 'POST', headers: { authorization: 'Bearer backfill-secret', 'content-type': 'application/json' }, body: JSON.stringify(truthRequest)
+  }), env, dependencies);
+  assert.equal(backfillToken.status, 401, `${endpoint} must require ANALYSIS_ADMIN_TOKEN`);
+}
+
+const truthPreview = await handleRequest(new Request('https://example.test/api/admin/truth/augmentation/preview', {
+  method: 'POST', headers: { authorization: 'Bearer admin-secret', 'content-type': 'application/json' }, body: JSON.stringify(truthRequest)
+}), env, dependencies);
+assert.equal(truthPreview.status, 200);
+assert.deepEqual(await truthPreview.json(), {
   ok: true,
-  persistence: {
+  preview: {
     ok: true,
-    status: 'completed',
-    writesPerformed: true,
-    repositoryVersion: VERIFICATION_RESULT_REPOSITORY_VERSION,
-    requestedRowCount: 1,
-    insertedRowCount: 1,
-    alreadyPresentRowCount: 0
+    dryRun: true,
+    writesPerformed: false,
+    repositoryVersion: TRUTH_AUGMENTATION_REPOSITORY_VERSION,
+    stormKey: 'WP-2026-99',
+    internationalNumber: '2699',
+    exactSnapshotCount: 2,
+    truthDatasetDisposition: 'appended',
+    truthPointsAppended: 12
   }
 });
 
-assert.deepEqual(calls, [['preview', rows], ['persist', rows]]);
+const truthImport = await handleRequest(new Request('https://example.test/api/admin/truth/augmentation/import', {
+  method: 'POST', headers: { authorization: 'Bearer admin-secret', 'content-type': 'application/json' }, body: JSON.stringify(truthRequest)
+}), env, dependencies);
+assert.equal(truthImport.status, 200);
+assert.equal((await truthImport.json()).augmentation.status, 'completed');
 
-const disabled = await handleRequest(new Request('https://example.test/api/admin/verification/preview', {
-  method: 'POST', headers: { authorization: 'Bearer admin-secret', 'content-type': 'application/json' }, body: JSON.stringify({ rows })
-}), { ANALYSIS_DB: {} }, dependencies);
-assert.equal(disabled.status, 503);
-assert.equal((await disabled.json()).error, 'analysis-admin-disabled');
+assert.deepEqual(calls, [
+  ['verification-preview', rows],
+  ['verification-persist', rows],
+  ['truth-preview', truthRequest],
+  ['truth-import', truthRequest]
+]);
 
-console.log('storm-analysis AI-23 verification API wiring tests passed');
+for (const endpoint of ['/api/admin/verification/preview', '/api/admin/truth/augmentation/preview']) {
+  const disabled = await handleRequest(new Request(`https://example.test${endpoint}`, {
+    method: 'POST', headers: { authorization: 'Bearer admin-secret', 'content-type': 'application/json' }, body: JSON.stringify(endpoint.includes('/truth/') ? truthRequest : { rows })
+  }), { ANALYSIS_DB: {} }, dependencies);
+  assert.equal(disabled.status, 503);
+  assert.equal((await disabled.json()).error, 'analysis-admin-disabled');
+}
+
+console.log('storm-analysis AI-23 truth + verification API wiring tests passed');
