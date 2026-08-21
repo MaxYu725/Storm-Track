@@ -16,6 +16,7 @@ on:
       - scripts/hk-threat-optimization-followup7.py
       - scripts/hk-threat-optimization-followup8.py
       - scripts/hk-threat-optimization-diagnostics.py
+      - scripts/hk-live-source-smoke.mjs
       - analysis/**
       - tests/**
       - workers/storm-analysis/**
@@ -67,3 +68,6 @@ jobs:
       - name: Run full regression
         working-directory: workers/storm-analysis
         run: npm test
+
+      - name: Read-only live source smoke
+        run: node scripts/hk-live-source-smoke.mjs
