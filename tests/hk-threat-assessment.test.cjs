@@ -74,11 +74,14 @@ function signalInputs({ windMs = 15, coverage = 0, agencies = 3 } = {}) {
   assert.equal(result.schemaVersion, 'hk-threat-assessment/v1');
   assert.equal(result.semantics.hardThreatGateUsed, false);
   assert.equal(result.semantics.timeWeightingIsContinuous, true);
+  assert.equal(result.semantics.fixedDayBucketsUsed, false);
+  assert.equal(result.semantics.timelineUsesOfficialValidTimes, true);
   assert.ok(result.timeline.length >= 5);
+  assert.ok(result.timeline.every(item => /^\+\d+(?:\.\d+)?h$/.test(item.label)));
   assert.ok(result.analyzers.reApproach.confidence > 0.05);
   assert.ok(result.analyzers.forecastEdge.confidence > 0.5);
   assert.ok(result.analyzers.agencyDisagreement.confidence > 0.5);
-  assert.equal(result.summary.strongestTimelineThreat.label, 'D1');
+  assert.ok(result.summary.strongestTimelineThreat.leadHours >= 0);
   assert.ok(result.agencies.HKO.minimumWithinForecast.horizonEdgeConfidence > 0.9);
 }
 
@@ -128,6 +131,56 @@ function signalInputs({ windMs = 15, coverage = 0, agencies = 3 } = {}) {
   assert.ok(result.analyzers.agencyDisagreement.confidence < 0.5);
   assert.ok(result.summary.overallThreatIndex > 0.4);
   assert.ok(result.timeline.some(item => item.distanceDeltaFromPreviousKm < 0));
+}
+
+{
+  const snapshot = {
+    generatedAt: '2026-08-21T00:00:00Z',
+    referencePoint: HK,
+    sources: {
+      CMA: {
+        state: 'ok',
+        positions: [point('2026-08-21T00:00:00Z', 18.0, 125.0, { kind: 'analysis', maximumWind: 15 })],
+        forecast: [
+          point('2026-08-21T06:00:00Z', 18.8, 123.0, { kind: 'forecast', maximumWind: 16 }),
+          point('2026-08-21T12:00:00Z', 19.6, 121.0, { kind: 'forecast', maximumWind: 18 }),
+          point('2026-08-21T18:00:00Z', 20.3, 118.8, { kind: 'forecast', maximumWind: 22 }),
+          point('2026-08-22T00:00:00Z', 21.0, 116.7, { kind: 'forecast', maximumWind: 27 }),
+          point('2026-08-22T06:00:00Z', 21.5, 115.2, { kind: 'forecast', maximumWind: 33 })
+        ]
+      },
+      HKO: {
+        state: 'ok',
+        positions: [point('2026-08-21T00:00:00Z', 18.1, 125.2, { kind: 'analysis', maximumWind: '55km/h' })],
+        forecast: [
+          point('2026-08-22T00:00:00Z', 21.1, 116.8, { kind: 'forecast', maximumWind: '95km/h' }),
+          point('2026-08-22T12:00:00Z', 21.8, 114.9, { kind: 'forecast', maximumWind: '120km/h' })
+        ]
+      },
+      JMA: { state: 'missing' },
+      CWA: { state: 'missing' }
+    }
+  };
+  const impact = {
+    generatedAt: snapshot.generatedAt,
+    uncertainty: { level: 'moderate' },
+    closestApproach: {
+      distanceRangeKm: { min: 80, max: 120 },
+      agencyTimeWindow: { spanHours: 6 },
+      consensus: { distanceKm: 95, time: '2026-08-22T06:00:00Z' }
+    }
+  };
+  const result = threat.buildHkThreatAssessment({ snapshot, impact, signalInputs: signalInputs({ windMs: 33, coverage: 1, agencies: 2 }) });
+
+  assert.equal(result.available, true);
+  assert.ok(result.timeline.some(item => item.label === '+6h'));
+  assert.ok(result.timeline.some(item => item.label === '+12h'));
+  assert.ok(result.timeline.some(item => item.label === '+18h'));
+  assert.ok(result.timeline.some(item => item.label === '+30h'));
+  assert.ok(result.timeline.some(item => Number.isFinite(item.windDeltaFromPreviousMs) && item.windDeltaFromPreviousMs > 0));
+  assert.ok(result.timeline.some(item => Number.isFinite(item.approachRateKmh) && item.approachRateKmh > 20));
+  assert.ok(result.analyzers.rapidEvolution.confidence > 0.4);
+  assert.ok(result.summary.fastestEvolution.leadHours <= 30);
 }
 
 {
