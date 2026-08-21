@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/hk-threat-optimization-run.yml
       - .github/workflows/hk-threat-optimization.yml
+      - scripts/hk-threat-optimization-followup.py
       - analysis/**
       - tests/**
       - workers/storm-analysis/**
@@ -23,7 +24,7 @@ jobs:
           ref: feature/basic-hk-signal-forecast
           fetch-depth: 0
 
-      - name: Execute optimization patch
+      - name: Execute optimization patches
         shell: bash
         run: |
           python - <<'PY'
@@ -36,6 +37,7 @@ jobs:
           block = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines)
           exec(compile(block, 'hk-threat-optimization.py', 'exec'), {'__name__': '__main__'})
           PY
+          python scripts/hk-threat-optimization-followup.py
           git diff --check
 
       - name: Run focused tests
