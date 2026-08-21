@@ -1,0 +1,149 @@
+name: AI-22F Read-only WP-2026-16 incremental append preview
+
+on:
+  push:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai22-readonly-wp16-incremental-preview.yml
+      - workers/storm-analysis/scripts/ai22-select-incremental-cutoff.mjs
+      - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
+      - tests/storm-analysis-ai22-incremental-selector.test.mjs
+      - workers/storm-analysis/package.json
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai22-readonly-wp16-incremental-preview.yml
+      - workers/storm-analysis/scripts/ai22-select-incremental-cutoff.mjs
+      - workers/storm-analysis/scripts/ai22-build-lifecycle-capture.mjs
+      - tests/storm-analysis-ai22-incremental-selector.test.mjs
+      - workers/storm-analysis/package.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  BACKFILL_TOKEN: ${{ secrets.BACKFILL_TOKEN }}
+  WORKER_URL: https://storm-analysis.max-yu.workers.dev
+  STORM_KEY: WP-2026-16
+  WINDOW_ID: wp-2026-16-operational-202608
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout canonical AI branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Worker toolchain
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run complete regression suite
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Verify AI-22 phase locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < .github/ai20-truth-trigger.txt)" == "PENDING_AI20" ]]
+          [[ "$(tr -d '\r\n' < .github/ai22-lifecycle-trigger.txt)" == "PENDING_AI22" ]]
+          [[ "$(tr -d '\r\n' < .github/ai22-runtime-trigger.txt)" == "COMPLETED_AI22_RUNTIME" ]]
+          [[ "$(tr -d '\r\n' < .github/ai22-wp16-capture-trigger.txt)" == "COMPLETED_AI22_WP16_CAPTURE" ]]
+          echo 'AI22F_MUTATION_LOCKED=true'
+
+      - name: Read existing WP-2026-16 cutoffs and baseline using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT snapshot_id,storm_key,as_of,fingerprint,payload_hash FROM forecast_snapshots WHERE storm_key='${STORM_KEY}' ORDER BY as_of,snapshot_id;" > /tmp/ai22f-existing-raw.json
+          jq '[.. | objects | select(.storm_key == "WP-2026-16" and has("snapshot_id") and has("as_of"))]' /tmp/ai22f-existing-raw.json > /tmp/ai22f-existing.json
+          [[ "$(jq 'length' /tmp/ai22f-existing.json)" -eq 4 ]]
+          jq -e 'map(.as_of) == (map(.as_of)|sort|unique)' /tmp/ai22f-existing.json >/dev/null
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM backfill_runs) backfill_runs,(SELECT COUNT(*) FROM historical_storms) historical_storms,(SELECT COUNT(*) FROM forecast_snapshots) forecast_snapshots,(SELECT COUNT(*) FROM forecast_snapshots WHERE storm_key='WP-2026-16') wp16_snapshots,(SELECT COUNT(*) FROM corpus_capture_windows) capture_windows,(SELECT COUNT(*) FROM corpus_capture_runs) capture_runs,(SELECT COUNT(*) FROM corpus_snapshot_memberships) snapshot_memberships,(SELECT COUNT(*) FROM storm_identity_bindings) identity_bindings,(SELECT COUNT(*) FROM storm_identity_bindings WHERE review_status='reviewed') reviewed_identity_bindings,(SELECT COUNT(*) FROM storm_identity_merges) identity_merges,(SELECT COUNT(*) FROM truth_datasets) truth_datasets,(SELECT COUNT(*) FROM truth_points) truth_points,(SELECT COUNT(*) FROM verification_results) verification_results,(SELECT COUNT(*) FROM signal_calibration_training_runs) training_runs,(SELECT COUNT(*) FROM signal_profile_promotion_events) promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) champion_profile_id;" > /tmp/ai22f-baseline.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai22f-baseline.json | head -n1)"
+          ROW="$row" node --input-type=module <<'NODE'
+          const row=JSON.parse(process.env.ROW);
+          const expected={backfill_runs:3,historical_storms:3,forecast_snapshots:12,wp16_snapshots:4,capture_windows:1,capture_runs:1,snapshot_memberships:4,identity_bindings:1,reviewed_identity_bindings:0,identity_merges:0,truth_datasets:0,truth_points:0,verification_results:0,training_runs:0,promotion_events:0,generation:0};
+          for (const [key,value] of Object.entries(expected)) if (Number(row[key])!==value) throw new Error(`AI-22F baseline ${key}=${row[key]}; expected ${value}`);
+          if (row.champion_profile_id!=null) throw new Error('AI-22F refuses Champion drift');
+          NODE
+          echo "AI22F_EXISTING_CUTOFFS=$(jq -c 'map(.as_of)' /tmp/ai22f-existing.json)"
+
+      - name: Extract current WP-2026-16 production archive using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT id,name_zh,name_en,status,international_number,merged_into_id,created_at,updated_at FROM storms WHERE id='${STORM_KEY}' LIMIT 1;" > /tmp/ai22f-storm-raw.json
+          jq '[.. | objects | select(.id == "WP-2026-16" and has("status"))] | first' /tmp/ai22f-storm-raw.json > /tmp/ai22f-storm.json
+          jq -e '.id=="WP-2026-16" and (.merged_into_id==null) and (.status!="merged")' /tmp/ai22f-storm.json >/dev/null
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT a.id,a.storm_id,a.agency,a.issued_at,a.fetched_at,a.source_code,a.source_url,a.source_hash,a.raw_object_key,a.parser_version FROM advisories a WHERE a.storm_id='${STORM_KEY}' AND EXISTS (SELECT 1 FROM track_points tp WHERE tp.advisory_id=a.id AND tp.point_type='forecast' AND tp.valid_at>a.issued_at) ORDER BY a.issued_at,a.agency,a.id;" > /tmp/ai22f-advisories-raw.json
+          jq '[.. | objects | select(.storm_id == "WP-2026-16" and has("agency") and has("source_hash"))]' /tmp/ai22f-advisories-raw.json > /tmp/ai22f-advisories.json
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT a.storm_id,a.agency,tp.advisory_id,tp.valid_at,tp.forecast_hour,tp.latitude,tp.longitude,tp.pressure_hpa,tp.wind_ms,tp.gust_ms,tp.wind_averaging_minutes,tp.intensity_code,tp.intensity_label,tp.probability_radius_km,tp.source_order FROM advisories a JOIN track_points tp ON tp.advisory_id=a.id WHERE a.storm_id='${STORM_KEY}' AND tp.point_type='forecast' ORDER BY a.issued_at,a.agency,tp.valid_at,tp.source_order;" > /tmp/ai22f-points-raw.json
+          jq '[.. | objects | select(.storm_id == "WP-2026-16" and has("advisory_id") and has("valid_at"))]' /tmp/ai22f-points-raw.json > /tmp/ai22f-points.json
+          echo "AI22F_SOURCE_ADVISORIES=$(jq 'length' /tmp/ai22f-advisories.json)"
+          echo "AI22F_SOURCE_FORECAST_POINTS=$(jq 'length' /tmp/ai22f-points.json)"
+
+      - name: Build deterministic five-cutoff incremental request
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ai22-select-incremental-cutoff.mjs --storm /tmp/ai22f-storm.json --advisories /tmp/ai22f-advisories.json --points /tmp/ai22f-points.json --existing /tmp/ai22f-existing.json --window-id "$WINDOW_ID" --output /tmp/ai22f-evidence.json --summary /tmp/ai22f-selection.json > /tmp/ai22f-selection-stdout.json
+          rm -rf /tmp/ai22f-build
+          node scripts/ai22-build-lifecycle-capture.mjs --evidence /tmp/ai22f-evidence.json --output /tmp/ai22f-build > /tmp/ai22f-summary.json
+          jq -e '.existingCutoffCount==4 and .selectedSnapshotCount==5 and .newAgencyCount>=1 and .semantics.preservesExistingCutoffs==true and .semantics.appendsExactlyOneNewCutoff==true' /tmp/ai22f-selection.json >/dev/null
+          jq -e '.snapshotCount==5 and .identityProposalCount==1 and .tableCounts.forecast_snapshots==5 and .remoteWritesPerformed==false' /tmp/ai22f-summary.json >/dev/null
+          existing_last="$(jq -r 'map(.as_of)|max' /tmp/ai22f-existing.json)"
+          new_cutoff="$(jq -r '.newCutoff.asOf' /tmp/ai22f-selection.json)"
+          [[ "$new_cutoff" > "$existing_last" ]]
+          echo "AI22F_NEW_CUTOFF=$new_cutoff"
+          echo "AI22F_NEW_CUTOFF_AGENCIES=$(jq -c '.newCutoff.agencies' /tmp/ai22f-selection.json)"
+          echo "AI22F_RUN_ID=$(jq -r '.runId' /tmp/ai22f-summary.json)"
+          echo "AI22F_EVIDENCE_SHA256=$(jq -r '.evidenceSha256' /tmp/ai22f-summary.json)"
+          echo "AI22F_PLAN_SHA256=$(jq -r '.planSha256' /tmp/ai22f-summary.json)"
+          echo "AI22F_CAPTURE_FINGERPRINT=$(jq -r '.captureFingerprint' /tmp/ai22f-summary.json)"
+          echo "AI22F_REQUEST_BYTES=$(wc -c < /tmp/ai22f-build/lifecycle-capture-request.json)"
+
+      - name: Live preview must classify four existing and one append
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${BACKFILL_TOKEN:-}" ]]
+          status="$(curl -sS -o /tmp/ai22f-preview.json -w '%{http_code}' -X POST "${WORKER_URL}/api/corpus/capture/preview" -H "authorization: Bearer ${BACKFILL_TOKEN}" -H 'content-type: application/json' --data-binary @/tmp/ai22f-build/lifecycle-capture-request.json)"
+          [[ "$status" == "200" ]]
+          jq -e '.ok==true and .dryRun==true and .stormCount==1 and .snapshotCount==5 and .existingSnapshotCount==4 and .appendedSnapshotCount==1 and .writesPerformed==false and .storms["WP-2026-16"].windowId=="wp-2026-16-operational-202608" and .storms["WP-2026-16"].existingState=="active" and .storms["WP-2026-16"].existing==4 and .storms["WP-2026-16"].appended==1' /tmp/ai22f-preview.json >/dev/null
+          [[ "$(jq '[.classifications[]|select(.disposition=="existing")]|length' /tmp/ai22f-preview.json)" -eq 4 ]]
+          [[ "$(jq '[.classifications[]|select(.disposition=="appended")]|length' /tmp/ai22f-preview.json)" -eq 1 ]]
+          echo 'AI22F_LIVE_INCREMENTAL_PREVIEW_VERIFIED=true'
+
+      - name: Prove preview performed no remote writes
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM backfill_runs) backfill_runs,(SELECT COUNT(*) FROM historical_storms) historical_storms,(SELECT COUNT(*) FROM forecast_snapshots) forecast_snapshots,(SELECT COUNT(*) FROM forecast_snapshots WHERE storm_key='WP-2026-16') wp16_snapshots,(SELECT COUNT(*) FROM corpus_capture_windows) capture_windows,(SELECT COUNT(*) FROM corpus_capture_runs) capture_runs,(SELECT COUNT(*) FROM corpus_snapshot_memberships) snapshot_memberships,(SELECT COUNT(*) FROM storm_identity_bindings) identity_bindings,(SELECT COUNT(*) FROM truth_datasets) truth_datasets,(SELECT COUNT(*) FROM truth_points) truth_points,(SELECT COUNT(*) FROM verification_results) verification_results,(SELECT COUNT(*) FROM signal_calibration_training_runs) training_runs,(SELECT COUNT(*) FROM signal_profile_promotion_events) promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) champion_profile_id;" > /tmp/ai22f-post-preview.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai22f-post-preview.json | head -n1)"
+          ROW="$row" node --input-type=module <<'NODE'
+          const row=JSON.parse(process.env.ROW);
+          const expected={backfill_runs:3,historical_storms:3,forecast_snapshots:12,wp16_snapshots:4,capture_windows:1,capture_runs:1,snapshot_memberships:4,identity_bindings:1,truth_datasets:0,truth_points:0,verification_results:0,training_runs:0,promotion_events:0,generation:0};
+          for (const [key,value] of Object.entries(expected)) if (Number(row[key])!==value) throw new Error(`AI-22F preview wrote ${key}=${row[key]}; expected ${value}`);
+          if (row.champion_profile_id!=null) throw new Error('AI-22F preview changed Champion');
+          NODE
+          echo 'AI22F_REMOTE_WRITES_PERFORMED=false'
+          echo 'AI22F_TRUTH_VERIFICATION_TRAINING_PROMOTION_WRITES=false'
