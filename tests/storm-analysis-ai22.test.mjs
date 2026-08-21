@@ -195,3 +195,4 @@ for (const [path, body, callName] of [
 }
 
 console.log('storm-analysis AI-22 corpus lifecycle tests passed');
+// CI probe only: execute canonical regression including AI-23A generic pipeline fixture.
