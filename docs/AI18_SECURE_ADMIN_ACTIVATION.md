@@ -1,6 +1,6 @@
 # AI-18 — Secure Admin Activation
 
-Status: **prepared; activation locked pending operator-created GitHub Secrets**  
+Status: **completed; both authorization domains active and independently verified**  
 Branch: `feature/ai-analysis-engine`  
 Parent checkpoint: AI-17 `a243636b127d67f11470b86b30dfa7de84c618ae`
 
@@ -46,9 +46,9 @@ The repository contains `.github/ai18-activation-trigger.txt`.
 
 - `PENDING_AI18`: readiness only; Cloudflare secrets cannot be changed by the workflow.
 - `ACTIVATE_AI18`: explicit authorization to run the activation path after both GitHub Secrets have been created.
-- `COMPLETED_AI18`: written only after successful activation and verification.
+- `COMPLETED_AI18`: activation has been independently verified and repository evidence has been recorded.
 
-The readiness commit deliberately starts at `PENDING_AI18`. A later explicit trigger change is required before any Cloudflare secret mutation.
+The readiness commit deliberately started at `PENDING_AI18`. Activation required the later explicit transition to `ACTIVATE_AI18`; the completed checkpoint is locked at `COMPLETED_AI18`.
 
 ## Atomic secret activation
 
@@ -80,7 +80,9 @@ The workflow proves authorization without performing a valid write operation:
 - an unauthenticated backfill/admin request must return HTTP 401;
 - `ANALYSIS_ADMIN_TOKEN` presented to backfill import must return HTTP 401;
 - `BACKFILL_TOKEN` presented to an analysis-admin endpoint must return HTTP 401;
-- the correct token with a POST request containing no body must pass authorization and then stop at HTTP 400 `missing-body` before the corresponding data operation can execute.
+- the correct token with a zero-length POST body must pass authorization and then stop at HTTP 400 during request-body validation before the corresponding data operation can execute.
+
+Depending on how the Workers runtime represents a zero-length POST, the body-validation error may be `missing-body` or `invalid-json`. Both are accepted only when the HTTP status is 400 and the request has not reached the import/training operation.
 
 It also verifies the built-in read-only Champion model and empty signal Champion state remain intact.
 
@@ -97,13 +99,20 @@ After the auth-only probes, AI-18 performs remote read-only SQL and requires all
 
 `champion_profile_id` must remain `NULL`.
 
-## Successful checkpoint
+## Required-secret declaration
 
-Only after all verification passes does the workflow:
+After successful activation, Wrangler config declares only the names:
 
-1. declare `BACKFILL_TOKEN` and `ANALYSIS_ADMIN_TOKEN` under Wrangler `secrets.required` for future deployments;
-2. create `docs/AI18_ACTIVATION_RESULT.md` containing no secret values;
-3. set the trigger to `COMPLETED_AI18`;
-4. commit the result to the feature branch with `[skip ci]`.
+```json
+"secrets": {
+  "required": ["BACKFILL_TOKEN", "ANALYSIS_ADMIN_TOKEN"]
+}
+```
+
+No secret values are stored in the repository. Future Wrangler deploy/version-upload operations must fail if either required Worker secret is absent.
+
+## Completed checkpoint
+
+AI-18 completion records `docs/AI18_ACTIVATION_RESULT.md` and sets the lifecycle trigger to `COMPLETED_AI18`.
 
 Actual historical data collection and any Champion training/promotion remain future checkpoints.

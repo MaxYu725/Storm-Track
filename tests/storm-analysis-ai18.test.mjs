@@ -24,6 +24,7 @@ assert.ok(!workflow.includes('storm.max-yu.workers.dev'), 'AI-18 must not target
 assert.ok(!workflow.includes('wrangler r2'), 'AI-18 must not alter R2');
 assert.ok(!workflow.includes('git push origin HEAD:main'), 'AI-18 must not push main');
 assert.match(workflow, /missing-body/);
+assert.match(workflow, /invalid-json/);
 assert.match(workflow, /ANALYSIS_ADMIN_TOKEN must not authorize backfill import/);
 assert.match(workflow, /BACKFILL_TOKEN must not authorize analysis-admin endpoints/);
 assert.match(workflow, /printf '%s\\n' 'COMPLETED_AI18'/);

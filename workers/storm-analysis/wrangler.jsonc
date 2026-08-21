@@ -10,6 +10,11 @@
       "head_sampling_rate": 1
     }
   },
+  // AI-18: require both independent authorization domains on future deploys.
+  // Secret values remain only in Cloudflare/GitHub Secrets and are never stored here.
+  "secrets": {
+    "required": ["BACKFILL_TOKEN", "ANALYSIS_ADMIN_TOKEN"]
+  },
   "d1_databases": [
     {
       "binding": "ANALYSIS_DB",
