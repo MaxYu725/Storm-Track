@@ -48,23 +48,24 @@ jobs:
           [[ "$source_id" == "eb0bf995-3ea7-4bf6-bbca-b425892c4d7e" ]]
           echo 'AI19_IMPORT_LOCKED=true'
 
-      - name: Extract deterministic forecast evidence using SELECT only
+      - name: Extract deterministic future-only forecast evidence using SELECT only
         working-directory: workers/storm-analysis
         shell: bash
         run: |
           set -euo pipefail
-          selected_sql="WITH cutoffs(as_of) AS (VALUES ('2026-08-06T00:00:00.000Z'),('2026-08-08T00:00:00.000Z'),('2026-08-10T00:00:00.000Z'),('2026-08-12T02:00:28.000Z')), ranked AS (SELECT c.as_of, a.id, a.storm_id, a.agency, a.issued_at, a.fetched_at, a.source_code, a.source_url, a.source_hash, a.raw_object_key, a.parser_version, a.point_count, a.ingest_status, ROW_NUMBER() OVER (PARTITION BY c.as_of, a.agency ORDER BY a.issued_at DESC, a.fetched_at DESC, a.id DESC) AS rn FROM cutoffs c JOIN advisories a ON a.storm_id='WP-2026-15' AND a.issued_at <= c.as_of WHERE EXISTS (SELECT 1 FROM track_points tp WHERE tp.advisory_id=a.id AND tp.point_type='forecast')) SELECT as_of,id,storm_id,agency,issued_at,fetched_at,source_code,source_url,source_hash,raw_object_key,parser_version,point_count,ingest_status FROM ranked WHERE rn=1 ORDER BY as_of,agency;"
+          selected_sql="WITH cutoffs(as_of) AS (VALUES ('2026-08-06T00:00:00.000Z'),('2026-08-08T00:00:00.000Z'),('2026-08-10T00:00:00.000Z'),('2026-08-12T02:00:28.000Z')), ranked AS (SELECT c.as_of, a.id, a.storm_id, a.agency, a.issued_at, a.fetched_at, a.source_code, a.source_url, a.source_hash, a.raw_object_key, a.parser_version, a.point_count, a.ingest_status, ROW_NUMBER() OVER (PARTITION BY c.as_of, a.agency ORDER BY a.issued_at DESC, a.fetched_at DESC, a.id DESC) AS rn FROM cutoffs c JOIN advisories a ON a.storm_id='WP-2026-15' AND a.issued_at <= c.as_of WHERE EXISTS (SELECT 1 FROM track_points tp WHERE tp.advisory_id=a.id AND tp.point_type='forecast' AND tp.valid_at > c.as_of)) SELECT as_of,id,storm_id,agency,issued_at,fetched_at,source_code,source_url,source_hash,raw_object_key,parser_version,point_count,ingest_status FROM ranked WHERE rn=1 ORDER BY as_of,agency;"
           npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "$selected_sql" > /tmp/ai19-selected-advisories.json
           selected="$(jq -c '[.. | objects | select(has("as_of") and has("agency") and has("id"))]' /tmp/ai19-selected-advisories.json)"
           echo "AI19_SELECTED_ADVISORIES=${selected}"
           [[ "$(printf '%s' "$selected" | jq 'length')" -le 16 ]]
           [[ "$(printf '%s' "$selected" | jq '[.[].as_of] | unique | length')" -eq 4 ]]
 
-          points_sql="WITH cutoffs(as_of) AS (VALUES ('2026-08-06T00:00:00.000Z'),('2026-08-08T00:00:00.000Z'),('2026-08-10T00:00:00.000Z'),('2026-08-12T02:00:28.000Z')), ranked AS (SELECT c.as_of, a.id, a.agency, a.issued_at, ROW_NUMBER() OVER (PARTITION BY c.as_of, a.agency ORDER BY a.issued_at DESC, a.fetched_at DESC, a.id DESC) AS rn FROM cutoffs c JOIN advisories a ON a.storm_id='WP-2026-15' AND a.issued_at <= c.as_of WHERE EXISTS (SELECT 1 FROM track_points x WHERE x.advisory_id=a.id AND x.point_type='forecast')) SELECT r.as_of,r.agency,r.id AS advisory_id,r.issued_at,tp.valid_at,tp.forecast_hour,tp.latitude,tp.longitude,tp.pressure_hpa,tp.wind_ms,tp.gust_ms,tp.wind_averaging_minutes,tp.intensity_code,tp.intensity_label,tp.probability_radius_km,tp.source_order FROM ranked r JOIN track_points tp ON tp.advisory_id=r.id WHERE r.rn=1 AND tp.point_type='forecast' ORDER BY r.as_of,r.agency,tp.valid_at,tp.source_order,tp.id;"
+          points_sql="WITH cutoffs(as_of) AS (VALUES ('2026-08-06T00:00:00.000Z'),('2026-08-08T00:00:00.000Z'),('2026-08-10T00:00:00.000Z'),('2026-08-12T02:00:28.000Z')), ranked AS (SELECT c.as_of, a.id, a.agency, a.issued_at, ROW_NUMBER() OVER (PARTITION BY c.as_of, a.agency ORDER BY a.issued_at DESC, a.fetched_at DESC, a.id DESC) AS rn FROM cutoffs c JOIN advisories a ON a.storm_id='WP-2026-15' AND a.issued_at <= c.as_of WHERE EXISTS (SELECT 1 FROM track_points x WHERE x.advisory_id=a.id AND x.point_type='forecast' AND x.valid_at > c.as_of)) SELECT r.as_of,r.agency,r.id AS advisory_id,r.issued_at,tp.valid_at,tp.forecast_hour,tp.latitude,tp.longitude,tp.pressure_hpa,tp.wind_ms,tp.gust_ms,tp.wind_averaging_minutes,tp.intensity_code,tp.intensity_label,tp.probability_radius_km,tp.source_order FROM ranked r JOIN track_points tp ON tp.advisory_id=r.id WHERE r.rn=1 AND tp.point_type='forecast' AND tp.valid_at > r.as_of ORDER BY r.as_of,r.agency,tp.valid_at,tp.source_order,tp.id;"
           npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "$points_sql" > /tmp/ai19-forecast-points.json
           points="$(jq -c '[.. | objects | select(has("as_of") and has("advisory_id") and has("valid_at"))]' /tmp/ai19-forecast-points.json)"
           echo "AI19_FORECAST_POINTS=${points}"
           echo "AI19_FORECAST_POINT_COUNT=$(printf '%s' "$points" | jq 'length')"
+          printf '%s' "$points" | jq -e 'all(.[]; (.valid_at | fromdateiso8601) > (.as_of | fromdateiso8601))' >/dev/null
 
           coverage="$(printf '%s' "$points" | jq -c 'group_by(.as_of) | map({asOf:.[0].as_of,agencies:(group_by(.agency)|map({agency:.[0].agency,points:length,advisoryId:.[0].advisory_id,issuedAt:.[0].issued_at}))})')"
           echo "AI19_SNAPSHOT_COVERAGE=${coverage}"
