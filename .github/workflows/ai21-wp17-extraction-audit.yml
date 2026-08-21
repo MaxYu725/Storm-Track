@@ -1,0 +1,87 @@
+name: AI-21 WP17 extraction audit
+
+on:
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install pinned Wrangler
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+      - name: Verify phase lock
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < .github/ai21-corpus-trigger.txt)" == "PENDING_AI21" ]]
+          node tests/storm-analysis-ai21.test.mjs
+      - name: Extract selected advisories with SELECT only
+        working-directory: workers/storm-analysis
+        run: |
+          set -euo pipefail
+          SQL="WITH cutoffs(as_of) AS (VALUES ('2026-08-11T12:00:00.000Z'),('2026-08-12T12:00:00.000Z'),('2026-08-13T12:00:00.000Z'),('2026-08-14T09:45:00.000Z')), ranked AS (
+            SELECT c.as_of,a.id,a.storm_id,a.agency,a.issued_at,a.fetched_at,a.source_code,a.source_url,a.source_hash,a.raw_object_key,a.parser_version,
+              ROW_NUMBER() OVER (PARTITION BY c.as_of,a.agency ORDER BY a.issued_at DESC,a.id DESC) rn
+            FROM cutoffs c JOIN advisories a ON a.storm_id='WP-2026-17' AND a.issued_at<=c.as_of
+            WHERE EXISTS (SELECT 1 FROM track_points tp WHERE tp.advisory_id=a.id AND tp.point_type='forecast' AND tp.valid_at>c.as_of)
+          ) SELECT as_of,id,storm_id,agency,issued_at,fetched_at,source_code,source_url,source_hash,raw_object_key,parser_version FROM ranked WHERE rn=1 ORDER BY as_of,agency;"
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "$SQL" > /tmp/a.json
+          jq '[.. | objects | select(has("as_of") and has("agency") and has("id"))]' /tmp/a.json > /tmp/advisories.json
+          echo "AI21_WP17_SELECTED_ADVISORIES=$(jq -c '.' /tmp/advisories.json)"
+      - name: Extract future forecast points with SELECT only
+        working-directory: workers/storm-analysis
+        run: |
+          set -euo pipefail
+          SQL="WITH cutoffs(as_of) AS (VALUES ('2026-08-11T12:00:00.000Z'),('2026-08-12T12:00:00.000Z'),('2026-08-13T12:00:00.000Z'),('2026-08-14T09:45:00.000Z')), ranked AS (
+            SELECT c.as_of,a.id,a.storm_id,a.agency,a.issued_at,ROW_NUMBER() OVER (PARTITION BY c.as_of,a.agency ORDER BY a.issued_at DESC,a.id DESC) rn
+            FROM cutoffs c JOIN advisories a ON a.storm_id='WP-2026-17' AND a.issued_at<=c.as_of
+            WHERE EXISTS (SELECT 1 FROM track_points fp WHERE fp.advisory_id=a.id AND fp.point_type='forecast' AND fp.valid_at>c.as_of)
+          ), selected AS (SELECT * FROM ranked WHERE rn=1)
+          SELECT s.as_of,s.storm_id,s.agency,tp.advisory_id,tp.valid_at,tp.forecast_hour,tp.latitude,tp.longitude,tp.pressure_hpa,tp.wind_ms,tp.gust_ms,tp.wind_averaging_minutes,tp.intensity_code,tp.intensity_label,tp.probability_radius_km,tp.source_order
+          FROM selected s JOIN track_points tp ON tp.advisory_id=s.id
+          WHERE tp.point_type='forecast' AND tp.valid_at>s.as_of
+          ORDER BY s.as_of,s.agency,tp.valid_at,tp.source_order;"
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "$SQL" > /tmp/p.json
+          jq '[.. | objects | select(has("as_of") and has("advisory_id") and has("valid_at"))]' /tmp/p.json > /tmp/points.json
+          echo "AI21_WP17_FORECAST_POINT_COUNT=$(jq 'length' /tmp/points.json)"
+      - name: Build local deterministic plan
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const selectedAdvisories=JSON.parse(fs.readFileSync('/tmp/advisories.json','utf8'));
+          const forecastPoints=JSON.parse(fs.readFileSync('/tmp/points.json','utf8'));
+          const generatedAt=new Date(selectedAdvisories.map(x=>x.fetched_at||x.issued_at).filter(Boolean).sort().at(-1)).toISOString();
+          const evidence={sourceDatabase:{name:'storm-track-db',uuid:'eb0bf995-3ea7-4bf6-bbca-b425892c4d7e'},generatedAt,minimumAgencies:2,storms:[{stormKey:'WP-2026-17',nameEn:'TC2620',nameTc:'熱帶低氣壓 19',season:2026,basin:'WNP',identity:{status:'unreviewed',internationalNumber:'17',source:'production-storm-row'},cutoffs:['2026-08-11T12:00:00.000Z','2026-08-12T12:00:00.000Z','2026-08-13T12:00:00.000Z','2026-08-14T09:45:00.000Z'],selectedAdvisories,forecastPoints}]};
+          fs.writeFileSync('/tmp/evidence.json',JSON.stringify(evidence));
+          NODE
+          node workers/storm-analysis/scripts/ai21-build-forecast-corpus.mjs --evidence /tmp/evidence.json --output /tmp/plan > /tmp/summary.json
+          cat /tmp/summary.json
+          jq -e '.ok==true and .stormCount==1 and .snapshotCount==4 and .storms[0].identity.status=="unreviewed" and .storms[0].identity.internationalNumber==null and .semantics.analysisDatabaseWritten==false' /tmp/summary.json >/dev/null
+          echo "AI21_WP17_EVIDENCE_SHA256=$(jq -r '.evidenceSha256' /tmp/summary.json)"
+          echo "AI21_WP17_PLAN_SHA256=$(jq -r '.planSha256' /tmp/summary.json)"
+      - name: Verify remote analysis remains untouched
+        working-directory: workers/storm-analysis
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM historical_storms WHERE storm_key='WP-2026-17') wp17_historical_storms,(SELECT COUNT(*) FROM forecast_snapshots WHERE storm_key='WP-2026-17') wp17_forecast_snapshots,(SELECT COUNT(*) FROM truth_datasets WHERE storm_key='WP-2026-17') wp17_truth_datasets,(SELECT COUNT(*) FROM verification_results WHERE storm_key='WP-2026-17') wp17_verification_results;" > /tmp/r.json
+          row="$(jq -c '.. | objects | select(has("wp17_historical_storms"))' /tmp/r.json | head -n 1)"
+          echo "AI21_WP17_REMOTE_STATE=$row"
+          printf '%s' "$row" | jq -e '.wp17_historical_storms==0 and .wp17_forecast_snapshots==0 and .wp17_truth_datasets==0 and .wp17_verification_results==0' >/dev/null
+          echo 'AI21_WP17_REMOTE_MUTATIONS_PERFORMED=false'
