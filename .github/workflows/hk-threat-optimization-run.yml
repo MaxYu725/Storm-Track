@@ -1,18 +1,21 @@
 name: Run HK threat optimization
-# retrigger: 2026-08-21T13:29Z
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/basic-hk-signal-forecast
+      - feature/ai-analysis-engine
     paths:
       - .github/workflows/hk-threat-optimization-run.yml
+      - .github/workflows/hk-threat-optimization.yml
+      - analysis/**
+      - tests/**
+      - workers/storm-analysis/**
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  run:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -46,16 +49,3 @@ jobs:
       - name: Run full regression
         working-directory: workers/storm-analysis
         run: npm test
-
-      - name: Commit validated changes
-        shell: bash
-        run: |
-          git config user.name 'storm-track-ci'
-          git config user.email 'actions@users.noreply.github.com'
-          git add analysis/hko-signal-risk-inputs.js analysis/hk-threat-assessment.js analysis/basic-hk-signal-forecast.js tests/hk-threat-rule-scenarios.test.cjs workers/storm-analysis/package.json
-          if git diff --cached --quiet; then
-            echo 'No validated product changes'
-            exit 0
-          fi
-          git commit -m 'Refine HK threat evidence model'
-          git push origin HEAD:feature/basic-hk-signal-forecast
