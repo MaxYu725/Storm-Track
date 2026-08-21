@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
+const EXPECTED_MAIN = 'src/index-ai23.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const allowPlaceholder = process.argv.includes('--allow-placeholder');
 
@@ -21,9 +22,9 @@ const databases = Array.isArray(config.d1_databases) ? config.d1_databases : [];
 const analysisBindings = databases.filter(item => item?.binding === 'ANALYSIS_DB');
 
 if (config.name !== 'storm-analysis') fail('Worker name must remain storm-analysis');
-if (config.main !== 'src/index.js') fail('Worker entrypoint must remain src/index.js');
+if (config.main !== EXPECTED_MAIN) fail(`Worker entrypoint must remain ${EXPECTED_MAIN}`);
 if (analysisBindings.length !== 1) fail('exactly one ANALYSIS_DB binding is required');
-if (databases.length !== 1) fail('AI-16 permits only the independent ANALYSIS_DB D1 binding');
+if (databases.length !== 1) fail('only the independent ANALYSIS_DB D1 binding is permitted');
 
 const db = analysisBindings[0];
 if (db?.database_name !== 'storm-analysis') fail('ANALYSIS_DB database_name must remain storm-analysis');
@@ -40,6 +41,7 @@ if (process.exitCode) process.exit(process.exitCode);
 console.log(JSON.stringify({
   ok: true,
   worker: config.name,
+  main: config.main,
   binding: db.binding,
   databaseName: db.database_name,
   placeholder: db.database_id === ZERO_UUID,
