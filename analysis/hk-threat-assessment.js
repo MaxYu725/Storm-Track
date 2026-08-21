@@ -31,18 +31,6 @@
     return Number.isFinite(value) ? new Date(value).toISOString() : null;
   }
 
-  function haversineKm(lat1, lon1, lat2, lon2) {
-    const values = [lat1, lon1, lat2, lon2].map(finite);
-    if (values.some(value => value == null)) return null;
-    const [aLat, aLon, bLat, bLon] = values;
-    const toRad = degree => degree * Math.PI / 180;
-    const dLat = toRad(bLat - aLat);
-    const dLon = toRad(bLon - aLon);
-    const h = Math.sin(dLat / 2) ** 2
-      + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2;
-    return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-  }
-
   function median(values) {
     const usable = values.filter(Number.isFinite).sort((a, b) => a - b);
     if (!usable.length) return null;
@@ -62,6 +50,45 @@
     return 1 / (1 + ratio ** 3);
   }
 
+  function haversineKm(lat1, lon1, lat2, lon2) {
+    const values = [lat1, lon1, lat2, lon2].map(finite);
+    if (values.some(value => value == null)) return null;
+    const [aLat, aLon, bLat, bLon] = values;
+    const toRad = degree => degree * Math.PI / 180;
+    const dLat = toRad(bLat - aLat);
+    const dLon = toRad(bLon - aLon);
+    const h = Math.sin(dLat / 2) ** 2
+      + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2;
+    return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  }
+
+  function normalizeLongitude(lon) {
+    let value = lon;
+    while (value > 180) value -= 360;
+    while (value < -180) value += 360;
+    return value;
+  }
+
+  function interpolateLongitude(leftLon, rightLon, ratio) {
+    let delta = rightLon - leftLon;
+    if (delta > 180) delta -= 360;
+    else if (delta < -180) delta += 360;
+    return normalizeLongitude(leftLon + delta * ratio);
+  }
+
+  function parseWindMs(value) {
+    if (value == null || value === '') return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const text = String(value).trim().toLowerCase();
+    const match = text.match(/-?\d+(?:\.\d+)?/);
+    if (!match) return null;
+    const number = Number(match[0]);
+    if (!Number.isFinite(number)) return null;
+    if (/km\s*\/?h|kmh|kph/.test(text)) return number / 3.6;
+    if (/kt|knot/.test(text)) return number * 0.514444;
+    return number;
+  }
+
   function normalizePoint(point, referencePoint, referenceTimeMs) {
     if (!point || typeof point !== 'object') return null;
     const lat = finite(point.lat);
@@ -77,6 +104,8 @@
       lat,
       lon,
       distanceKm,
+      maximumWindMs: parseWindMs(point.maximumWind ?? point.maxWind ?? point.wind),
+      windRadiiAvailable: Array.isArray(point.windRadii) && point.windRadii.length > 0,
       kind: point.kind ?? null
     };
   }
@@ -105,6 +134,41 @@
     return Array.from(byTime.values()).sort((a, b) => a.timeMs - b.timeMs);
   }
 
+  function interpolateTrackAtTime(track, targetMs, referencePoint, referenceTimeMs) {
+    if (!track.length || !Number.isFinite(targetMs)) return null;
+    const exact = track.find(point => point.timeMs === targetMs);
+    if (exact) return { ...exact, exactOfficialTime: true };
+    if (targetMs < track[0].timeMs || targetMs > track[track.length - 1].timeMs) return null;
+    for (let index = 1; index < track.length; index += 1) {
+      const before = track[index - 1];
+      const after = track[index];
+      if (targetMs >= after.timeMs) continue;
+      const span = after.timeMs - before.timeMs;
+      if (!(span > 0)) return null;
+      const ratio = (targetMs - before.timeMs) / span;
+      const lat = before.lat + (after.lat - before.lat) * ratio;
+      const lon = interpolateLongitude(before.lon, after.lon, ratio);
+      const beforeWind = finite(before.maximumWindMs);
+      const afterWind = finite(after.maximumWindMs);
+      const maximumWindMs = Number.isFinite(beforeWind) && Number.isFinite(afterWind)
+        ? beforeWind + (afterWind - beforeWind) * ratio
+        : null;
+      return {
+        time: iso(targetMs),
+        timeMs: targetMs,
+        leadHours: (targetMs - referenceTimeMs) / HOUR_MS,
+        lat,
+        lon,
+        distanceKm: haversineKm(referencePoint.lat, referencePoint.lon, lat, lon),
+        maximumWindMs,
+        windRadiiAvailable: false,
+        kind: 'interpolated',
+        exactOfficialTime: false
+      };
+    }
+    return null;
+  }
+
   function buildSegments(track) {
     const segments = [];
     for (let index = 1; index < track.length; index += 1) {
@@ -118,6 +182,8 @@
       const motionSpeedKmh = Number.isFinite(motionDistanceKm) ? motionDistanceKm / durationHours : null;
       const midpointLead = Number.isFinite(before.leadHours) && Number.isFinite(after.leadHours)
         ? (before.leadHours + after.leadHours) / 2 : null;
+      const windDeltaMs = Number.isFinite(before.maximumWindMs) && Number.isFinite(after.maximumWindMs)
+        ? after.maximumWindMs - before.maximumWindMs : null;
       segments.push({
         startTime: before.time,
         endTime: after.time,
@@ -127,6 +193,8 @@
         distanceDeltaKm,
         radialRateKmh,
         motionSpeedKmh,
+        windDeltaMs,
+        windRateMsPerHour: Number.isFinite(windDeltaMs) ? windDeltaMs / durationHours : null,
         approachStrength: clamp(-radialRateKmh / 18),
         departStrength: clamp(radialRateKmh / 18),
         stationaryStrength: Number.isFinite(motionSpeedKmh) ? Math.exp(-motionSpeedKmh / 8) : 0,
@@ -174,7 +242,6 @@
         reApproachConfidence = Math.max(reApproachConfidence, pair * relevance);
       }
     }
-
     for (let peakIndex = 1; peakIndex < track.length - 1; peakIndex += 1) {
       const beforePeak = track.slice(0, peakIndex);
       const afterPeak = track.slice(peakIndex + 1);
@@ -227,51 +294,117 @@
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
   }
 
-  function buildTimeline(agencyTracks) {
-    const maximumLead = Math.max(0, ...Object.values(agencyTracks)
-      .flatMap(track => track.map(point => finite(point.leadHours)).filter(Number.isFinite)));
-    const dayCount = Math.max(1, Math.ceil(maximumLead / 24));
-    const windows = [];
-    for (let day = 1; day <= dayCount; day += 1) {
-      const startLeadHours = (day - 1) * 24;
-      const endLeadHours = day * 24;
+  function collectCheckpointTimes(agencyTracks) {
+    return Array.from(new Set(Object.values(agencyTracks)
+      .flatMap(track => track.map(point => point.timeMs).filter(Number.isFinite))))
+      .sort((a, b) => a - b);
+  }
+
+  function checkpointLabel(leadHours) {
+    if (!Number.isFinite(leadHours)) return 'unknown';
+    const rounded = Math.round(leadHours * 10) / 10;
+    return `${rounded >= 0 ? '+' : ''}${rounded}h`;
+  }
+
+  function buildTimeline(agencyTracks, referencePoint, referenceTimeMs) {
+    const checkpointTimes = collectCheckpointTimes(agencyTracks);
+    const checkpoints = checkpointTimes.map(targetMs => {
       const agencyEntries = [];
       Object.entries(agencyTracks).forEach(([agency, track]) => {
-        const points = track.filter(point => Number.isFinite(point.leadHours)
-          && point.leadHours >= startLeadHours
-          && (day === dayCount ? point.leadHours <= endLeadHours + 0.001 : point.leadHours < endLeadHours));
-        if (!points.length) return;
-        const minimum = points.reduce((best, point) => point.distanceKm < best.distanceKm ? point : best, points[0]);
-        agencyEntries.push({ agency, distanceKm: minimum.distanceKm, time: minimum.time, leadHours: minimum.leadHours });
+        const sample = interpolateTrackAtTime(track, targetMs, referencePoint, referenceTimeMs);
+        if (!sample) return;
+        agencyEntries.push({
+          agency,
+          time: sample.time,
+          leadHours: sample.leadHours,
+          distanceKm: sample.distanceKm,
+          maximumWindMs: sample.maximumWindMs,
+          exactOfficialTime: sample.exactOfficialTime === true,
+          windRadiiAvailable: sample.windRadiiAvailable === true
+        });
       });
-      if (!agencyEntries.length) continue;
-      const distances = agencyEntries.map(entry => entry.distanceKm);
-      const minimumKm = Math.min(...distances);
-      const maximumKm = Math.max(...distances);
-      const medianKm = median(distances);
-      const midpointLead = (startLeadHours + endLeadHours) / 2;
-      const proximityIndex = smoothCloser(medianKm, 650);
-      const agreementIndex = Math.exp(-(maximumKm - minimumKm) / 260);
-      const threatIndex = clamp(proximityIndex * (0.65 + 0.35 * agreementIndex) * softTimeRelevance(midpointLead));
-      windows.push({
-        label: `D${day}`,
-        startLeadHours,
-        endLeadHours,
+      if (!agencyEntries.length) return null;
+      const leadHours = (targetMs - referenceTimeMs) / HOUR_MS;
+      const distances = agencyEntries.map(entry => entry.distanceKm).filter(Number.isFinite);
+      const winds = agencyEntries.map(entry => entry.maximumWindMs).filter(Number.isFinite);
+      const minimumKm = distances.length ? Math.min(...distances) : null;
+      const maximumKm = distances.length ? Math.max(...distances) : null;
+      const distanceMedianKm = median(distances);
+      const windMedianMs = median(winds);
+      const agreementIndex = distances.length > 1
+        ? Math.exp(-(maximumKm - minimumKm) / 260)
+        : 0.65;
+      const proximityIndex = smoothCloser(distanceMedianKm, 650);
+      const windSeverityIndex = Number.isFinite(windMedianMs) ? clamp((windMedianMs - 10) / 30) : 0;
+      const timeRelevance = softTimeRelevance(leadHours);
+      const threatIndex = clamp(
+        proximityIndex * 0.58
+        + windSeverityIndex * 0.22
+        + agreementIndex * 0.10
+        + timeRelevance * 0.10
+      );
+      return {
+        label: checkpointLabel(leadHours),
+        validTime: iso(targetMs),
+        leadHours,
         supportAgencyCount: agencyEntries.length,
-        distanceMedianKm: medianKm,
-        distanceRangeKm: { min: minimumKm, max: maximumKm },
+        exactOfficialSupportCount: agencyEntries.filter(entry => entry.exactOfficialTime).length,
+        windSupportAgencyCount: winds.length,
+        distanceMedianKm,
+        distanceRangeKm: Number.isFinite(minimumKm) && Number.isFinite(maximumKm) ? { min: minimumKm, max: maximumKm } : null,
+        windMedianMs,
         proximityIndex,
+        windSeverityIndex,
         agreementIndex,
-        timeRelevance: softTimeRelevance(midpointLead),
+        timeRelevance,
         threatIndex,
         agencies: agencyEntries
-      });
+      };
+    }).filter(Boolean);
+
+    return checkpoints.map((checkpoint, index) => {
+      const previous = index > 0 ? checkpoints[index - 1] : null;
+      const intervalHours = previous && Number.isFinite(previous.leadHours)
+        ? checkpoint.leadHours - previous.leadHours : null;
+      const distanceDeltaKm = previous && Number.isFinite(previous.distanceMedianKm) && Number.isFinite(checkpoint.distanceMedianKm)
+        ? checkpoint.distanceMedianKm - previous.distanceMedianKm : null;
+      const windDeltaMs = previous && Number.isFinite(previous.windMedianMs) && Number.isFinite(checkpoint.windMedianMs)
+        ? checkpoint.windMedianMs - previous.windMedianMs : null;
+      const approachRateKmh = Number.isFinite(distanceDeltaKm) && Number.isFinite(intervalHours) && intervalHours > 0
+        ? -distanceDeltaKm / intervalHours : null;
+      const strengtheningRateMsPerHour = Number.isFinite(windDeltaMs) && Number.isFinite(intervalHours) && intervalHours > 0
+        ? windDeltaMs / intervalHours : null;
+      const rapidEvolutionIndex = clamp(
+        (Number.isFinite(approachRateKmh) ? clamp(approachRateKmh / 25) : 0) * 0.6
+        + (Number.isFinite(strengtheningRateMsPerHour) ? clamp(strengtheningRateMsPerHour / 1.2) : 0) * 0.4
+      );
+      return {
+        ...checkpoint,
+        intervalFromPreviousHours: intervalHours,
+        distanceDeltaFromPreviousKm: distanceDeltaKm,
+        windDeltaFromPreviousMs: windDeltaMs,
+        approachRateKmh,
+        strengtheningRateMsPerHour,
+        rapidEvolutionIndex
+      };
+    });
+  }
+
+  function representativeMinimumFromImpact(impact, weightedImpact, referenceTimeMs, patterns) {
+    const weighted = weightedImpact?.available === true ? weightedImpact.closestApproach : null;
+    if (Number.isFinite(finite(weighted?.distanceKm)) && Number.isFinite(timeMs(weighted?.time))) {
+      const targetMs = timeMs(weighted.time);
+      return { distanceKm: finite(weighted.distanceKm), time: iso(targetMs), leadHours: (targetMs - referenceTimeMs) / HOUR_MS, source: 'weighted-consensus' };
     }
-    return windows.map((window, index) => ({
-      ...window,
-      distanceDeltaFromPreviousKm: index > 0 && Number.isFinite(windows[index - 1].distanceMedianKm)
-        ? window.distanceMedianKm - windows[index - 1].distanceMedianKm : null
-    }));
+    const consensus = impact?.closestApproach?.consensus;
+    if (Number.isFinite(finite(consensus?.distanceKm)) && Number.isFinite(timeMs(consensus?.time))) {
+      const targetMs = timeMs(consensus.time);
+      return { distanceKm: finite(consensus.distanceKm), time: iso(targetMs), leadHours: (targetMs - referenceTimeMs) / HOUR_MS, source: 'unweighted-consensus' };
+    }
+    const candidates = patterns.map(pattern => pattern.minimumWithinForecast).filter(Boolean);
+    if (!candidates.length) return null;
+    const minimum = candidates.reduce((best, item) => item.distanceKm < best.distanceKm ? item : best, candidates[0]);
+    return { ...minimum, source: 'agency-minimum' };
   }
 
   function buildHkThreatAssessment({ snapshot, impact, weightedImpact, signalInputs, generatedAt } = {}) {
@@ -287,10 +420,11 @@
       };
     }
 
+    const normalizedReferencePoint = { lat: finite(referencePoint.lat), lon: finite(referencePoint.lon) };
     const agencyTracks = {};
     const agencyPatterns = {};
     AGENCIES.forEach(agency => {
-      const track = buildAgencyTrack(snapshot?.sources?.[agency], referencePoint, referenceTimeMs);
+      const track = buildAgencyTrack(snapshot?.sources?.[agency], normalizedReferencePoint, referenceTimeMs);
       if (!track.length) return;
       agencyTracks[agency] = track;
       agencyPatterns[agency] = agencyPattern(track);
@@ -309,9 +443,7 @@
     const directDepartConfidence = aggregateAnalyzer(patterns, 'directDepartConfidence');
     const reApproachConfidence = aggregateAnalyzer(patterns, 'reApproachConfidence');
     const quasiStationaryConfidence = aggregateAnalyzer(patterns, 'quasiStationaryConfidence');
-    const forecastEdgeConfidence = aggregateAnalyzer(patterns.map(pattern => ({
-      score: pattern.minimumWithinForecast?.horizonEdgeConfidence ?? 0
-    })), 'score');
+    const forecastEdgeConfidence = aggregateAnalyzer(patterns.map(pattern => ({ score: pattern.minimumWithinForecast?.horizonEdgeConfidence ?? 0 })), 'score');
     const agencyDisagreementConfidence = disagreementConfidence(impact);
 
     const featureVector = signalInputs?.featureVector || {};
@@ -324,38 +456,28 @@
     const windFieldConfidence = clamp((usableAgencyCount > 0 ? windFieldCoverageCount / usableAgencyCount : 0) * 0.65
       + (Number.isFinite(representativeWindMs) ? clamp(representativeWindMs / 35) * 0.35 : 0));
 
-    const timeline = buildTimeline(agencyTracks);
+    const timeline = buildTimeline(agencyTracks, normalizedReferencePoint, referenceTimeMs);
     const strongestTimelineThreat = timeline.reduce((best, item) => item.threatIndex > (best?.threatIndex ?? -1) ? item : best, null);
-    const currentDistanceKm = median(patterns.map(pattern => pattern.currentDistanceKm));
-    const forecastMinimumKm = median(patterns.map(pattern => pattern.minimumWithinForecast?.distanceKm).filter(Number.isFinite));
-    const forecastMinimumLeadHours = median(patterns.map(pattern => pattern.minimumWithinForecast?.leadHours).filter(Number.isFinite));
-    const representativeMinimum = weightedImpact?.available === true && Number.isFinite(finite(weightedImpact?.closestApproach?.distanceKm))
-      ? {
-          distanceKm: finite(weightedImpact.closestApproach.distanceKm),
-          time: weightedImpact.closestApproach.time ?? null,
-          source: 'weighted-consensus'
-        }
-      : (impact?.closestApproach?.consensus && Number.isFinite(finite(impact.closestApproach.consensus.distanceKm))
-        ? {
-            distanceKm: finite(impact.closestApproach.consensus.distanceKm),
-            time: impact.closestApproach.consensus.time ?? null,
-            source: 'unweighted-consensus'
-          }
-        : null);
+    const fastestEvolution = timeline.reduce((best, item) => item.rapidEvolutionIndex > (best?.rapidEvolutionIndex ?? -1) ? item : best, null);
+    const currentDistanceKm = median(patterns.map(pattern => pattern.currentDistanceKm).filter(Number.isFinite));
+    const representativeMinimum = representativeMinimumFromImpact(impact, weightedImpact, referenceTimeMs, patterns);
+    const forecastMinimumKm = finite(representativeMinimum?.distanceKm);
+    const forecastMinimumLeadHours = finite(representativeMinimum?.leadHours);
 
     const currentProximityIndex = smoothCloser(currentDistanceKm, 800);
-    const futureProximityIndex = smoothCloser(representativeMinimum?.distanceKm ?? forecastMinimumKm, 650)
-      * softTimeRelevance(forecastMinimumLeadHours);
+    const futureProximityIndex = smoothCloser(forecastMinimumKm, 650) * softTimeRelevance(forecastMinimumLeadHours);
     const trajectoryConfidence = clamp(Math.max(
       directApproachConfidence,
       reApproachConfidence * 0.85,
       quasiStationaryConfidence * 0.35
     ));
+    const rapidEvolutionConfidence = clamp(finite(fastestEvolution?.rapidEvolutionIndex) ?? 0);
     const overallThreatIndex = clamp(
-      currentProximityIndex * 0.24
-      + futureProximityIndex * 0.32
-      + trajectoryConfidence * 0.24
-      + windFieldConfidence * 0.12
+      currentProximityIndex * 0.22
+      + futureProximityIndex * 0.28
+      + trajectoryConfidence * 0.20
+      + windFieldConfidence * 0.10
+      + rapidEvolutionConfidence * 0.12
       + (1 - agencyDisagreementConfidence) * 0.08
     );
     const confidenceIndex = clamp(1 - agencyDisagreementConfidence * 0.55 - forecastEdgeConfidence * 0.25);
@@ -364,7 +486,7 @@
       schemaVersion: VERSION,
       available: true,
       generatedAt: iso(referenceTimeMs),
-      referencePoint: { lat: finite(referencePoint.lat), lon: finite(referencePoint.lon) },
+      referencePoint: normalizedReferencePoint,
       summary: {
         currentDistanceKm,
         forecastMinimumKm,
@@ -374,8 +496,19 @@
         confidenceIndex,
         strongestTimelineThreat: strongestTimelineThreat ? {
           label: strongestTimelineThreat.label,
+          validTime: strongestTimelineThreat.validTime,
+          leadHours: strongestTimelineThreat.leadHours,
           threatIndex: strongestTimelineThreat.threatIndex,
-          distanceMedianKm: strongestTimelineThreat.distanceMedianKm
+          distanceMedianKm: strongestTimelineThreat.distanceMedianKm,
+          windMedianMs: strongestTimelineThreat.windMedianMs
+        } : null,
+        fastestEvolution: fastestEvolution ? {
+          label: fastestEvolution.label,
+          validTime: fastestEvolution.validTime,
+          leadHours: fastestEvolution.leadHours,
+          rapidEvolutionIndex: fastestEvolution.rapidEvolutionIndex,
+          approachRateKmh: fastestEvolution.approachRateKmh,
+          strengtheningRateMsPerHour: fastestEvolution.strengtheningRateMsPerHour
         } : null
       },
       analyzers: {
@@ -385,18 +518,26 @@
         quasiStationary: { confidence: quasiStationaryConfidence },
         forecastEdge: { confidence: forecastEdgeConfidence },
         agencyDisagreement: { confidence: agencyDisagreementConfidence },
-        windField: { confidence: windFieldConfidence, representativeWindMs, coverageAgencyCount: windFieldCoverageCount }
+        windField: {
+          confidence: windFieldConfidence,
+          representativeWindMs,
+          coverageAgencyCount: windFieldCoverageCount
+        },
+        rapidEvolution: {
+          confidence: rapidEvolutionConfidence,
+          checkpoint: fastestEvolution?.label ?? null
+        }
       },
       timeline,
       agencies: agencyPatterns,
       semantics: {
         deterministic: true,
-        evidenceCombination: true,
         hardThreatGateUsed: false,
         timeWeightingIsContinuous: true,
-        softTimeScaleHours: SOFT_TIME_SCALE_HOURS,
-        forecastMinimumMayBeHorizonLimited: forecastEdgeConfidence > 0,
-        officialAgencyDataRemainSeparate: true,
+        timelineUsesOfficialValidTimes: true,
+        crossAgencyInterpolationIsTransparent: true,
+        fixedDayBucketsUsed: false,
+        checkpointSpacingIsDecisionGate: false,
         officialHkoForecast: false,
         officialHkoDecisionInferred: false,
         aiGenerated: false
@@ -404,5 +545,9 @@
     };
   }
 
-  return Object.freeze({ VERSION, SOFT_TIME_SCALE_HOURS, buildHkThreatAssessment });
+  return Object.freeze({
+    VERSION,
+    SOFT_TIME_SCALE_HOURS,
+    buildHkThreatAssessment
+  });
 });
