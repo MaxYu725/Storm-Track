@@ -58,3 +58,5 @@ for (const required of [
 ]) assert.ok(doc.includes(required), `AI-19 runbook must include ${required}`);
 
 console.log('storm-analysis AI-19 read-only guard tests passed');
+
+// Candidate-ranking diagnostic PR marker only; never merge this branch.
