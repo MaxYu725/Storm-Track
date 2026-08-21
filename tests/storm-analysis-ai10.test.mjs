@@ -54,24 +54,25 @@ class Db{constructor(){this.calls=[];this.row=null}prepare(sql){return new State
   assert.equal((await repo.get('k')).result.ok,true);
 }
 {
-  let runs=0,puts=0; const modelRepo=()=>({async getChampion(){return model}}); const orch=()=>({async run(){runs++;return{schemaVersion:'storm-analysis-orchestration/v2',value:runs}}});
+  let runs=0,puts=0; const modelRepo=()=>({async getChampion(){return model}}); const signalRepo=()=>({async getChampion(){return null}}); const orch=()=>({async run(){runs++;return{schemaVersion:'storm-analysis-orchestration/v2',value:runs}}});
   const cacheMiss=()=>({async get(){return null},async put(){puts++}}); const identity=async()=>({cacheKey:'k',advisoryFingerprint:'a',modelVersion:model.modelVersion,optionsFingerprint:'o'});
-  let result=await runAnalysisWithCache({sourceGroup:{key:'x'}},{},{modelRepository:modelRepo,orchestrator:orch,cacheRepository:cacheMiss,cacheIdentity:identity});
+  let result=await runAnalysisWithCache({sourceGroup:{key:'x'}},{},{modelRepository:modelRepo,signalRiskRepository:signalRepo,orchestrator:orch,cacheRepository:cacheMiss,cacheIdentity:identity});
   assert.equal(result.cache.status,'miss-stored');assert.equal(runs,1);assert.equal(puts,1);
   const cacheHit=()=>({async get(){return{result:{schemaVersion:'storm-analysis-orchestration/v2',value:99},createdAt:'then'}},async put(){throw new Error('no')}});
-  result=await runAnalysisWithCache({sourceGroup:{key:'x'}},{},{modelRepository:modelRepo,orchestrator:orch,cacheRepository:cacheHit,cacheIdentity:identity});
+  result=await runAnalysisWithCache({sourceGroup:{key:'x'}},{},{modelRepository:modelRepo,signalRiskRepository:signalRepo,orchestrator:orch,cacheRepository:cacheHit,cacheIdentity:identity});
   assert.equal(result.cache.status,'hit');assert.equal(result.analysis.value,99);assert.equal(runs,1);
 }
 
 {
-  let runs=0; const modelRepo=()=>({async getChampion(){return model}}); const orch=()=>({async run(){runs++;return{schemaVersion:'storm-analysis-orchestration/v2'}}});
+  let runs=0; const modelRepo=()=>({async getChampion(){return model}}); const signalRepo=()=>({async getChampion(){return null}}); const orch=()=>({async run(){runs++;return{schemaVersion:'storm-analysis-orchestration/v2'}}});
   const brokenCache=()=>({async get(){throw new Error('missing table')},async put(){throw new Error('missing table')}}); const identity=async()=>({cacheKey:'broken',advisoryFingerprint:'adv',modelVersion:model.modelVersion,optionsFingerprint:'opt'});
-  const result=await runAnalysisWithCache({sourceGroup:{key:'x'}},{},{modelRepository:modelRepo,orchestrator:orch,cacheRepository:brokenCache,cacheIdentity:identity});
+  const result=await runAnalysisWithCache({sourceGroup:{key:'x'}},{},{modelRepository:modelRepo,signalRiskRepository:signalRepo,orchestrator:orch,cacheRepository:brokenCache,cacheIdentity:identity});
   assert.equal(runs,1); assert.equal(result.cache.status,'bypass-read-and-write-error');
 }
 {
   const deps={
     createModelRepository:()=>({async getChampion(){return model},async getByVersion(){return null}}),
+    createSignalRiskRepository:()=>({async getChampion(){return null},async getById(){return null}}),
     createAnalysisOrchestrator:()=>({async run(){return{schemaVersion:'storm-analysis-orchestration/v2',deterministic:{weightedConsensusTrack:{available:true}}}}}),
     createAnalysisCacheRepository:()=>({async get(){return null},async put(){}}),
     buildAnalysisCacheIdentity:async()=>({cacheKey:'route',advisoryFingerprint:'adv',optionsFingerprint:'opt',modelVersion:model.modelVersion})
