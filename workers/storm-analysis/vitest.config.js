@@ -10,7 +10,12 @@ export default defineConfig({
     cloudflareTest(async () => ({
       wrangler: { configPath: path.join(root, 'wrangler.jsonc') },
       miniflare: {
+        // Test-local bindings take precedence over Wrangler config. Keep the
+        // authorization domains explicitly disabled so CI process.env secrets
+        // can never leak into the isolated Miniflare integration harness.
         bindings: {
+          BACKFILL_TOKEN: '',
+          ANALYSIS_ADMIN_TOKEN: '',
           TEST_MIGRATIONS: await readD1Migrations(path.join(root, 'schema'))
         }
       }
