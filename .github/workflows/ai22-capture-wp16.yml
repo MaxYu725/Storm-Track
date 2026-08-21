@@ -112,7 +112,7 @@ jobs:
           [[ "$(jq -r '.planSha256' /tmp/ai22e-summary.json)" == "$EXPECTED_PLAN_SHA256" ]]
           [[ "$(jq -r '.captureFingerprint' /tmp/ai22e-summary.json)" == "$EXPECTED_CAPTURE_FINGERPRINT" ]]
           jq -e '.snapshotCount==4 and .identityProposalCount==1 and .tableCounts.backfill_runs==1 and .tableCounts.historical_storms==1 and .tableCounts.forecast_snapshots==4 and .remoteWritesPerformed==false' /tmp/ai22e-summary.json >/dev/null
-          jq -e '.identityProposals|length==1 and .identityProposals[0].stormKey=="WP-2026-16" and .identityProposals[0].identityValue=="18" and .identityProposals[0].reviewStatus=="unreviewed"' /tmp/ai22e-build/lifecycle-capture-request.json >/dev/null
+          jq -e '(.identityProposals|length)==1 and .identityProposals[0].stormKey=="WP-2026-16" and .identityProposals[0].identityValue=="18" and .identityProposals[0].reviewStatus=="unreviewed"' /tmp/ai22e-build/lifecycle-capture-request.json >/dev/null
           [[ "$(wc -c < /tmp/ai22e-build/lifecycle-capture-request.json)" -lt 1000000 ]]
           echo 'AI22E_CANONICAL_CAPTURE_REQUEST_VERIFIED=true'
 
