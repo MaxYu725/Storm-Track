@@ -1,0 +1,739 @@
+name: HK threat optimization
+
+on:
+  push:
+    branches:
+      - feature/basic-hk-signal-forecast
+    paths:
+      - .github/workflows/hk-threat-optimization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/basic-hk-signal-forecast
+          fetch-depth: 0
+
+      - name: Apply evidence-model refinements
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def sub_once(text, pattern, replacement, label, flags=0):
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 replacement, got {count}')
+              return updated
+
+          # 1) Reuse signal-input wind-field evidence with signal-specific wind thresholds.
+          path = Path('analysis/hko-signal-risk-inputs.js')
+          text = path.read_text(encoding='utf-8')
+          marker = "    function median(values) {"
+          if marker not in text:
+              raise SystemExit('signal-inputs: median marker missing')
+          insert = r'''    const HKO_STRONG_WIND_MS = 41 / 3.6;
+    const HKO_GALE_WIND_MS = 63 / 3.6;
+    const BEAUFORT_LOWER_BOUND_MS = Object.freeze({ 7: 13.9, 10: 24.5, 12: 32.7 });
+
+    function parseWindRadiusThresholdMs(value) {
+        if (value == null || value === '') return null;
+        const text = String(value).trim().toLowerCase();
+        const number = parseMetricNumber(value);
+        if (number == null) return null;
+        if (/m\s*\/?\s*s|mps|米.*秒/.test(text)) return number;
+        if (/km\s*\/?\s*h|kmh|kph|公里.*小時/.test(text)) return number / 3.6;
+        if (/\bkt\b|kts|knot|節/.test(text)) return number * 0.514444;
+        if (/^(7|10|12)(?:\.0+)?$/.test(text)) return BEAUFORT_LOWER_BOUND_MS[Math.round(number)] ?? null;
+        return null;
+    }
+
+'''
+          text = text.replace(marker, insert + marker, 1)
+
+          text = sub_once(
+              text,
+              r"    function windFieldEvidence\(point, referencePoint\) \{.*?\n    \}\n\n    function buildAgencyInput",
+              r'''    function windFieldEvidence(point, referencePoint) {
+        if (!point || !point.windRadii.length) return null;
+        const distanceKm = haversineKm(point.lat, point.lon, referencePoint.lat, referencePoint.lon);
+        const bearingToHongKong = initialBearingDegrees(point.lat, point.lon, referencePoint.lat, referencePoint.lon);
+        const quadrant = quadrant4(bearingToHongKong);
+        if (!Number.isFinite(distanceKm) || !quadrant) return null;
+        const levels = point.windRadii.map(radius => {
+            const quadrantRadiusKm = finiteNumber(radius[quadrant]) ?? 0;
+            const thresholdMs = parseWindRadiusThresholdMs(radius.level);
+            return {
+                level: radius.level,
+                thresholdMs,
+                quadrant,
+                quadrantRadiusKm,
+                hongKongInside: quadrantRadiusKm > 0 && distanceKm <= quadrantRadiusKm
+            };
+        });
+        const coveredLevels = levels.filter(level => level.hongKongInside);
+        const knownCoveredThresholds = coveredLevels.map(level => level.thresholdMs).filter(Number.isFinite);
+        return {
+            time: point.time,
+            stormDistanceToHongKongKm: distanceKm,
+            bearingStormToHongKongDegrees: bearingToHongKong,
+            hongKongQuadrantFromStorm: quadrant.toUpperCase(),
+            levels,
+            anyCoverage: coveredLevels.length > 0,
+            strongWindCoverage: coveredLevels.some(level => Number.isFinite(level.thresholdMs) && level.thresholdMs >= HKO_STRONG_WIND_MS),
+            galeCoverage: coveredLevels.some(level => Number.isFinite(level.thresholdMs) && level.thresholdMs >= HKO_GALE_WIND_MS),
+            maximumCoveredThresholdMs: knownCoveredThresholds.length ? Math.max(...knownCoveredThresholds) : null,
+            unknownThresholdCoverage: coveredLevels.some(level => !Number.isFinite(level.thresholdMs))
+        };
+    }
+
+    function buildAgencyInput''',
+              'signal-inputs windFieldEvidence',
+              re.S
+          )
+
+          old = """        const windRadiusAgencies = usable.filter(item => item.windField.radiusPointCount > 0);\n        const latestWindCoverageAgencies = usable.filter(item => item.windField.latestEvidence?.anyCoverage);\n        const closestWindCoverageAgencies = usable.filter(item => item.windField.closestTimeEvidence?.anyCoverage);"""
+          new = """        const windRadiusAgencies = usable.filter(item => item.windField.radiusPointCount > 0);\n        const latestWindCoverageAgencies = usable.filter(item => item.windField.latestEvidence?.anyCoverage);\n        const closestWindCoverageAgencies = usable.filter(item => item.windField.closestTimeEvidence?.anyCoverage);\n        const latestStrongWindCoverageAgencies = usable.filter(item => item.windField.latestEvidence?.strongWindCoverage);\n        const closestStrongWindCoverageAgencies = usable.filter(item => item.windField.closestTimeEvidence?.strongWindCoverage);\n        const latestGaleCoverageAgencies = usable.filter(item => item.windField.latestEvidence?.galeCoverage);\n        const closestGaleCoverageAgencies = usable.filter(item => item.windField.closestTimeEvidence?.galeCoverage);\n        const unknownThresholdCoverageAgencies = usable.filter(item =>\n            item.windField.latestEvidence?.unknownThresholdCoverage || item.windField.closestTimeEvidence?.unknownThresholdCoverage);"""
+          if text.count(old) != 1:
+              raise SystemExit('signal-inputs: coverage declaration anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """            windField: {\n                agenciesWithRadii: windRadiusAgencies.map(item => item.agency),\n                latestCoverageAgencies: latestWindCoverageAgencies.map(item => item.agency),\n                closestTimeCoverageAgencies: closestWindCoverageAgencies.map(item => item.agency),\n                quadrantMethod: 'bearing-storm-to-hong-kong-v1'\n            },"""
+          new = """            windField: {\n                agenciesWithRadii: windRadiusAgencies.map(item => item.agency),\n                latestCoverageAgencies: latestWindCoverageAgencies.map(item => item.agency),\n                closestTimeCoverageAgencies: closestWindCoverageAgencies.map(item => item.agency),\n                latestStrongWindCoverageAgencies: latestStrongWindCoverageAgencies.map(item => item.agency),\n                closestStrongWindCoverageAgencies: closestStrongWindCoverageAgencies.map(item => item.agency),\n                latestGaleCoverageAgencies: latestGaleCoverageAgencies.map(item => item.agency),\n                closestGaleCoverageAgencies: closestGaleCoverageAgencies.map(item => item.agency),\n                unknownThresholdCoverageAgencies: unknownThresholdCoverageAgencies.map(item => item.agency),\n                strongWindThresholdMs: HKO_STRONG_WIND_MS,\n                galeWindThresholdMs: HKO_GALE_WIND_MS,\n                quadrantMethod: 'bearing-storm-to-hong-kong-v1'\n            },"""
+          if text.count(old) != 1:
+              raise SystemExit('signal-inputs: windField output anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """                windRadiusAgencyCount: windRadiusAgencies.length,\n                latestWindFieldCoverageAgencyCount: latestWindCoverageAgencies.length,\n                closestTimeWindFieldCoverageAgencyCount: closestWindCoverageAgencies.length"""
+          new = """                windRadiusAgencyCount: windRadiusAgencies.length,\n                latestWindFieldCoverageAgencyCount: latestWindCoverageAgencies.length,\n                closestTimeWindFieldCoverageAgencyCount: closestWindCoverageAgencies.length,\n                latestStrongWindFieldCoverageAgencyCount: latestStrongWindCoverageAgencies.length,\n                closestTimeStrongWindFieldCoverageAgencyCount: closestStrongWindCoverageAgencies.length,\n                latestGaleWindFieldCoverageAgencyCount: latestGaleCoverageAgencies.length,\n                closestTimeGaleWindFieldCoverageAgencyCount: closestGaleCoverageAgencies.length,\n                unknownThresholdWindFieldCoverageAgencyCount: unknownThresholdCoverageAgencies.length"""
+          if text.count(old) != 1:
+              raise SystemExit('signal-inputs: feature vector anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """        normalizeWindRadii,\n        buildHkoSignalRiskInputs"""
+          new = """        normalizeWindRadii,\n        parseWindRadiusThresholdMs,\n        HKO_STRONG_WIND_MS,\n        HKO_GALE_WIND_MS,\n        buildHkoSignalRiskInputs"""
+          if text.count(old) != 1:
+              raise SystemExit('signal-inputs: export anchor mismatch')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+
+          # 2) Threat assessment: separate physical threat from confidence and preserve minority scenarios.
+          path = Path('analysis/hk-threat-assessment.js')
+          text = path.read_text(encoding='utf-8')
+
+          text = sub_once(
+              text,
+              r"  function buildTimeline\(agencyTracks, referencePoint, referenceTimeMs\) \{.*?\n  \}\n\n  function representativeMinimumFromImpact",
+              r'''  function buildTimeline(agencyTracks, referencePoint, referenceTimeMs) {
+    const checkpointTimes = collectCheckpointTimes(agencyTracks);
+    const checkpoints = checkpointTimes.map(targetMs => {
+      const agencyEntries = [];
+      Object.entries(agencyTracks).forEach(([agency, track]) => {
+        const sample = interpolateTrackAtTime(track, targetMs, referencePoint, referenceTimeMs);
+        if (!sample) return;
+        agencyEntries.push({
+          agency,
+          time: sample.time,
+          leadHours: sample.leadHours,
+          distanceKm: sample.distanceKm,
+          maximumWindMs: sample.maximumWindMs,
+          exactOfficialTime: sample.exactOfficialTime === true,
+          windRadiiAvailable: sample.windRadiiAvailable === true
+        });
+      });
+      if (!agencyEntries.length) return null;
+      const leadHours = (targetMs - referenceTimeMs) / HOUR_MS;
+      const distances = agencyEntries.map(entry => entry.distanceKm).filter(Number.isFinite);
+      const winds = agencyEntries.map(entry => entry.maximumWindMs).filter(Number.isFinite);
+      const minimumKm = distances.length ? Math.min(...distances) : null;
+      const maximumKm = distances.length ? Math.max(...distances) : null;
+      const distanceMedianKm = median(distances);
+      const windMedianMs = median(winds);
+      const agreementIndex = distances.length > 1
+        ? Math.exp(-(maximumKm - minimumKm) / 260)
+        : 0.65;
+      const proximityIndex = smoothCloser(distanceMedianKm, 650);
+      const windSeverityIndex = Number.isFinite(windMedianMs) ? clamp((windMedianMs - 10) / 30) : 0;
+      const timeRelevance = softTimeRelevance(leadHours);
+      const physicalThreatIndex = clamp(proximityIndex * 0.70 + windSeverityIndex * 0.30);
+      const threatIndex = clamp(physicalThreatIndex * (0.55 + 0.45 * timeRelevance));
+      return {
+        label: checkpointLabel(leadHours),
+        validTime: iso(targetMs),
+        leadHours,
+        supportAgencyCount: agencyEntries.length,
+        exactOfficialSupportCount: agencyEntries.filter(entry => entry.exactOfficialTime).length,
+        windSupportAgencyCount: winds.length,
+        distanceMedianKm,
+        distanceRangeKm: Number.isFinite(minimumKm) && Number.isFinite(maximumKm) ? { min: minimumKm, max: maximumKm } : null,
+        windMedianMs,
+        proximityIndex,
+        windSeverityIndex,
+        agreementIndex,
+        timeRelevance,
+        physicalThreatIndex,
+        threatIndex,
+        agencies: agencyEntries
+      };
+    }).filter(Boolean);
+
+    return checkpoints.map((checkpoint, index) => {
+      const previous = index > 0 ? checkpoints[index - 1] : null;
+      const intervalHours = previous && Number.isFinite(previous.leadHours)
+        ? checkpoint.leadHours - previous.leadHours : null;
+      const distanceDeltaKm = previous && Number.isFinite(previous.distanceMedianKm) && Number.isFinite(checkpoint.distanceMedianKm)
+        ? checkpoint.distanceMedianKm - previous.distanceMedianKm : null;
+      const windDeltaMs = previous && Number.isFinite(previous.windMedianMs) && Number.isFinite(checkpoint.windMedianMs)
+        ? checkpoint.windMedianMs - previous.windMedianMs : null;
+      const approachRateKmh = Number.isFinite(distanceDeltaKm) && Number.isFinite(intervalHours) && intervalHours > 0
+        ? -distanceDeltaKm / intervalHours : null;
+      const strengtheningRateMsPerHour = Number.isFinite(windDeltaMs) && Number.isFinite(intervalHours) && intervalHours > 0
+        ? windDeltaMs / intervalHours : null;
+      const agencies = checkpoint.agencies.map(entry => {
+        const previousEntry = previous?.agencies?.find(item => item.agency === entry.agency) ?? null;
+        const agencyDistanceDeltaKm = previousEntry && Number.isFinite(previousEntry.distanceKm) && Number.isFinite(entry.distanceKm)
+          ? entry.distanceKm - previousEntry.distanceKm : null;
+        const agencyWindDeltaMs = previousEntry && Number.isFinite(previousEntry.maximumWindMs) && Number.isFinite(entry.maximumWindMs)
+          ? entry.maximumWindMs - previousEntry.maximumWindMs : null;
+        const agencyApproachRateKmh = Number.isFinite(agencyDistanceDeltaKm) && Number.isFinite(intervalHours) && intervalHours > 0
+          ? -agencyDistanceDeltaKm / intervalHours : null;
+        const agencyStrengtheningRateMsPerHour = Number.isFinite(agencyWindDeltaMs) && Number.isFinite(intervalHours) && intervalHours > 0
+          ? agencyWindDeltaMs / intervalHours : null;
+        const agencyRapidEvolutionIndex = clamp(
+          (Number.isFinite(agencyApproachRateKmh) ? clamp(agencyApproachRateKmh / 25) : 0) * 0.6
+          + (Number.isFinite(agencyStrengtheningRateMsPerHour) ? clamp(agencyStrengtheningRateMsPerHour / 1.2) : 0) * 0.4
+        );
+        return {
+          ...entry,
+          distanceDeltaFromPreviousKm: agencyDistanceDeltaKm,
+          windDeltaFromPreviousMs: agencyWindDeltaMs,
+          approachRateKmh: agencyApproachRateKmh,
+          strengtheningRateMsPerHour: agencyStrengtheningRateMsPerHour,
+          rapidEvolutionIndex: agencyRapidEvolutionIndex
+        };
+      });
+      const agencyRapidValues = agencies.map(entry => entry.rapidEvolutionIndex).filter(Number.isFinite);
+      const rapidEvolutionIndex = agencyRapidValues.length ? median(agencyRapidValues) : 0;
+      const scenarioRapidEvolutionIndex = agencyRapidValues.length ? Math.max(...agencyRapidValues) : 0;
+      return {
+        ...checkpoint,
+        agencies,
+        intervalFromPreviousHours: intervalHours,
+        distanceDeltaFromPreviousKm: distanceDeltaKm,
+        windDeltaFromPreviousMs: windDeltaMs,
+        approachRateKmh,
+        strengtheningRateMsPerHour,
+        rapidEvolutionIndex,
+        scenarioRapidEvolutionIndex
+      };
+    });
+  }
+
+  function representativeMinimumFromImpact''',
+              'threat buildTimeline',
+              re.S
+          )
+
+          old = """    const featureVector = signalInputs?.featureVector || {};\n    const usableAgencyCount = finite(featureVector.usableAgencyCount)\n      ?? finite(signalInputs?.coverage?.usableAgencyCount)\n      ?? patterns.length;\n    const windFieldCoverageCount = finite(featureVector.closestTimeWindFieldCoverageAgencyCount) ?? 0;\n    const representativeWindMs = finite(featureVector.closestMaximumWindMedianMs)\n      ?? finite(featureVector.currentMaximumWindMedianMs);\n    const windFieldConfidence = clamp((usableAgencyCount > 0 ? windFieldCoverageCount / usableAgencyCount : 0) * 0.65\n      + (Number.isFinite(representativeWindMs) ? clamp(representativeWindMs / 35) * 0.35 : 0));"""
+          new = """    const featureVector = signalInputs?.featureVector || {};\n    const usableAgencyCount = finite(featureVector.usableAgencyCount)\n      ?? finite(signalInputs?.coverage?.usableAgencyCount)\n      ?? patterns.length;\n    const latestWindFieldCoverageCount = finite(featureVector.latestWindFieldCoverageAgencyCount) ?? 0;\n    const closestWindFieldCoverageCount = finite(featureVector.closestTimeWindFieldCoverageAgencyCount) ?? 0;\n    const latestStrongWindCoverageCount = finite(featureVector.latestStrongWindFieldCoverageAgencyCount) ?? 0;\n    const closestStrongWindCoverageCount = finite(featureVector.closestTimeStrongWindFieldCoverageAgencyCount) ?? 0;\n    const latestGaleCoverageCount = finite(featureVector.latestGaleWindFieldCoverageAgencyCount) ?? 0;\n    const closestGaleCoverageCount = finite(featureVector.closestTimeGaleWindFieldCoverageAgencyCount) ?? 0;\n    const windRadiusAgencyCount = finite(featureVector.windRadiusAgencyCount) ?? 0;\n    const representativeWindMs = finite(featureVector.closestMaximumWindMedianMs)\n      ?? finite(featureVector.currentMaximumWindMedianMs);\n    const coverageFraction = count => usableAgencyCount > 0 ? clamp(count / usableAgencyCount) : 0;\n    const windFieldConfidence = Math.max(\n      coverageFraction(latestWindFieldCoverageCount),\n      coverageFraction(closestWindFieldCoverageCount)\n    );"""
+          if text.count(old) != 1:
+              raise SystemExit('threat: wind field block anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """    const strongestTimelineThreat = timeline.reduce((best, item) => item.threatIndex > (best?.threatIndex ?? -1) ? item : best, null);\n    const fastestEvolution = timeline.reduce((best, item) => item.rapidEvolutionIndex > (best?.rapidEvolutionIndex ?? -1) ? item : best, null);\n    const currentDistanceKm = median(patterns.map(pattern => pattern.currentDistanceKm).filter(Number.isFinite));"""
+          new = """    const strongestTimelineThreat = timeline.reduce((best, item) => item.threatIndex > (best?.threatIndex ?? -1) ? item : best, null);\n    const fastestEvolution = timeline.reduce((best, item) => item.scenarioRapidEvolutionIndex > (best?.scenarioRapidEvolutionIndex ?? -1) ? item : best, null);\n    const currentDistanceKm = finite(featureVector.currentDistanceMedianKm)\n      ?? median(patterns.map(pattern => pattern.currentDistanceKm).filter(Number.isFinite));"""
+          if text.count(old) != 1:
+              raise SystemExit('threat: timeline summary anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """    const rapidEvolutionConfidence = clamp(finite(fastestEvolution?.rapidEvolutionIndex) ?? 0);\n    const overallThreatIndex = clamp(\n      currentProximityIndex * 0.22\n      + futureProximityIndex * 0.28\n      + trajectoryConfidence * 0.20\n      + windFieldConfidence * 0.10\n      + rapidEvolutionConfidence * 0.12\n      + (1 - agencyDisagreementConfidence) * 0.08\n    );\n    const confidenceIndex = clamp(1 - agencyDisagreementConfidence * 0.55 - forecastEdgeConfidence * 0.25);"""
+          new = """    const rapidEvolutionConfidence = clamp(finite(fastestEvolution?.scenarioRapidEvolutionIndex) ?? 0);\n    const overallThreatIndex = clamp(\n      currentProximityIndex * 0.24\n      + futureProximityIndex * 0.32\n      + trajectoryConfidence * 0.22\n      + windFieldConfidence * 0.10\n      + rapidEvolutionConfidence * 0.12\n    );\n    const agencyCoverageConfidence = clamp(usableAgencyCount / 3);\n    const confidenceIndex = clamp(\n      (1 - agencyDisagreementConfidence * 0.55 - forecastEdgeConfidence * 0.25)\n      * (0.55 + 0.45 * agencyCoverageConfidence)\n    );"""
+          if text.count(old) != 1:
+              raise SystemExit('threat: overall risk anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """          rapidEvolutionIndex: fastestEvolution.rapidEvolutionIndex,\n          approachRateKmh: fastestEvolution.approachRateKmh,\n          strengtheningRateMsPerHour: fastestEvolution.strengtheningRateMsPerHour"""
+          new = """          rapidEvolutionIndex: fastestEvolution.scenarioRapidEvolutionIndex,\n          medianRapidEvolutionIndex: fastestEvolution.rapidEvolutionIndex,\n          approachRateKmh: fastestEvolution.approachRateKmh,\n          strengtheningRateMsPerHour: fastestEvolution.strengtheningRateMsPerHour"""
+          if text.count(old) != 1:
+              raise SystemExit('threat: fastest evolution output anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """        windField: {\n          confidence: windFieldConfidence,\n          representativeWindMs,\n          coverageAgencyCount: windFieldCoverageCount\n        },"""
+          new = """        windField: {\n          confidence: windFieldConfidence,\n          representativeWindMs,\n          dataAgencyCount: windRadiusAgencyCount,\n          latestCoverageAgencyCount: latestWindFieldCoverageCount,\n          closestCoverageAgencyCount: closestWindFieldCoverageCount,\n          latestStrongWindCoverageAgencyCount: latestStrongWindCoverageCount,\n          closestStrongWindCoverageAgencyCount: closestStrongWindCoverageCount,\n          latestGaleCoverageAgencyCount: latestGaleCoverageCount,\n          closestGaleCoverageAgencyCount: closestGaleCoverageCount,\n          strongWindCoverageFraction: Math.max(coverageFraction(latestStrongWindCoverageCount), coverageFraction(closestStrongWindCoverageCount)),\n          galeCoverageFraction: Math.max(coverageFraction(latestGaleCoverageCount), coverageFraction(closestGaleCoverageCount))\n        },"""
+          if text.count(old) != 1:
+              raise SystemExit('threat: wind analyzer output anchor mismatch')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+
+          # 3) Signal forecast: scenario envelopes, persistence, signal-specific wind-field evidence.
+          path = Path('analysis/basic-hk-signal-forecast.js')
+          text = path.read_text(encoding='utf-8')
+          marker = "  function softTimeRelevance(lead) {"
+          if marker not in text:
+              raise SystemExit('basic: soft time marker missing')
+          median_fn = r'''  function median(values) {
+    const usable = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
+    if (!usable.length) return null;
+    const middle = Math.floor(usable.length / 2);
+    return usable.length % 2 ? usable[middle] : (usable[middle - 1] + usable[middle]) / 2;
+  }
+
+'''
+          text = text.replace(marker, median_fn + marker, 1)
+
+          text = sub_once(
+              text,
+              r"  function firstBandEntry\(impact, weightedImpact, thresholds\) \{.*?\n  \}\n\n  function windowAround",
+              r'''  function nextBandEntry(impact, weightedImpact, thresholds, referenceTime) {
+    const referenceMs = timeMs(referenceTime);
+    if (!Number.isFinite(referenceMs)) return null;
+    const candidates = [];
+    thresholds.forEach(threshold => {
+      const weightedBand = weightedImpact?.distanceBands?.[String(threshold)];
+      const weightedIntervals = Array.isArray(weightedBand?.intervals) ? weightedBand.intervals : [];
+      weightedIntervals.forEach(interval => {
+        const enterMs = timeMs(interval?.enterTime);
+        if (Number.isFinite(enterMs) && enterMs >= referenceMs) {
+          candidates.push({ thresholdKm: threshold, time: iso(enterMs), source: 'weighted-consensus', supportAgencyCount: null });
+        }
+      });
+      const agencies = impact?.distanceBands?.[String(threshold)]?.agencies;
+      if (Array.isArray(agencies)) {
+        agencies.forEach(item => (Array.isArray(item?.intervals) ? item.intervals : []).forEach(interval => {
+          const enterMs = timeMs(interval?.enterTime);
+          if (Number.isFinite(enterMs) && enterMs >= referenceMs) {
+            candidates.push({ thresholdKm: threshold, time: iso(enterMs), source: `agency-${item.agency || 'unknown'}`, supportAgencyCount: 1 });
+          }
+        }));
+      }
+      const fallback = timeMs(weightedBand?.firstEntryTime ?? impact?.distanceBands?.[String(threshold)]?.entryWindow?.start);
+      if (Number.isFinite(fallback) && fallback >= referenceMs) {
+        candidates.push({ thresholdKm: threshold, time: iso(fallback), source: weightedBand?.firstEntryTime ? 'weighted-consensus' : 'agency-window', supportAgencyCount: null });
+      }
+    });
+    candidates.sort((a, b) => timeMs(a.time) - timeMs(b.time));
+    return candidates[0] ?? null;
+  }
+
+  function windowAround''',
+              'basic nextBandEntry',
+              re.S
+          )
+
+          text = sub_once(
+              text,
+              r"  function checkpointEvidence\(checkpoint, signal\) \{.*?\n  \}\n\n  function timelineAnchor",
+              r'''  function signalThresholds(signal) {
+    if (signal === 'T8') return { possible: 0.40, likely: 0.70 };
+    if (signal === 'T3') return { possible: 0.38, likely: 0.65 };
+    return { possible: 0.35, likely: 0.58 };
+  }
+
+  function pointSignalEvidence(entry, checkpoint, signal) {
+    const distanceKm = finite(entry?.distanceKm) ?? finite(checkpoint?.distanceMedianKm);
+    const windMs = finite(entry?.maximumWindMs) ?? finite(checkpoint?.windMedianMs);
+    const timeRelevance = clamp(finite(checkpoint?.timeRelevance) ?? softTimeRelevance(finite(checkpoint?.leadHours)));
+    const rapid = clamp(finite(entry?.rapidEvolutionIndex) ?? finite(checkpoint?.rapidEvolutionIndex) ?? 0);
+    let proximity;
+    let intensityPotential;
+    if (signal === 'T8') {
+      proximity = smoothCloser(distanceKm, 300);
+      intensityPotential = Number.isFinite(windMs) ? clamp((windMs - 20) / 22) : 0;
+    } else if (signal === 'T3') {
+      proximity = smoothCloser(distanceKm, 500);
+      intensityPotential = Number.isFinite(windMs) ? clamp((windMs - 12) / 18) : 0;
+    } else {
+      proximity = smoothCloser(distanceKm, 800);
+      intensityPotential = Number.isFinite(windMs) ? clamp((windMs - 10) / 25) : 0;
+    }
+    const exposureIntensity = intensityPotential * proximity;
+    const exposureRapid = rapid * Math.max(proximity, 0.20);
+    const physical = signal === 'T8'
+      ? proximity * 0.56 + exposureIntensity * 0.29 + exposureRapid * 0.15
+      : (signal === 'T3'
+        ? proximity * 0.55 + exposureIntensity * 0.28 + exposureRapid * 0.17
+        : proximity * 0.62 + intensityPotential * 0.12 + rapid * 0.26);
+    return clamp(physical * (0.55 + 0.45 * timeRelevance));
+  }
+
+  function checkpointEvidence(checkpoint, signal) {
+    const agencies = Array.isArray(checkpoint?.agencies) ? checkpoint.agencies : [];
+    const perAgency = agencies.map(entry => ({ agency: entry.agency, evidence: pointSignalEvidence(entry, checkpoint, signal) }));
+    if (!perAgency.length) {
+      const fallback = pointSignalEvidence({}, checkpoint, signal);
+      return { aggregate: fallback, consensus: fallback, scenarioMax: fallback, supportAgencyCount: 0, totalAgencyCount: 0, perAgency: [] };
+    }
+    const values = perAgency.map(item => item.evidence).filter(Number.isFinite);
+    const consensus = median(values) ?? 0;
+    const scenarioMax = values.length ? Math.max(...values) : 0;
+    const threshold = signalThresholds(signal).possible;
+    const supportAgencyCount = perAgency.filter(item => item.evidence >= threshold).length;
+    const totalAgencyCount = perAgency.length;
+    const supportFraction = totalAgencyCount > 0 ? supportAgencyCount / totalAgencyCount : 0;
+    const coverageCredibility = totalAgencyCount >= 3 ? 1 : (totalAgencyCount === 2 ? 0.82 : 0.60);
+    const scenarioCredibility = coverageCredibility * (0.45 + 0.55 * supportFraction);
+    const aggregate = clamp(Math.max(consensus, scenarioMax * scenarioCredibility));
+    return { aggregate, consensus, scenarioMax, supportAgencyCount, totalAgencyCount, scenarioCredibility, perAgency };
+  }
+
+  function segmentDurationAbove(left, right, threshold) {
+    const leftLead = finite(left?.checkpoint?.leadHours);
+    const rightLead = finite(right?.checkpoint?.leadHours);
+    const a = finite(left?.evidence);
+    const b = finite(right?.evidence);
+    if (!Number.isFinite(leftLead) || !Number.isFinite(rightLead) || !(rightLead > leftLead) || !Number.isFinite(a) || !Number.isFinite(b)) return 0;
+    const duration = rightLead - leftLead;
+    if (a >= threshold && b >= threshold) return duration;
+    if (a < threshold && b < threshold) return 0;
+    const span = Math.abs(b - a);
+    if (!(span > 0)) return 0;
+    const high = Math.max(a, b);
+    return duration * clamp((high - threshold) / span);
+  }
+
+  function maximumPersistentDuration(entries, threshold) {
+    let best = 0;
+    let current = 0;
+    for (let index = 1; index < entries.length; index += 1) {
+      const duration = segmentDurationAbove(entries[index - 1], entries[index], threshold);
+      if (duration > 0) {
+        current += duration;
+        best = Math.max(best, current);
+      } else {
+        current = 0;
+      }
+    }
+    return best;
+  }
+
+  function timelineSignalSummary(timeline, signal) {
+    const entries = (Array.isArray(timeline) ? timeline : [])
+      .filter(item => Number.isFinite(finite(item?.leadHours)) && finite(item.leadHours) >= 0)
+      .map(item => {
+        const details = checkpointEvidence(item, signal);
+        return { checkpoint: item, evidence: details.aggregate, details };
+      });
+    if (!entries.length) return { maxEvidence: 0, rawMaxEvidence: 0, strongest: null, firstPossible: null, firstLikely: null, persistenceHours: 0 };
+    const strongest = entries.reduce((best, item) => item.evidence > best.evidence ? item : best, entries[0]);
+    const thresholds = signalThresholds(signal);
+    const persistenceHours = maximumPersistentDuration(entries, thresholds.possible);
+    const persistenceFactor = signal === 'T1' ? 1 : 1 - Math.exp(-persistenceHours / 6);
+    const persistenceMultiplier = signal === 'T8'
+      ? 0.66 + 0.34 * persistenceFactor
+      : (signal === 'T3' ? 0.70 + 0.30 * persistenceFactor : 1);
+    const maxEvidence = clamp(strongest.evidence * persistenceMultiplier);
+    const crossing = threshold => entries.find((item, index) => {
+      if (item.evidence < threshold) return false;
+      if (index === 0) return finite(item.checkpoint?.leadHours) > 0;
+      return entries[index - 1].evidence < threshold;
+    }) ?? null;
+    return {
+      maxEvidence,
+      rawMaxEvidence: strongest.evidence,
+      strongest,
+      firstPossible: crossing(thresholds.possible),
+      firstLikely: crossing(thresholds.likely),
+      persistenceHours,
+      persistenceFactor
+    };
+  }
+
+  function timelineAnchor''',
+              'basic checkpoint/timeline evidence',
+              re.S
+          )
+
+          old = """    const agreement = 1 - disagreement;\n    const trajectory = clamp(Math.max(directApproach, reApproach * 0.85, quasiStationary * 0.25));"""
+          new = """    const trajectory = clamp(Math.max(directApproach, reApproach * 0.85, quasiStationary * 0.25));\n    const usableAgencyCount = Math.max(0, finite(signalInputs?.featureVector?.usableAgencyCount) ?? finite(signalInputs?.coverage?.usableAgencyCount) ?? 0);\n    const coverageFraction = count => usableAgencyCount > 0 ? clamp((finite(count) ?? 0) / usableAgencyCount) : 0;\n    const latestStrongWindCoverage = coverageFraction(signalInputs?.featureVector?.latestStrongWindFieldCoverageAgencyCount);\n    const closestStrongWindCoverage = coverageFraction(signalInputs?.featureVector?.closestTimeStrongWindFieldCoverageAgencyCount);\n    const latestGaleCoverage = coverageFraction(signalInputs?.featureVector?.latestGaleWindFieldCoverageAgencyCount);\n    const closestGaleCoverage = coverageFraction(signalInputs?.featureVector?.closestTimeGaleWindFieldCoverageAgencyCount);\n    const unknownWindCoverage = coverageFraction(signalInputs?.featureVector?.unknownThresholdWindFieldCoverageAgencyCount);\n    const windRadiusDataFraction = coverageFraction(signalInputs?.featureVector?.windRadiusAgencyCount);\n    const t3WindFieldExposure = clamp(Math.max(latestStrongWindCoverage, closestStrongWindCoverage, windFieldConfidence * 0.35, unknownWindCoverage * 0.20));\n    const t8WindFieldExposure = clamp(Math.max(latestGaleCoverage, closestGaleCoverage, windFieldConfidence * 0.18, unknownWindCoverage * 0.08));"""
+          if text.count(old) != 1:
+              raise SystemExit('basic: agreement/trajectory anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          pattern = r"    const t1Timeline = timelineSignalSummary\(timeline, 'T1'\);.*?    const impactLikelihood = likelihoodFromIndex\(impactIndex, 0\.58, 0\.28\);"
+          replacement = r'''    const t1Timeline = timelineSignalSummary(timeline, 'T1');
+    const t3Timeline = timelineSignalSummary(timeline, 'T3');
+    const t8Timeline = timelineSignalSummary(timeline, 'T8');
+
+    const currentT1Proximity = smoothCloser(currentDistanceKm, 800);
+    const futureT1Proximity = smoothCloser(minimumDistanceKm, 650) * timeRelevance;
+    const staticT1Risk = clamp(
+      currentT1Proximity * 0.18
+      + futureT1Proximity * 0.45
+      + trajectory * 0.22
+      + rapidEvolution * 0.05
+      + windFieldConfidence * 0.10
+    );
+    const t1RiskIndex = clamp(Math.max(staticT1Risk, t1Timeline.maxEvidence));
+
+    const currentT3Proximity = smoothCloser(currentDistanceKm, 550);
+    const futureT3Proximity = smoothCloser(minimumDistanceKm, 450) * timeRelevance;
+    const strongWindEvidence = Number.isFinite(windMs) ? clamp((windMs - 12) / 18) : 0;
+    const strongWindExposure = strongWindEvidence * Math.max(currentT3Proximity, futureT3Proximity);
+    const staticT3Risk = clamp(
+      currentT3Proximity * 0.11
+      + futureT3Proximity * 0.32
+      + trajectory * 0.13
+      + rapidEvolution * 0.07
+      + strongWindExposure * 0.17
+      + t3WindFieldExposure * 0.20
+    );
+    const t3RiskIndex = clamp(Math.max(staticT3Risk, t3Timeline.maxEvidence));
+
+    const currentT8Proximity = smoothCloser(currentDistanceKm, 350);
+    const futureT8Proximity = smoothCloser(minimumDistanceKm, 280) * timeRelevance;
+    const galeEvidence = Number.isFinite(windMs) ? clamp((windMs - 20) / 22) : 0;
+    const galeExposure = galeEvidence * Math.max(currentT8Proximity, futureT8Proximity);
+    const staticT8Risk = clamp(
+      currentT8Proximity * 0.09
+      + futureT8Proximity * 0.29
+      + trajectory * 0.11
+      + rapidEvolution * 0.09
+      + galeExposure * 0.17
+      + t8WindFieldExposure * 0.25
+    );
+    const t8RiskIndex = clamp(Math.max(staticT8Risk, t8Timeline.maxEvidence));
+
+    const t1Likelihood = likelihoodFromIndex(t1RiskIndex, 0.58, 0.35);
+    const t3Likelihood = likelihoodFromIndex(t3RiskIndex, 0.65, 0.38);
+    const t8Likelihood = likelihoodFromIndex(t8RiskIndex, 0.70, 0.40);
+    const impactIndex = Number.isFinite(finite(summary.overallThreatIndex))
+      ? finite(summary.overallThreatIndex)
+      : clamp(currentT1Proximity * 0.35 + futureT1Proximity * 0.40 + trajectory * 0.25);
+    const impactLikelihood = likelihoodFromIndex(impactIndex, 0.58, 0.28);
+    const baseConfidence = clamp(finite(summary.confidenceIndex) ?? (1 - disagreement * 0.55));
+    const t1ConfidenceIndex = baseConfidence;
+    const t3ConfidenceIndex = clamp(baseConfidence * (0.70 + 0.30 * windRadiusDataFraction));
+    const t8ConfidenceIndex = clamp(baseConfidence * (0.62 + 0.38 * windRadiusDataFraction));'''
+          text = sub_once(text, pattern, replacement, 'basic risk block', re.S)
+
+          old = """    const entry800 = firstBandEntry(impact, weightedImpact, [800]);\n    const entry500 = firstBandEntry(impact, weightedImpact, [500, 400]);\n    const entry300 = firstBandEntry(impact, weightedImpact, [300, 200]);\n    const futureEntry = entry => {\n      const lead = leadHours(referenceTime, entry?.time);\n      return Number.isFinite(lead) && lead >= 0 ? entry.time : null;\n    };"""
+          new = """    const entry800 = nextBandEntry(impact, weightedImpact, [800], referenceTime);\n    const entry500 = nextBandEntry(impact, weightedImpact, [500, 400], referenceTime);\n    const entry300 = nextBandEntry(impact, weightedImpact, [300, 200], referenceTime);\n    const futureEntry = entry => {\n      const lead = leadHours(referenceTime, entry?.time);\n      return Number.isFinite(lead) && lead >= 0 ? entry.time : null;\n    };"""
+          if text.count(old) != 1:
+              raise SystemExit('basic: band entry anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """      `agency-disagreement:${disagreement.toFixed(3)}`,\n      Number.isFinite(windMs) ? `representative-wind:${windMs.toFixed(1)}m/s` : 'representative-wind:unavailable',\n      `wind-field:${windFieldConfidence.toFixed(3)}`"""
+          new = """      `agency-disagreement:${disagreement.toFixed(3)}`,\n      Number.isFinite(windMs) ? `representative-wind:${windMs.toFixed(1)}m/s` : 'representative-wind:unavailable',\n      `wind-field-any:${windFieldConfidence.toFixed(3)}`,\n      `wind-field-t3:${t3WindFieldExposure.toFixed(3)}`,\n      `wind-field-t8:${t8WindFieldExposure.toFixed(3)}`,\n      `wind-radius-data:${windRadiusDataFraction.toFixed(3)}`"""
+          if text.count(old) != 1:
+              raise SystemExit('basic: common basis anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          # Add confidence/persistence/scenario diagnostics to signal outputs.
+          text = text.replace("""          riskIndex: t1RiskIndex,\n          estimatedWindow:""", """          riskIndex: t1RiskIndex,\n          confidenceIndex: t1ConfidenceIndex,\n          persistenceHours: t1Timeline.persistenceHours,\n          estimatedWindow:""", 1)
+          text = text.replace("""          riskIndex: t3RiskIndex,\n          estimatedWindow:""", """          riskIndex: t3RiskIndex,\n          confidenceIndex: t3ConfidenceIndex,\n          persistenceHours: t3Timeline.persistenceHours,\n          estimatedWindow:""", 1)
+          text = text.replace("""          riskIndex: t8RiskIndex,\n          estimatedWindow:""", """          riskIndex: t8RiskIndex,\n          confidenceIndex: t8ConfidenceIndex,\n          persistenceHours: t8Timeline.persistenceHours,\n          estimatedWindow:""", 1)
+
+          old = """            evidence: t1Timeline.strongest.evidence\n          } : null,"""
+          new = """            evidence: t1Timeline.strongest.evidence,\n            consensusEvidence: t1Timeline.strongest.details.consensus,\n            scenarioMaxEvidence: t1Timeline.strongest.details.scenarioMax,\n            supportAgencyCount: t1Timeline.strongest.details.supportAgencyCount,\n            totalAgencyCount: t1Timeline.strongest.details.totalAgencyCount\n          } : null,"""
+          if text.count(old) != 1:
+              raise SystemExit('basic: T1 strongest anchor mismatch')
+          text = text.replace(old, new, 1)
+          old = """            evidence: t3Timeline.strongest.evidence\n          } : null,"""
+          new = """            evidence: t3Timeline.strongest.evidence,\n            consensusEvidence: t3Timeline.strongest.details.consensus,\n            scenarioMaxEvidence: t3Timeline.strongest.details.scenarioMax,\n            supportAgencyCount: t3Timeline.strongest.details.supportAgencyCount,\n            totalAgencyCount: t3Timeline.strongest.details.totalAgencyCount\n          } : null,"""
+          if text.count(old) != 1:
+              raise SystemExit('basic: T3 strongest anchor mismatch')
+          text = text.replace(old, new, 1)
+          old = """            evidence: t8Timeline.strongest.evidence\n          } : null,"""
+          new = """            evidence: t8Timeline.strongest.evidence,\n            consensusEvidence: t8Timeline.strongest.details.consensus,\n            scenarioMaxEvidence: t8Timeline.strongest.details.scenarioMax,\n            supportAgencyCount: t8Timeline.strongest.details.supportAgencyCount,\n            totalAgencyCount: t8Timeline.strongest.details.totalAgencyCount\n          } : null,"""
+          if text.count(old) != 1:
+              raise SystemExit('basic: T8 strongest anchor mismatch')
+          text = text.replace(old, new, 1)
+
+          text = text.replace("`timeline-evidence:${t3Timeline.maxEvidence.toFixed(3)}`, `t3-risk-index:${t3RiskIndex.toFixed(3)}`", "`timeline-evidence:${t3Timeline.maxEvidence.toFixed(3)}`, `timeline-persistence:${t3Timeline.persistenceHours.toFixed(1)}h`, `t3-risk-index:${t3RiskIndex.toFixed(3)}`", 1)
+          text = text.replace("`timeline-evidence:${t8Timeline.maxEvidence.toFixed(3)}`, `t8-risk-index:${t8RiskIndex.toFixed(3)}`", "`timeline-evidence:${t8Timeline.maxEvidence.toFixed(3)}`, `timeline-persistence:${t8Timeline.persistenceHours.toFixed(1)}h`, `t8-risk-index:${t8RiskIndex.toFixed(3)}`", 1)
+
+          old = """        stormIntensityIsCoupledToHongKongExposureForT3T8: true,\n        horizonLimitedFallbackTimingSuppressed: true,"""
+          new = """        stormIntensityIsCoupledToHongKongExposureForT3T8: true,\n        agencyAgreementAffectsConfidenceNotThreatMagnitude: true,\n        minorityAgencyThreatScenarioPreserved: true,\n        windFieldThresholdsAreSignalSpecificWhenKnown: true,\n        localWindPersistenceIsContinuousEvidence: true,\n        horizonLimitedFallbackTimingSuppressed: true,"""
+          if text.count(old) != 1:
+              raise SystemExit('basic: semantics anchor mismatch')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+
+          # 4) Add rule-level regression scenarios.
+          Path('tests/hk-threat-rule-scenarios.test.cjs').write_text(r'''\'use strict\';
+
+const assert = require('node:assert/strict');
+const core = require('../analysis/storm-analysis-core.js');
+const impactEngine = require('../analysis/hk-impact-engine.js');
+const signalEngine = require('../analysis/hko-signal-risk-inputs.js');
+const threatEngine = require('../analysis/hk-threat-assessment.js');
+const basic = require('../analysis/basic-hk-signal-forecast.js');
+
+const BASE = '2026-08-21T12:00:00Z';
+const point = (time, lat, lon, maximumWind, extra = {}) => ({ kind: extra.kind || 'forecast', time, lat, lon, maximumWind, ...extra });
+const source = (positions, forecast) => ({ bulletinTime: positions.at(-1)?.time || BASE, positions, forecast });
+
+function run(sources) {
+  const group = { key: 'rule-scenario', displayName: 'RULE SCENARIO', sources };
+  const snapshot = core.buildStormAnalysisSnapshot(group, { generatedAt: BASE });
+  const impact = impactEngine.buildHongKongImpact(snapshot);
+  const signalInputs = signalEngine.buildHkoSignalRiskInputs(snapshot, impact, group);
+  const threatAssessment = threatEngine.buildHkThreatAssessment({ snapshot, impact, signalInputs, generatedAt: BASE });
+  const forecast = basic.buildBasicHkSignalForecast({ impact, weightedImpact: null, signalInputs, threatAssessment, generatedAt: BASE });
+  return { snapshot, impact, signalInputs, threatAssessment, forecast };
+}
+
+function safeTrack(offset = 0) {
+  return source(
+    [point(BASE, 18 + offset, 128.5 + offset, 15, { kind: 'analysis' })],
+    [
+      point('2026-08-21T18:00:00Z', 18.2 + offset, 128.0 + offset, 15),
+      point('2026-08-22T00:00:00Z', 18.4 + offset, 127.5 + offset, 14),
+      point('2026-08-22T12:00:00Z', 18.8 + offset, 126.5 + offset, 14)
+    ]
+  );
+}
+
+// Agreement should increase confidence, not manufacture physical threat.
+{
+  const one = run({ HKO: safeTrack(), CMA: null, JMA: null, CWA: null });
+  const three = run({ HKO: safeTrack(), CMA: safeTrack(0.03), CWA: safeTrack(-0.03), JMA: null });
+  assert.ok(Math.abs(one.threatAssessment.summary.overallThreatIndex - three.threatAssessment.summary.overallThreatIndex) < 0.03);
+  assert.ok(three.threatAssessment.summary.confidenceIndex > one.threatAssessment.summary.confidenceIndex);
+  assert.ok(Math.abs(one.forecast.signals.T1.riskIndex - three.forecast.signals.T1.riskIndex) < 0.04);
+}
+
+// A credible minority high-threat scenario must survive a safe median consensus.
+{
+  const severe = source(
+    [point(BASE, 20.0, 123.5, 22, { kind: 'analysis' })],
+    [
+      point('2026-08-21T18:00:00Z', 20.5, 120.5, 26),
+      point('2026-08-22T00:00:00Z', 21.0, 117.8, 31),
+      point('2026-08-22T06:00:00Z', 21.6, 115.6, 35)
+    ]
+  );
+  const result = run({ HKO: severe, CMA: safeTrack(), CWA: safeTrack(0.05), JMA: null });
+  const strongest = result.forecast.signals.T3.strongestCheckpoint;
+  assert.ok(strongest.scenarioMaxEvidence > strongest.consensusEvidence + 0.08);
+  assert.ok(strongest.supportAgencyCount >= 1);
+  assert.notEqual(result.forecast.signals.T3.likelihood, 'unlikely');
+  assert.ok(result.forecast.signals.T3.confidenceIndex < 0.8);
+}
+
+// Sustained local-wind threat must rank above an isolated transient peak.
+{
+  const transientTrack = () => source(
+    [point(BASE, 20.0, 121.0, 22, { kind: 'analysis' })],
+    [
+      point('2026-08-21T18:00:00Z', 21.0, 117.0, 31),
+      point('2026-08-22T00:00:00Z', 20.0, 121.0, 20),
+      point('2026-08-22T06:00:00Z', 19.5, 123.0, 18)
+    ]
+  );
+  const sustainedTrack = () => source(
+    [point(BASE, 20.0, 121.0, 22, { kind: 'analysis' })],
+    [
+      point('2026-08-21T18:00:00Z', 21.0, 117.0, 31),
+      point('2026-08-22T00:00:00Z', 21.4, 116.0, 31),
+      point('2026-08-22T06:00:00Z', 21.5, 115.7, 29)
+    ]
+  );
+  const transient = run({ HKO: transientTrack(), CMA: transientTrack(), CWA: transientTrack(), JMA: null });
+  const sustained = run({ HKO: sustainedTrack(), CMA: sustainedTrack(), CWA: sustainedTrack(), JMA: null });
+  assert.ok(sustained.forecast.signals.T3.persistenceHours > transient.forecast.signals.T3.persistenceHours);
+  assert.ok(sustained.forecast.signals.T3.riskIndex > transient.forecast.signals.T3.riskIndex + 0.03);
+  assert.ok(sustained.forecast.signals.T8.riskIndex > transient.forecast.signals.T8.riskIndex);
+}
+
+// Same track, strengthening storm should have materially more T8 risk than weakening storm.
+{
+  const make = winds => source(
+    [point(BASE, 19.0, 122.0, winds[0], { kind: 'analysis' })],
+    [
+      point('2026-08-21T18:00:00Z', 20.0, 119.0, winds[1]),
+      point('2026-08-22T00:00:00Z', 21.0, 116.8, winds[2]),
+      point('2026-08-22T06:00:00Z', 21.7, 115.1, winds[3])
+    ]
+  );
+  const strengthening = run({ HKO: make([18, 24, 31, 40]), CMA: make([18, 24, 31, 40]), CWA: make([18, 24, 31, 40]), JMA: null });
+  const weakening = run({ HKO: make([32, 25, 18, 12]), CMA: make([32, 25, 18, 12]), CWA: make([32, 25, 18, 12]), JMA: null });
+  assert.ok(strengthening.forecast.signals.T8.riskIndex > weakening.forecast.signals.T8.riskIndex + 0.12);
+  assert.ok(strengthening.threatAssessment.analyzers.rapidEvolution.confidence > weakening.threatAssessment.analyzers.rapidEvolution.confidence);
+}
+
+// Wind-radius levels must distinguish strong-wind coverage from gale coverage.
+{
+  const radii7 = [{ level: '7', ne: 800, se: 800, sw: 800, nw: 800 }];
+  const radii10 = [{ level: '10', ne: 800, se: 800, sw: 800, nw: 800 }];
+  const make = radii => source(
+    [point(BASE, 20.5, 109.0, 28, { kind: 'analysis', windRadii: radii })],
+    [point('2026-08-22T00:00:00Z', 20.8, 109.5, 28, { windRadii: radii })]
+  );
+  const strongOnly = run({ CMA: make(radii7), HKO: null, JMA: null, CWA: null });
+  const gale = run({ CMA: make(radii10), HKO: null, JMA: null, CWA: null });
+  assert.equal(strongOnly.signalInputs.featureVector.closestTimeStrongWindFieldCoverageAgencyCount, 1);
+  assert.equal(strongOnly.signalInputs.featureVector.closestTimeGaleWindFieldCoverageAgencyCount, 0);
+  assert.equal(gale.signalInputs.featureVector.closestTimeGaleWindFieldCoverageAgencyCount, 1);
+  assert.ok(gale.forecast.signals.T8.riskIndex > strongOnly.forecast.signals.T8.riskIndex);
+}
+
+// Forecast-edge uncertainty should reduce confidence without erasing the physical threat.
+{
+  const edge = source(
+    [point(BASE, 18.0, 125.0, 25, { kind: 'analysis' })],
+    [
+      point('2026-08-22T12:00:00Z', 20.0, 120.0, 28),
+      point('2026-08-23T12:00:00Z', 21.0, 116.0, 30)
+    ]
+  );
+  const interior = source(
+    [point(BASE, 18.0, 125.0, 25, { kind: 'analysis' })],
+    [
+      point('2026-08-22T12:00:00Z', 20.0, 120.0, 28),
+      point('2026-08-23T12:00:00Z', 21.0, 116.0, 30),
+      point('2026-08-24T12:00:00Z', 20.0, 120.0, 25)
+    ]
+  );
+  const a = run({ HKO: edge, CMA: edge, CWA: edge, JMA: null });
+  const b = run({ HKO: interior, CMA: interior, CWA: interior, JMA: null });
+  assert.ok(a.threatAssessment.analyzers.forecastEdge.confidence > b.threatAssessment.analyzers.forecastEdge.confidence);
+  assert.ok(a.threatAssessment.summary.confidenceIndex < b.threatAssessment.summary.confidenceIndex);
+  assert.ok(Math.abs(a.forecast.signals.T1.riskIndex - b.forecast.signals.T1.riskIndex) < 0.18);
+}
+
+console.log('HK threat rule scenarios: OK');
+'''.replace("\\'use strict\\';", "'use strict';"), encoding='utf-8')
+
+          # Add the new scenario suite to the full regression command.
+          path = Path('workers/storm-analysis/package.json')
+          text = path.read_text(encoding='utf-8')
+          old = "node ../../tests/hk-threat-assessment.test.cjs && node ../../tests/basic-hk-signal-forecast.test.cjs"
+          new = "node ../../tests/hk-threat-assessment.test.cjs && node ../../tests/hk-threat-rule-scenarios.test.cjs && node ../../tests/basic-hk-signal-forecast.test.cjs"
+          if text.count(old) != 1:
+              raise SystemExit('package: test command anchor mismatch')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Run focused rule tests
+        working-directory: workers/storm-analysis
+        run: |
+          node ../../tests/hk-threat-assessment.test.cjs
+          node ../../tests/hk-threat-rule-scenarios.test.cjs
+          node ../../tests/basic-hk-signal-forecast.test.cjs
+          node ../../tests/frontend-hk-threat-ui.test.cjs
+
+      - name: Run full regression
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Commit validated refinements
+        shell: bash
+        run: |
+          git status --short
+          git config user.name 'storm-track-ci'
+          git config user.email 'actions@users.noreply.github.com'
+          git add analysis/hko-signal-risk-inputs.js analysis/hk-threat-assessment.js analysis/basic-hk-signal-forecast.js tests/hk-threat-rule-scenarios.test.cjs workers/storm-analysis/package.json
+          if git diff --cached --quiet; then
+            echo 'No product changes to commit'
+            exit 0
+          fi
+          git commit -m 'Refine HK threat evidence model'
+          git push origin HEAD:feature/basic-hk-signal-forecast
