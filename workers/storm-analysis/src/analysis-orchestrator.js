@@ -52,6 +52,21 @@ function signalRiskUnavailable(reason, profileRecord = null) {
   };
 }
 
+function basicSignalForecastUnavailable(reason) {
+  return {
+    schemaVersion: 'basic-hk-signal-forecast/v1',
+    available: false,
+    reason,
+    semantics: {
+      deterministic: true,
+      historicalCalibrationRequired: false,
+      officialHkoForecast: false,
+      officialHkoDecisionInferred: false,
+      aiGenerated: false
+    }
+  };
+}
+
 export function createAnalysisOrchestrator({ modelRepository, signalRiskRepository, engines } = {}) {
   if (!modelRepository || typeof modelRepository.getChampion !== 'function') throw new Error('modelRepository is required');
   const deterministic = engines ?? getDeterministicEngines();
@@ -81,6 +96,15 @@ export function createAnalysisOrchestrator({ modelRepository, signalRiskReposito
       const weightedImpact = trackHelpersAvailable
         ? buildWeightedHongKongImpact(weightedTrack, snapshot.referencePoint, deterministic.impact, input.weightedTrackOptions || {})
         : { schemaVersion: 'weighted-hk-impact/v1', sourceTrackVersion: weightedTrack.schemaVersion, available: false, closestApproach: null, distanceBands: {} };
+
+      const basicSignalForecast = typeof deterministic.basicSignalForecast?.buildBasicHkSignalForecast === 'function'
+        ? deterministic.basicSignalForecast.buildBasicHkSignalForecast({
+            impact,
+            weightedImpact,
+            signalInputs,
+            generatedAt: snapshot.generatedAt
+          })
+        : basicSignalForecastUnavailable('basic-signal-forecast-engine-unavailable');
 
       let signalRisk;
       if (options.signalCalibrationReadError) {
@@ -121,6 +145,7 @@ export function createAnalysisOrchestrator({ modelRepository, signalRiskReposito
           weightedComparison: weighted,
           weightedConsensusTrack: weightedTrack,
           weightedHongKongImpact: weightedImpact,
+          basicSignalForecast,
           signalRisk
         },
         semantics: {
@@ -136,7 +161,8 @@ export function createAnalysisOrchestrator({ modelRepository, signalRiskReposito
           signalCalibrationPromotionPerformed: false,
           stormTrackSignalRiskEstimateIncluded: signalRisk.available === true,
           signalRiskProbabilitiesAreAppComputed: signalRisk.available === true,
-          warningSignalPredictionIncluded: false,
+          basicSignalForecastIncluded: basicSignalForecast.available === true,
+          warningSignalPredictionIncluded: basicSignalForecast.available === true,
           officialHkoDecisionInferred: false,
           aiGenerated: false
         }
@@ -145,4 +171,4 @@ export function createAnalysisOrchestrator({ modelRepository, signalRiskReposito
   });
 }
 
-export { ORCHESTRATION_VERSION, weightedComparison, signalRiskUnavailable };
+export { ORCHESTRATION_VERSION, weightedComparison, signalRiskUnavailable, basicSignalForecastUnavailable };
