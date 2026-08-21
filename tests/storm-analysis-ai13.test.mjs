@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { selectModelAsOf, createHistoricalReplayAdapter } from '../workers/storm-analysis/src/historical-replay-adapter.js';
-import { runPersistedSignalCalibrationTraining } from '../workers/storm-analysis/src/signal-training-runner.js';
+import { previewPersistedSignalCalibrationTraining, runPersistedSignalCalibrationTraining } from '../workers/storm-analysis/src/signal-training-runner.js';
 import { createSignalTrainingRepository } from '../workers/storm-analysis/src/signal-training-repository.js';
 
 const models = [
@@ -63,7 +63,12 @@ class ReadDb { constructor(){this.snapshots=[];this.outcomes=[];this.models=[];}
   }};
   const signalRiskRepository={async getChampion(){return{profileId:'champ',profile:{schemaVersion:'hko-signal-calibration-profile/v1'}};}};
   const calibration={buildHkoSignalCalibrationProfile(){}};
-  const result=await runPersistedSignalCalibrationTraining({}, {runId:'r1',challengerProfileId:'c1',championProfileProvenance:{holdoutIndependent:false}}, {adapter,repository,trainer,signalRiskRepository,calibration});
+  const dependencies={adapter,repository,trainer,signalRiskRepository,calibration};
+  const trainingInput={runId:'r1',challengerProfileId:'c1',championProfileProvenance:{holdoutIndependent:false}};
+  const preview=await previewPersistedSignalCalibrationTraining({}, trainingInput, dependencies);
+  assert.equal(preview.dataset.datasetFingerprint,'datafp');
+  assert.equal(preview.semantics.datasetFingerprintMustBeConfirmedForRun,true);
+  const result=await runPersistedSignalCalibrationTraining({}, {...trainingInput,expectedDatasetFingerprint:preview.dataset.datasetFingerprint}, dependencies);
   assert.equal(result.status,'completed');
   assert.equal(result.persisted.promotionPerformed,false);
   assert.deepEqual(calls.map(x=>x[0]),['begin','complete']);
