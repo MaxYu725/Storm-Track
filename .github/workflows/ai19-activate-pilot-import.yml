@@ -1,0 +1,250 @@
+name: AI-19 Activate controlled forecast-only pilot import
+
+on:
+  push:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai19-activate-pilot-import.yml
+      - .github/ai19-backfill-trigger.txt
+      - tests/storm-analysis-ai19.test.mjs
+      - workers/storm-analysis/scripts/ai19-verify-canonical-plan.mjs
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai19-controlled-pilot-import
+  cancel-in-progress: false
+
+jobs:
+  validate-and-import:
+    if: github.ref == 'refs/heads/feature/ai-analysis-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      BACKFILL_TOKEN: ${{ secrets.BACKFILL_TOKEN }}
+      WORKER_URL: https://storm-analysis.max-yu.workers.dev
+      EXPECTED_EVIDENCE_SHA256: 21b774c59c7773cd7ccdf03e6002deeed4035cd7ca452dc72a00115e449f591d
+      EXPECTED_PLAN_SHA256: 98a3a2d6c20e5a4704604ef7c58df49a7703b93f9399e2e74962bcd76d74573a
+      EXPECTED_RUN_ID: ai19_chanhom_forecast_21b774c59c7773cd
+    steps:
+      - name: Checkout AI branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Wrangler
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run complete pre-import regression gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd workers/storm-analysis && npm test)
+          node tests/historical-backfill-importer.test.cjs
+          node tests/storm-analysis-ai19.test.mjs
+          (cd workers/storm-analysis && npm run test:integration)
+          (cd workers/storm-analysis && npm run deploy:dry-run)
+
+      - name: Verify exact canonical plan bytes and semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          node workers/storm-analysis/scripts/ai19-verify-canonical-plan.mjs data/ai19 > /tmp/ai19-canonical.json
+          cat /tmp/ai19-canonical.json | jq -c '.'
+          [[ "$(jq -r '.evidenceSha256' /tmp/ai19-canonical.json)" == "$EXPECTED_EVIDENCE_SHA256" ]]
+          [[ "$(jq -r '.planSha256' /tmp/ai19-canonical.json)" == "$EXPECTED_PLAN_SHA256" ]]
+          [[ "$(jq -r '.runId' /tmp/ai19-canonical.json)" == "$EXPECTED_RUN_ID" ]]
+          jq -e '.rowCount == 6 and .tableCounts.backfill_runs == 1 and .tableCounts.historical_storms == 1 and .tableCounts.forecast_snapshots == 4 and .tableCounts.truth_datasets == 0 and .tableCounts.truth_points == 0 and .tableCounts.signal_outcomes == 0 and .capability.mode == "forecast-only" and .capability.eligibleForAgencySkill == false' /tmp/ai19-canonical.json >/dev/null
+          echo "AI19_RUN_FINGERPRINT=$(jq -r '.runFingerprint' /tmp/ai19-canonical.json)" >> "$GITHUB_ENV"
+
+      - name: Resolve explicit AI-19 import request
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          trigger="$(tr -d '\r\n' < .github/ai19-backfill-trigger.txt)"
+          requested=false
+          if [[ "$trigger" == "ACTIVATE_AI19" ]]; then requested=true; fi
+          echo "requested=$requested" >> "$GITHUB_OUTPUT"
+          echo "AI19_IMPORT_REQUESTED=$requested"
+
+      - name: Verify readiness and secret before any data mutation
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BACKFILL_TOKEN" =~ ^[0-9a-fA-F]{64}$ ]] || { echo 'BACKFILL_TOKEN is missing or malformed.' >&2; exit 1; }
+          health="$(curl --fail --retry 5 --retry-delay 2 --retry-all-errors -sS "${WORKER_URL}/health")"
+          printf '%s' "$health" | jq -e '.ok == true and .service == "storm-analysis" and .analysisDbBound == true and .importEnabled == true and .analysisAdminEnabled == true and .workersAiEnabled == false and .automaticPromotionEnabled == false and .productionStormWorkerModified == false' >/dev/null
+          echo 'AI19_WORKER_READY=true'
+
+      - name: Re-verify live plan endpoint without writes
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -o /tmp/ai19-preview.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/plan" -H 'content-type: application/json' --data-binary @data/ai19/chan-hom-import-plan.json)"
+          [[ "$status" == "200" ]]
+          jq -e '.ok == true and .dryRun == true and .writesPerformed == false and .rowCount == 6 and .tableCounts.backfill_runs == 1 and .tableCounts.historical_storms == 1 and .tableCounts.forecast_snapshots == 4 and .tableCounts.truth_datasets == 0 and .tableCounts.truth_points == 0 and .tableCounts.signal_outcomes == 0' /tmp/ai19-preview.json >/dev/null
+          echo 'AI19_LIVE_DRY_RUN=true'
+
+      - name: Re-verify committed evidence against production source using SELECT only
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          source_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-track-db") | (.uuid // .id // empty)')"
+          [[ "$source_id" == "eb0bf995-3ea7-4bf6-bbca-b425892c4d7e" ]]
+
+          selected_sql="WITH cutoffs(as_of) AS (VALUES ('2026-08-06T00:00:00.000Z'),('2026-08-08T00:00:00.000Z'),('2026-08-10T00:00:00.000Z'),('2026-08-12T02:00:28.000Z')), ranked AS (SELECT c.as_of, a.id, a.storm_id, a.agency, a.issued_at, a.fetched_at, a.source_code, a.source_url, a.source_hash, a.raw_object_key, a.parser_version, a.point_count, a.ingest_status, ROW_NUMBER() OVER (PARTITION BY c.as_of, a.agency ORDER BY a.issued_at DESC, a.fetched_at DESC, a.id DESC) AS rn FROM cutoffs c JOIN advisories a ON a.storm_id='WP-2026-15' AND a.issued_at <= c.as_of WHERE EXISTS (SELECT 1 FROM track_points tp WHERE tp.advisory_id=a.id AND tp.point_type='forecast' AND tp.valid_at > c.as_of)) SELECT as_of,id,storm_id,agency,issued_at,fetched_at,source_code,source_url,source_hash,raw_object_key,parser_version,point_count,ingest_status FROM ranked WHERE rn=1 ORDER BY as_of,agency;"
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "$selected_sql" > /tmp/ai19-current-advisories-raw.json
+          jq '[.. | objects | select(has("as_of") and has("agency") and has("id"))]' /tmp/ai19-current-advisories-raw.json > /tmp/ai19-current-advisories.json
+
+          points_sql="WITH cutoffs(as_of) AS (VALUES ('2026-08-06T00:00:00.000Z'),('2026-08-08T00:00:00.000Z'),('2026-08-10T00:00:00.000Z'),('2026-08-12T02:00:28.000Z')), ranked AS (SELECT c.as_of, a.id, a.agency, a.issued_at, ROW_NUMBER() OVER (PARTITION BY c.as_of, a.agency ORDER BY a.issued_at DESC, a.fetched_at DESC, a.id DESC) AS rn FROM cutoffs c JOIN advisories a ON a.storm_id='WP-2026-15' AND a.issued_at <= c.as_of WHERE EXISTS (SELECT 1 FROM track_points x WHERE x.advisory_id=a.id AND x.point_type='forecast' AND x.valid_at > c.as_of)) SELECT r.as_of,r.agency,r.id AS advisory_id,r.issued_at,tp.valid_at,tp.forecast_hour,tp.latitude,tp.longitude,tp.pressure_hpa,tp.wind_ms,tp.gust_ms,tp.wind_averaging_minutes,tp.intensity_code,tp.intensity_label,tp.probability_radius_km,tp.source_order FROM ranked r JOIN track_points tp ON tp.advisory_id=r.id WHERE r.rn=1 AND tp.point_type='forecast' AND tp.valid_at > r.as_of ORDER BY r.as_of,r.agency,tp.valid_at,tp.source_order,tp.id;"
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "$points_sql" > /tmp/ai19-current-points-raw.json
+          jq '[.. | objects | select(has("as_of") and has("advisory_id") and has("valid_at"))]' /tmp/ai19-current-points-raw.json > /tmp/ai19-current-points.json
+
+          rm -rf /tmp/ai19-rebuilt
+          node scripts/ai19-build-pilot-plan.mjs --advisories /tmp/ai19-current-advisories.json --points /tmp/ai19-current-points.json --output /tmp/ai19-rebuilt > /tmp/ai19-rebuilt-summary.json
+          [[ "$(jq -r '.evidenceSha256' /tmp/ai19-rebuilt-summary.json)" == "$EXPECTED_EVIDENCE_SHA256" ]]
+          [[ "$(jq -r '.planSha256' /tmp/ai19-rebuilt-summary.json)" == "$EXPECTED_PLAN_SHA256" ]]
+          [[ "$(jq -r '.runId' /tmp/ai19-rebuilt-summary.json)" == "$EXPECTED_RUN_ID" ]]
+          echo 'AI19_PRODUCTION_EVIDENCE_STILL_MATCHES=true'
+
+      - name: Classify pre-import ANALYSIS_DB state using SELECT only
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM backfill_runs) AS backfill_runs,(SELECT run_id FROM backfill_runs LIMIT 1) AS run_id,(SELECT fingerprint FROM backfill_runs LIMIT 1) AS run_fingerprint,(SELECT status FROM backfill_runs LIMIT 1) AS run_status,(SELECT COUNT(*) FROM historical_storms) AS historical_storms,(SELECT storm_key FROM historical_storms LIMIT 1) AS storm_key,(SELECT backfill_mode FROM historical_storms LIMIT 1) AS backfill_mode,(SELECT agency_skill_eligible FROM historical_storms LIMIT 1) AS agency_skill_eligible,(SELECT COUNT(*) FROM truth_datasets) AS truth_datasets,(SELECT COUNT(*) FROM truth_points) AS truth_points,(SELECT COUNT(*) FROM forecast_snapshots) AS forecast_snapshots,(SELECT COUNT(*) FROM forecast_snapshots WHERE snapshot_id NOT IN ('ai19_chanhom_01','ai19_chanhom_02','ai19_chanhom_03','ai19_chanhom_04')) AS unexpected_snapshots,(SELECT COUNT(*) FROM signal_outcomes) AS signal_outcomes,(SELECT COUNT(*) FROM verification_results) AS verification_results,(SELECT COUNT(*) FROM agency_skill_profiles) AS agency_skill_profiles,(SELECT COUNT(*) FROM adaptive_weight_candidates) AS adaptive_weight_candidates,(SELECT COUNT(*) FROM signal_calibration_training_runs) AS training_runs,(SELECT COUNT(*) FROM signal_outcome_curations) AS curations,(SELECT COUNT(*) FROM signal_profile_promotion_events) AS promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) AS generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) AS champion_profile_id;" > /tmp/ai19-prestate.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai19-prestate.json | head -n 1)"
+          echo "AI19_PRE_IMPORT_STATE=${row}"
+          ROW="$row" node --input-type=module <<'NODE'
+          const row = JSON.parse(process.env.ROW);
+          const zeroOnly = ['truth_datasets','truth_points','signal_outcomes','verification_results','agency_skill_profiles','adaptive_weight_candidates','training_runs','curations','promotion_events','generation'];
+          for (const key of zeroOnly) if (Number(row[key]) !== 0) throw new Error(`AI-19 refuses pre-existing ${key}=${row[key]}`);
+          if (row.champion_profile_id != null) throw new Error('AI-19 refuses a pre-existing signal Champion');
+          if (Number(row.unexpected_snapshots) !== 0) throw new Error('AI-19 found unexpected forecast snapshot IDs');
+          if (Number(row.backfill_runs) === 0) {
+            if (Number(row.historical_storms) !== 0 || Number(row.forecast_snapshots) !== 0) throw new Error('AI-19 pristine state is internally inconsistent');
+            console.log('AI19_PRESTATE_CLASS=pristine');
+            process.exit(0);
+          }
+          if (Number(row.backfill_runs) !== 1 || row.run_id !== process.env.EXPECTED_RUN_ID || row.run_fingerprint !== process.env.AI19_RUN_FINGERPRINT) throw new Error('AI-19 found an unexpected backfill run');
+          if (Number(row.historical_storms) > 1 || (Number(row.historical_storms) === 1 && (row.storm_key !== 'WP-2026-15' || row.backfill_mode !== 'forecast-only' || Number(row.agency_skill_eligible) !== 0))) throw new Error('AI-19 found unexpected historical storm state');
+          if (Number(row.forecast_snapshots) < 0 || Number(row.forecast_snapshots) > 4) throw new Error('AI-19 found invalid partial snapshot state');
+          console.log(`AI19_PRESTATE_CLASS=recoverable-${row.run_status || 'unknown'}`);
+          NODE
+
+      - name: Import exact committed canonical plan
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -o /tmp/ai19-import-first.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/import" -H 'content-type: application/json' -H "Authorization: Bearer ${BACKFILL_TOKEN}" --data-binary @data/ai19/chan-hom-import-plan.json)"
+          [[ "$status" == "200" ]] || { cat /tmp/ai19-import-first.json >&2; exit 1; }
+          first_status="$(jq -r '.status // empty' /tmp/ai19-import-first.json)"
+          [[ "$first_status" == "completed" || "$first_status" == "already-imported" ]]
+          jq -e '.ok == true and .rowCount == 6 and .tableCounts.backfill_runs == 1 and .tableCounts.historical_storms == 1 and .tableCounts.forecast_snapshots == 4 and .tableCounts.truth_datasets == 0 and .tableCounts.truth_points == 0 and .tableCounts.signal_outcomes == 0' /tmp/ai19-import-first.json >/dev/null
+          echo "AI19_FIRST_IMPORT_STATUS=$first_status" >> "$GITHUB_ENV"
+          echo "AI19_FIRST_IMPORT=$(jq -c '.' /tmp/ai19-import-first.json)"
+
+      - name: Verify exact-plan idempotent replay
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -o /tmp/ai19-import-second.json -w '%{http_code}' -X POST "${WORKER_URL}/api/backfill/import" -H 'content-type: application/json' -H "Authorization: Bearer ${BACKFILL_TOKEN}" --data-binary @data/ai19/chan-hom-import-plan.json)"
+          [[ "$status" == "200" ]] || { cat /tmp/ai19-import-second.json >&2; exit 1; }
+          jq -e '.ok == true and .status == "already-imported" and .writesPerformed == false and .rowCount == 6 and .tableCounts.backfill_runs == 1 and .tableCounts.historical_storms == 1 and .tableCounts.forecast_snapshots == 4 and .tableCounts.truth_datasets == 0 and .tableCounts.truth_points == 0 and .tableCounts.signal_outcomes == 0' /tmp/ai19-import-second.json >/dev/null
+          echo 'AI19_IDEMPOTENT_REPLAY=true'
+
+      - name: Verify exact post-import state using SELECT only
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT (SELECT COUNT(*) FROM backfill_runs) AS backfill_runs,(SELECT run_id FROM backfill_runs LIMIT 1) AS run_id,(SELECT fingerprint FROM backfill_runs LIMIT 1) AS run_fingerprint,(SELECT status FROM backfill_runs LIMIT 1) AS run_status,(SELECT COUNT(*) FROM historical_storms) AS historical_storms,(SELECT storm_key FROM historical_storms LIMIT 1) AS storm_key,(SELECT backfill_mode FROM historical_storms LIMIT 1) AS backfill_mode,(SELECT agency_skill_eligible FROM historical_storms LIMIT 1) AS agency_skill_eligible,(SELECT COUNT(*) FROM truth_datasets) AS truth_datasets,(SELECT COUNT(*) FROM truth_points) AS truth_points,(SELECT COUNT(*) FROM forecast_snapshots) AS forecast_snapshots,(SELECT COUNT(*) FROM forecast_snapshots WHERE snapshot_id IN ('ai19_chanhom_01','ai19_chanhom_02','ai19_chanhom_03','ai19_chanhom_04')) AS expected_snapshots,(SELECT SUM(eligible_for_walkforward) FROM forecast_snapshots) AS eligible_snapshots,(SELECT COUNT(*) FROM signal_outcomes) AS signal_outcomes,(SELECT COUNT(*) FROM verification_results) AS verification_results,(SELECT COUNT(*) FROM agency_skill_profiles) AS agency_skill_profiles,(SELECT COUNT(*) FROM adaptive_weight_candidates) AS adaptive_weight_candidates,(SELECT COUNT(*) FROM signal_calibration_training_runs) AS training_runs,(SELECT COUNT(*) FROM signal_outcome_curations) AS curations,(SELECT COUNT(*) FROM signal_profile_promotion_events) AS promotion_events,(SELECT generation FROM signal_calibration_state WHERE state_id=1) AS generation,(SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) AS champion_profile_id;" > /tmp/ai19-poststate.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai19-poststate.json | head -n 1)"
+          echo "AI19_POST_IMPORT_STATE=${row}"
+          ROW="$row" node --input-type=module <<'NODE'
+          const row = JSON.parse(process.env.ROW);
+          const expected = {
+            backfill_runs:1,historical_storms:1,truth_datasets:0,truth_points:0,forecast_snapshots:4,expected_snapshots:4,eligible_snapshots:4,signal_outcomes:0,verification_results:0,agency_skill_profiles:0,adaptive_weight_candidates:0,training_runs:0,curations:0,promotion_events:0,generation:0
+          };
+          for (const [key,value] of Object.entries(expected)) if (Number(row[key]) !== value) throw new Error(`AI-19 post-state expected ${key}=${value}, got ${row[key]}`);
+          if (row.run_id !== process.env.EXPECTED_RUN_ID || row.run_fingerprint !== process.env.AI19_RUN_FINGERPRINT || row.run_status !== 'completed') throw new Error('AI-19 backfill run identity/status mismatch');
+          if (row.storm_key !== 'WP-2026-15' || row.backfill_mode !== 'forecast-only' || Number(row.agency_skill_eligible) !== 0) throw new Error('AI-19 historical storm semantics mismatch');
+          if (row.champion_profile_id != null) throw new Error('AI-19 must not set a signal Champion');
+          NODE
+          echo 'AI19_POST_STATE_VERIFIED=true'
+
+      - name: Verify production source and Worker safety after import
+        if: steps.gate.outputs.requested == 'true'
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "SELECT COUNT(*) AS advisories FROM advisories WHERE storm_id='WP-2026-15';" > /tmp/ai19-prod-after.json
+          [[ "$(jq -r '.. | objects | select(has("advisories")) | .advisories' /tmp/ai19-prod-after.json | head -n 1)" == "104" ]]
+          health="$(curl --fail -sS "${WORKER_URL}/health")"
+          printf '%s' "$health" | jq -e '.ok == true and .importEnabled == true and .analysisAdminEnabled == true and .workersAiEnabled == false and .automaticPromotionEnabled == false and .productionStormWorkerModified == false' >/dev/null
+          echo 'AI19_PRODUCTION_SOURCE_UNCHANGED=true'
+
+      - name: Record successful AI-19 checkpoint
+        if: steps.gate.outputs.requested == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > docs/AI19_PILOT_IMPORT_RESULT.md <<EOF
+          # AI-19 — Controlled Forecast-only Pilot Import Result
+
+          Status: **completed and idempotence verified**
+
+          - Worker: \`storm-analysis\`
+          - Production source: \`storm-track-db\` (read-only; production Storm Worker not modified)
+          - Pilot storm: \`WP-2026-15\` / CHAN-HOM / 昌鴻
+          - Evidence SHA-256: \`${EXPECTED_EVIDENCE_SHA256}\`
+          - Canonical plan SHA-256: \`${EXPECTED_PLAN_SHA256}\`
+          - Run ID: \`${EXPECTED_RUN_ID}\`
+          - First import response: \`${AI19_FIRST_IMPORT_STATUS}\`
+          - Exact-plan second import: \`already-imported\`, writesPerformed=false
+          - backfill_runs: 1 (completed)
+          - historical_storms: 1 (forecast-only, agency_skill_eligible=0)
+          - forecast_snapshots: 4 (trusted historical provenance)
+          - truth_datasets / truth_points: 0 / 0
+          - signal_outcomes: 0
+          - verification_results / agency_skill_profiles / adaptive_weight_candidates: 0 / 0 / 0
+          - training / curation / promotion rows: 0 / 0 / 0
+          - Signal Champion: NONE / generation 0
+          - Workers AI: disabled
+          - Automatic signal-profile promotion: disabled
+          - Production Storm Worker modified: no
+          - Workflow run: \`${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\`
+
+          AI-19 imported only the exact committed forecast-only canonical plan through the authenticated backfill API. It did not write truth, execute verification/training, curate outcomes, promote or roll back a profile, deploy Worker code, mutate secrets, or write the production Storm database.
+          EOF
+
+          printf '%s\n' 'COMPLETED_AI19' > .github/ai19-backfill-trigger.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- docs/AI19_PILOT_IMPORT_RESULT.md .github/ai19-backfill-trigger.txt
+          git diff --cached --check
+          git commit -m "AI-19: record controlled pilot import [skip ci]"
+          git push origin HEAD:feature/ai-analysis-engine
+          echo 'AI19_CHECKPOINT_RECORDED=true'
