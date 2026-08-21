@@ -1,0 +1,164 @@
+name: AI-21 Read-only corpus candidate inventory
+
+on:
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/ai21-readonly-corpus-candidate-inventory.yml
+      - tests/storm-analysis-ai21.test.mjs
+      - workers/storm-analysis/scripts/ai21-build-forecast-corpus.mjs
+      - docs/AI21_PROSPECTIVE_MULTI_STORM_CORPUS.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    if: github.base_ref == 'feature/ai-analysis-engine' || github.ref == 'refs/heads/feature/ai-analysis-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/ai-analysis-engine
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Worker toolchain
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+
+      - name: Run complete regression suite including AI-21 guards
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Verify phase locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '\r\n' < .github/ai19-backfill-trigger.txt)" == "COMPLETED_AI19" ]]
+          [[ "$(tr -d '\r\n' < .github/ai20-truth-trigger.txt)" == "PENDING_AI20" ]]
+          [[ "$(tr -d '\r\n' < .github/ai21-corpus-trigger.txt)" == "PENDING_AI21" ]]
+          echo 'AI21_REMOTE_IMPORT_LOCKED=true'
+
+      - name: Verify production source identity
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          databases="$(npx wrangler d1 list --json --experimental-provision=false)"
+          source_id="$(printf '%s' "$databases" | jq -r '.[] | select(.name == "storm-track-db") | (.uuid // .id // empty)')"
+          [[ "$source_id" == "eb0bf995-3ea7-4bf6-bbca-b425892c4d7e" ]]
+          echo "AI21_PRODUCTION_SOURCE=storm-track-db:${source_id}"
+
+      - name: Inventory forecast-bearing production storms using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "
+            SELECT
+              s.id AS storm_key,
+              s.international_number,
+              s.name_en,
+              s.name_zh,
+              s.status,
+              s.merged_into_id,
+              s.first_seen_at,
+              s.last_seen_at,
+              COUNT(DISTINCT CASE WHEN tp.point_type='forecast' THEN a.id END) AS forecast_advisory_count,
+              COUNT(CASE WHEN tp.point_type='forecast' THEN 1 END) AS forecast_point_count,
+              COUNT(DISTINCT CASE WHEN tp.point_type='forecast' THEN a.agency END) AS forecast_agency_count,
+              GROUP_CONCAT(DISTINCT CASE WHEN tp.point_type='forecast' THEN a.agency END) AS forecast_agencies,
+              MIN(CASE WHEN tp.point_type='forecast' THEN a.issued_at END) AS first_forecast_issue_at,
+              MAX(CASE WHEN tp.point_type='forecast' THEN a.issued_at END) AS last_forecast_issue_at,
+              MIN(CASE WHEN tp.point_type='forecast' THEN tp.valid_at END) AS first_forecast_valid_at,
+              MAX(CASE WHEN tp.point_type='forecast' THEN tp.valid_at END) AS last_forecast_valid_at
+            FROM storms s
+            LEFT JOIN advisories a ON a.storm_id=s.id
+            LEFT JOIN track_points tp ON tp.advisory_id=a.id
+            GROUP BY s.id, s.international_number, s.name_en, s.name_zh, s.status, s.merged_into_id, s.first_seen_at, s.last_seen_at
+            HAVING forecast_point_count > 0
+            ORDER BY s.first_seen_at, s.id;" > /tmp/ai21-storms-raw.json
+          jq '[.. | objects | select(has("forecast_point_count") and (.forecast_point_count|tonumber) > 0)]' /tmp/ai21-storms-raw.json > /tmp/ai21-storms.json
+          echo "AI21_FORECAST_STORMS=$(jq -c '.' /tmp/ai21-storms.json)"
+
+      - name: Rank bounded multi-agency corpus candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const rows = JSON.parse(fs.readFileSync('/tmp/ai21-storms.json', 'utf8'));
+          const candidates = rows
+            .filter(row => row.status !== 'merged')
+            .filter(row => Number(row.forecast_agency_count) >= 2)
+            .filter(row => Number(row.forecast_advisory_count) >= 2)
+            .map(row => ({
+              stormKey: row.storm_key,
+              productionInternationalNumber: row.international_number,
+              identityStatus: 'unreviewed',
+              nameEn: row.name_en,
+              nameTc: row.name_zh,
+              status: row.status,
+              forecastAgencyCount: Number(row.forecast_agency_count),
+              forecastAgencies: String(row.forecast_agencies || '').split(',').filter(Boolean).sort(),
+              forecastAdvisoryCount: Number(row.forecast_advisory_count),
+              forecastPointCount: Number(row.forecast_point_count),
+              firstForecastIssueAt: row.first_forecast_issue_at,
+              lastForecastIssueAt: row.last_forecast_issue_at
+            }))
+            .sort((a, b) => b.forecastAgencyCount - a.forecastAgencyCount
+              || b.forecastAdvisoryCount - a.forecastAdvisoryCount
+              || a.stormKey.localeCompare(b.stormKey));
+          console.log(`AI21_CORPUS_CANDIDATES=${JSON.stringify(candidates)}`);
+          console.log(`AI21_CORPUS_CANDIDATE_COUNT=${candidates.length}`);
+          NODE
+
+      - name: Inventory forecast coverage per agency using SELECT only
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-track-db --remote --json --experimental-provision=false --command "
+            SELECT a.storm_id AS storm_key, a.agency,
+              COUNT(DISTINCT a.id) AS forecast_advisory_count,
+              COUNT(tp.id) AS forecast_point_count,
+              MIN(a.issued_at) AS first_issue_at,
+              MAX(a.issued_at) AS last_issue_at
+            FROM advisories a
+            JOIN track_points tp ON tp.advisory_id=a.id AND tp.point_type='forecast'
+            GROUP BY a.storm_id, a.agency
+            ORDER BY a.storm_id, a.agency;" > /tmp/ai21-agencies-raw.json
+          echo "AI21_AGENCY_COVERAGE=$(jq -c '[.. | objects | select(has("storm_key") and has("agency") and has("forecast_point_count"))]' /tmp/ai21-agencies-raw.json)"
+
+      - name: Reconfirm analysis database remains at pre-AI-21 state
+        working-directory: workers/storm-analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute storm-analysis --remote --json --experimental-provision=false --command "SELECT
+            (SELECT COUNT(*) FROM backfill_runs) AS backfill_runs,
+            (SELECT COUNT(*) FROM historical_storms) AS historical_storms,
+            (SELECT COUNT(*) FROM forecast_snapshots) AS forecast_snapshots,
+            (SELECT COUNT(*) FROM truth_datasets) AS truth_datasets,
+            (SELECT COUNT(*) FROM truth_points) AS truth_points,
+            (SELECT COUNT(*) FROM verification_results) AS verification_results,
+            (SELECT COUNT(*) FROM agency_skill_profiles) AS agency_skill_profiles,
+            (SELECT COUNT(*) FROM adaptive_weight_candidates) AS adaptive_weight_candidates,
+            (SELECT COUNT(*) FROM signal_calibration_training_runs) AS training_runs,
+            (SELECT COUNT(*) FROM signal_profile_promotion_events) AS promotion_events,
+            (SELECT generation FROM signal_calibration_state WHERE state_id=1) AS generation,
+            (SELECT champion_profile_id FROM signal_calibration_state WHERE state_id=1) AS champion_profile_id;" > /tmp/ai21-analysis-state.json
+          row="$(jq -c '.. | objects | select(has("backfill_runs"))' /tmp/ai21-analysis-state.json | head -n 1)"
+          echo "AI21_ANALYSIS_STATE=$row"
+          printf '%s' "$row" | jq -e '.backfill_runs==1 and .historical_storms==1 and .forecast_snapshots==4 and .truth_datasets==0 and .truth_points==0 and .verification_results==0 and .agency_skill_profiles==0 and .adaptive_weight_candidates==0 and .training_runs==0 and .promotion_events==0 and .generation==0 and .champion_profile_id==null' >/dev/null
+          echo 'AI21_REMOTE_MUTATIONS_PERFORMED=false'
