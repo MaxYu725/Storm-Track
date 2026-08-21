@@ -1,0 +1,32 @@
+name: Basic HK signal forecast PR check
+
+on:
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - analysis/basic-hk-signal-forecast.js
+      - workers/storm-analysis/src/deterministic-engines.js
+      - workers/storm-analysis/src/analysis-orchestrator.js
+      - workers/storm-analysis/package.json
+      - tests/basic-hk-signal-forecast.test.cjs
+      - .github/workflows/basic-hk-signal-pr-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: workers/storm-analysis
+        run: npm install --no-audit --no-fund
+      - name: Run regression suite
+        working-directory: workers/storm-analysis
+        run: npm test
