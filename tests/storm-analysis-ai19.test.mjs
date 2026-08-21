@@ -55,3 +55,5 @@ for (const required of [
 ]) assert.ok(doc.includes(required), `AI-19 runbook must include ${required}`);
 
 console.log('storm-analysis AI-19 source-inventory guard tests passed');
+
+// Diagnostic PR marker only; branch is closed without merge after read-only inventory.
