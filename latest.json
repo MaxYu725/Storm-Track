@@ -1,0 +1,120 @@
+{
+  "schemaVersion": "hk-signal-evaluator/v1",
+  "rubricVersion": "hk-signal-validation-rubric/v1",
+  "rubric": {
+    "version": "hk-signal-validation-rubric/v1",
+    "checkpointHours": [
+      48,
+      24,
+      12,
+      6,
+      3
+    ],
+    "windowTiming": {
+      "A": "inside-window",
+      "B": "<=3h-from-boundary",
+      "C": "<=6h-from-boundary",
+      "D": ">6h-or-no-window"
+    },
+    "stableLead": {
+      "A": ">=12h",
+      "B": "6-<12h",
+      "C": "3-<6h",
+      "D": "<3h-or-never-stable"
+    },
+    "stability": {
+      "A": "0-reversal-flips",
+      "B": "1-reversal-flip",
+      "C": "2-reversal-flips",
+      "D": ">=3-reversal-flips"
+    },
+    "windowPrecision": {
+      "A": "<=18h",
+      "B": ">18-<=24h",
+      "C": ">24-<=36h",
+      "D": ">36h-or-no-window"
+    }
+  },
+  "prospective": {
+    "caseIdentitySchemaVersion": "storm-case-identity/v1",
+    "reconciledThrough": "2026-08-22T02:03:50.440Z",
+    "trustedRecorderSchema": "beta-prospective-recorder/v2",
+    "trustedRecordCount": 2,
+    "recorderSchemaCounts": {
+      "beta-prospective-recorder/v1": 1,
+      "beta-prospective-recorder/v2": 2
+    },
+    "excludedRecordCount": 1,
+    "caseCount": 3
+  },
+  "hkoTruth": {
+    "latestRetrievedAt": "2026-08-22T02:12:56.542Z",
+    "latestTruthFingerprint": "06b9bc4f4a37a3baea5c0a76f1c1d7f19356fadfba8213d372ceb35cd59976a7",
+    "eventCount": 1,
+    "initialTc1IssueCount": 0
+  },
+  "status": "awaiting-tc1",
+  "awaiting": {
+    "status": "awaiting-tc1",
+    "activeHkoCaseIds": [
+      "STC-2026-JMA-TC2622"
+    ],
+    "latestPredictions": [
+      {
+        "caseId": "STC-2026-JMA-TC2622",
+        "capturedAt": "2026-08-22T02:03:50.440Z",
+        "captureFingerprint": "8e7e96ec180ab1566696d502a749c868652edd67f4a80c066a196ba3dcc328be",
+        "rawGroupKey": "NARRA",
+        "displayName": "紫檀 (NARRA)",
+        "likelihood": "possible",
+        "estimatedWindow": {
+          "start": "2026-08-23T21:57:48.083Z",
+          "end": "2026-08-24T14:28:18.274Z"
+        },
+        "sourceAgencies": [
+          "CMA",
+          "CWA",
+          "HKO",
+          "JMA"
+        ],
+        "engineVersions": {
+          "ui": "frontend-hk-threat-ui/v1",
+          "snapshot": "storm-analysis-snapshot/v1",
+          "impact": "hk-impact/v1",
+          "signalInputs": "hko-signal-risk-inputs/v1",
+          "threatAssessment": "hk-threat-assessment/v1",
+          "basicForecast": "basic-hk-signal-forecast/v1"
+        }
+      }
+    ],
+    "latestHkoTruth": {
+      "retrievedAt": "2026-08-22T02:12:56.542Z",
+      "truthFingerprint": "06b9bc4f4a37a3baea5c0a76f1c1d7f19356fadfba8213d372ceb35cd59976a7",
+      "truth": {
+        "warningStatementCode": "WTCSGNL",
+        "present": false,
+        "code": null,
+        "level": null,
+        "type": null,
+        "actionCode": null,
+        "issueTime": null,
+        "updateTime": null,
+        "expireTime": null,
+        "details": []
+      },
+      "context": {
+        "pre8": [],
+        "specialWeatherTips": [
+          {
+            "desc": "預料熱帶氣旋紫檀會在今日於北部灣一帶徘徊 ，然後於下週初有較大機會逐漸轉向東至東北方向移動，靠近雷州半島至廣東西部沿岸一帶。天文台會密切監察其動向及本地風力變化，評估是否需要在下週初發出熱帶氣旋警告信號，市民請留意最新天氣消息。",
+            "updateTime": "2026-08-22T09:35:00+08:00"
+          }
+        ]
+      }
+    }
+  },
+  "evaluations": [],
+  "generatedAt": "2026-08-22T02:21:18.252Z",
+  "sourceCommit": "1824b699a9c631f53111fc9f5441bc2eda4390fa",
+  "evaluationFingerprint": "1584c80543687e19476e50e4ba226f7319e479166a001f4aa8fbc7be68a01dd2"
+}
