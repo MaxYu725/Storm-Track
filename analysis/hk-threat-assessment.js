@@ -12,6 +12,7 @@
   const SOFT_TIME_SCALE_HOURS = 72;
 
   function finite(value) {
+    if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
   }
@@ -137,7 +138,7 @@
   function interpolateTrackAtTime(track, targetMs, referencePoint, referenceTimeMs) {
     if (!track.length || !Number.isFinite(targetMs)) return null;
     const exact = track.find(point => point.timeMs === targetMs);
-    if (exact) return { ...exact, exactOfficialTime: true };
+    if (exact) return { ...exact, exactOfficialTime: true, interpolationSpanHours: 0, interpolationReliability: 1 };
     if (targetMs < track[0].timeMs || targetMs > track[track.length - 1].timeMs) return null;
     for (let index = 1; index < track.length; index += 1) {
       const before = track[index - 1];
@@ -145,6 +146,8 @@
       if (targetMs >= after.timeMs) continue;
       const span = after.timeMs - before.timeMs;
       if (!(span > 0)) return null;
+      const interpolationSpanHours = span / HOUR_MS;
+      const interpolationReliability = 1 / (1 + interpolationSpanHours / 18);
       const ratio = (targetMs - before.timeMs) / span;
       const lat = before.lat + (after.lat - before.lat) * ratio;
       const lon = interpolateLongitude(before.lon, after.lon, ratio);
@@ -163,7 +166,9 @@
         maximumWindMs,
         windRadiiAvailable: false,
         kind: 'interpolated',
-        exactOfficialTime: false
+        exactOfficialTime: false,
+        interpolationSpanHours,
+        interpolationReliability
       };
     }
     return null;
@@ -209,7 +214,10 @@
     let denominator = 0;
     items.forEach(item => {
       const value = finite(item?.[valueKey]);
-      const weight = finite(item?.[weightKey]);
+      const relevance = finite(item?.[weightKey]);
+      const durationHours = finite(item?.durationHours);
+      const durationWeight = Number.isFinite(durationHours) && durationHours > 0 ? durationHours : 1;
+      const weight = Number.isFinite(relevance) ? relevance * durationWeight : null;
       if (!Number.isFinite(value) || !Number.isFinite(weight) || weight <= 0) return;
       numerator += value * weight;
       denominator += weight;
@@ -314,13 +322,15 @@
         const sample = interpolateTrackAtTime(track, targetMs, referencePoint, referenceTimeMs);
         if (!sample) return;
         agencyEntries.push({
-          agency,
-          time: sample.time,
-          leadHours: sample.leadHours,
-          distanceKm: sample.distanceKm,
-          maximumWindMs: sample.maximumWindMs,
-          exactOfficialTime: sample.exactOfficialTime === true,
-          windRadiiAvailable: sample.windRadiiAvailable === true
+agency,
+time: sample.time,
+leadHours: sample.leadHours,
+distanceKm: sample.distanceKm,
+maximumWindMs: sample.maximumWindMs,
+interpolationSpanHours: finite(sample.interpolationSpanHours) ?? 0,
+interpolationReliability: clamp(finite(sample.interpolationReliability) ?? (sample.exactOfficialTime === true ? 1 : 0.5)),
+exactOfficialTime: sample.exactOfficialTime === true,
+windRadiiAvailable: sample.windRadiiAvailable === true
         });
       });
       if (!agencyEntries.length) return null;
@@ -337,18 +347,17 @@
       const proximityIndex = smoothCloser(distanceMedianKm, 650);
       const windSeverityIndex = Number.isFinite(windMedianMs) ? clamp((windMedianMs - 10) / 30) : 0;
       const timeRelevance = softTimeRelevance(leadHours);
-      const threatIndex = clamp(
-        proximityIndex * 0.58
-        + windSeverityIndex * 0.22
-        + agreementIndex * 0.10
-        + timeRelevance * 0.10
-      );
+      const physicalThreatIndex = clamp(proximityIndex * 0.70 + windSeverityIndex * 0.30);
+      const threatIndex = clamp(physicalThreatIndex * (0.55 + 0.45 * timeRelevance));
       return {
         label: checkpointLabel(leadHours),
         validTime: iso(targetMs),
         leadHours,
         supportAgencyCount: agencyEntries.length,
         exactOfficialSupportCount: agencyEntries.filter(entry => entry.exactOfficialTime).length,
+        interpolationReliability: agencyEntries.length
+          ? agencyEntries.reduce((sum, entry) => sum + entry.interpolationReliability, 0) / agencyEntries.length
+          : 0,
         windSupportAgencyCount: winds.length,
         distanceMedianKm,
         distanceRangeKm: Number.isFinite(minimumKm) && Number.isFinite(maximumKm) ? { min: minimumKm, max: maximumKm } : null,
@@ -357,6 +366,7 @@
         windSeverityIndex,
         agreementIndex,
         timeRelevance,
+        physicalThreatIndex,
         threatIndex,
         agencies: agencyEntries
       };
@@ -374,18 +384,42 @@
         ? -distanceDeltaKm / intervalHours : null;
       const strengtheningRateMsPerHour = Number.isFinite(windDeltaMs) && Number.isFinite(intervalHours) && intervalHours > 0
         ? windDeltaMs / intervalHours : null;
-      const rapidEvolutionIndex = clamp(
-        (Number.isFinite(approachRateKmh) ? clamp(approachRateKmh / 25) : 0) * 0.6
-        + (Number.isFinite(strengtheningRateMsPerHour) ? clamp(strengtheningRateMsPerHour / 1.2) : 0) * 0.4
-      );
+      const agencies = checkpoint.agencies.map(entry => {
+        const previousEntry = previous?.agencies?.find(item => item.agency === entry.agency) ?? null;
+        const agencyDistanceDeltaKm = previousEntry && Number.isFinite(previousEntry.distanceKm) && Number.isFinite(entry.distanceKm)
+? entry.distanceKm - previousEntry.distanceKm : null;
+        const agencyWindDeltaMs = previousEntry && Number.isFinite(previousEntry.maximumWindMs) && Number.isFinite(entry.maximumWindMs)
+? entry.maximumWindMs - previousEntry.maximumWindMs : null;
+        const agencyApproachRateKmh = Number.isFinite(agencyDistanceDeltaKm) && Number.isFinite(intervalHours) && intervalHours > 0
+? -agencyDistanceDeltaKm / intervalHours : null;
+        const agencyStrengtheningRateMsPerHour = Number.isFinite(agencyWindDeltaMs) && Number.isFinite(intervalHours) && intervalHours > 0
+? agencyWindDeltaMs / intervalHours : null;
+        const agencyRapidEvolutionIndex = clamp(
+(Number.isFinite(agencyApproachRateKmh) ? clamp(agencyApproachRateKmh / 25) : 0) * 0.6
++ (Number.isFinite(agencyStrengtheningRateMsPerHour) ? clamp(agencyStrengtheningRateMsPerHour / 1.2) : 0) * 0.4
+        );
+        return {
+...entry,
+distanceDeltaFromPreviousKm: agencyDistanceDeltaKm,
+windDeltaFromPreviousMs: agencyWindDeltaMs,
+approachRateKmh: agencyApproachRateKmh,
+strengtheningRateMsPerHour: agencyStrengtheningRateMsPerHour,
+rapidEvolutionIndex: agencyRapidEvolutionIndex
+        };
+      });
+      const agencyRapidValues = agencies.map(entry => entry.rapidEvolutionIndex).filter(Number.isFinite);
+      const rapidEvolutionIndex = agencyRapidValues.length ? median(agencyRapidValues) : 0;
+      const scenarioRapidEvolutionIndex = agencyRapidValues.length ? Math.max(...agencyRapidValues) : 0;
       return {
         ...checkpoint,
+        agencies,
         intervalFromPreviousHours: intervalHours,
         distanceDeltaFromPreviousKm: distanceDeltaKm,
         windDeltaFromPreviousMs: windDeltaMs,
         approachRateKmh,
         strengtheningRateMsPerHour,
-        rapidEvolutionIndex
+        rapidEvolutionIndex,
+        scenarioRapidEvolutionIndex
       };
     });
   }
@@ -450,38 +484,66 @@
     const usableAgencyCount = finite(featureVector.usableAgencyCount)
       ?? finite(signalInputs?.coverage?.usableAgencyCount)
       ?? patterns.length;
-    const windFieldCoverageCount = finite(featureVector.closestTimeWindFieldCoverageAgencyCount) ?? 0;
+    const latestWindFieldCoverageCount = finite(featureVector.latestWindFieldCoverageAgencyCount) ?? 0;
+    const closestWindFieldCoverageCount = finite(featureVector.closestTimeWindFieldCoverageAgencyCount) ?? 0;
+    const latestStrongWindCoverageCount = finite(featureVector.latestStrongWindFieldCoverageAgencyCount) ?? 0;
+    const closestStrongWindCoverageCount = finite(featureVector.closestTimeStrongWindFieldCoverageAgencyCount) ?? 0;
+    const latestGaleCoverageCount = finite(featureVector.latestGaleWindFieldCoverageAgencyCount) ?? 0;
+    const closestGaleCoverageCount = finite(featureVector.closestTimeGaleWindFieldCoverageAgencyCount) ?? 0;
+    const windRadiusAgencyCount = finite(featureVector.windRadiusAgencyCount) ?? 0;
     const representativeWindMs = finite(featureVector.closestMaximumWindMedianMs)
       ?? finite(featureVector.currentMaximumWindMedianMs);
-    const windFieldConfidence = clamp((usableAgencyCount > 0 ? windFieldCoverageCount / usableAgencyCount : 0) * 0.65
-      + (Number.isFinite(representativeWindMs) ? clamp(representativeWindMs / 35) * 0.35 : 0));
+    const coverageFraction = count => usableAgencyCount > 0 ? clamp(count / usableAgencyCount) : 0;
+    const windFieldConfidence = Math.max(
+      coverageFraction(latestWindFieldCoverageCount),
+      coverageFraction(closestWindFieldCoverageCount)
+    );
 
     const fullTimeline = buildTimeline(agencyTracks, normalizedReferencePoint, referenceTimeMs);
     const timeline = fullTimeline.filter(item => Number.isFinite(item.leadHours) && item.leadHours >= 0);
     const strongestTimelineThreat = timeline.reduce((best, item) => item.threatIndex > (best?.threatIndex ?? -1) ? item : best, null);
-    const fastestEvolution = timeline.reduce((best, item) => item.rapidEvolutionIndex > (best?.rapidEvolutionIndex ?? -1) ? item : best, null);
-    const currentDistanceKm = median(patterns.map(pattern => pattern.currentDistanceKm).filter(Number.isFinite));
+    const fastestEvolution = timeline.reduce((best, item) => item.scenarioRapidEvolutionIndex > (best?.scenarioRapidEvolutionIndex ?? -1) ? item : best, null);
+    const interpolationReliabilityConfidence = timeline.length
+      ? weightedAverage(timeline, 'interpolationReliability')
+      : 1;
+    const currentDistanceKm = finite(featureVector.currentDistanceMedianKm)
+      ?? median(patterns.map(pattern => pattern.currentDistanceKm).filter(Number.isFinite));
     const representativeMinimum = representativeMinimumFromImpact(impact, weightedImpact, referenceTimeMs, patterns);
     const forecastMinimumKm = finite(representativeMinimum?.distanceKm);
     const forecastMinimumLeadHours = finite(representativeMinimum?.leadHours);
 
     const currentProximityIndex = smoothCloser(currentDistanceKm, 800);
-    const futureProximityIndex = smoothCloser(forecastMinimumKm, 650) * softTimeRelevance(forecastMinimumLeadHours);
+    const positiveMinimumLead = Math.max(0, forecastMinimumLeadHours ?? 0);
+    const futureNovelty = 1 - Math.exp(-positiveMinimumLead / 8);
+    const futureProximityIndex = positiveMinimumLead > 0
+      ? smoothCloser(forecastMinimumKm, 650) * softTimeRelevance(forecastMinimumLeadHours) * futureNovelty
+      : 0;
     const trajectoryConfidence = clamp(Math.max(
       directApproachConfidence,
       reApproachConfidence * 0.85,
       quasiStationaryConfidence * 0.35
     ));
-    const rapidEvolutionConfidence = clamp(finite(fastestEvolution?.rapidEvolutionIndex) ?? 0);
-    const overallThreatIndex = clamp(
-      currentProximityIndex * 0.22
-      + futureProximityIndex * 0.28
-      + trajectoryConfidence * 0.20
-      + windFieldConfidence * 0.10
-      + rapidEvolutionConfidence * 0.12
-      + (1 - agencyDisagreementConfidence) * 0.08
+    const currentMotionThreat = clamp(
+      0.22 + directApproachConfidence * 0.65 + reApproachConfidence * 0.20
+      + quasiStationaryConfidence * 0.15 - directDepartConfidence * 0.42
     );
-    const confidenceIndex = clamp(1 - agencyDisagreementConfidence * 0.55 - forecastEdgeConfidence * 0.25);
+    const rapidEvolutionConfidence = clamp(finite(fastestEvolution?.scenarioRapidEvolutionIndex) ?? 0);
+    const currentThreatChannel = clamp(currentProximityIndex * (0.16 + currentMotionThreat * 0.56));
+    const futureThreatChannel = clamp(futureProximityIndex * (0.18 + trajectoryConfidence * 0.70));
+    const windFieldThreatChannel = clamp(windFieldConfidence * 0.75);
+    const rapidThreatChannel = clamp(rapidEvolutionConfidence * Math.max(currentProximityIndex, futureProximityIndex, 0.20) * 0.55);
+    const overallThreatIndex = clamp(Math.max(
+      currentThreatChannel,
+      futureThreatChannel,
+      windFieldThreatChannel,
+      rapidThreatChannel
+    ));
+    const agencyCoverageConfidence = clamp(usableAgencyCount / 3);
+    const confidenceIndex = clamp(
+      (1 - agencyDisagreementConfidence * 0.55 - forecastEdgeConfidence * 0.25)
+      * (0.55 + 0.45 * agencyCoverageConfidence)
+      * (0.75 + 0.25 * interpolationReliabilityConfidence)
+    );
 
     return {
       schemaVersion: VERSION,
@@ -507,7 +569,8 @@
           label: fastestEvolution.label,
           validTime: fastestEvolution.validTime,
           leadHours: fastestEvolution.leadHours,
-          rapidEvolutionIndex: fastestEvolution.rapidEvolutionIndex,
+          rapidEvolutionIndex: fastestEvolution.scenarioRapidEvolutionIndex,
+          medianRapidEvolutionIndex: fastestEvolution.rapidEvolutionIndex,
           approachRateKmh: fastestEvolution.approachRateKmh,
           strengtheningRateMsPerHour: fastestEvolution.strengtheningRateMsPerHour
         } : null
@@ -519,10 +582,19 @@
         quasiStationary: { confidence: quasiStationaryConfidence },
         forecastEdge: { confidence: forecastEdgeConfidence },
         agencyDisagreement: { confidence: agencyDisagreementConfidence },
+        interpolationReliability: { confidence: interpolationReliabilityConfidence },
         windField: {
           confidence: windFieldConfidence,
           representativeWindMs,
-          coverageAgencyCount: windFieldCoverageCount
+          dataAgencyCount: windRadiusAgencyCount,
+          latestCoverageAgencyCount: latestWindFieldCoverageCount,
+          closestCoverageAgencyCount: closestWindFieldCoverageCount,
+          latestStrongWindCoverageAgencyCount: latestStrongWindCoverageCount,
+          closestStrongWindCoverageAgencyCount: closestStrongWindCoverageCount,
+          latestGaleCoverageAgencyCount: latestGaleCoverageCount,
+          closestGaleCoverageAgencyCount: closestGaleCoverageCount,
+          strongWindCoverageFraction: Math.max(coverageFraction(latestStrongWindCoverageCount), coverageFraction(closestStrongWindCoverageCount)),
+          galeCoverageFraction: Math.max(coverageFraction(latestGaleCoverageCount), coverageFraction(closestGaleCoverageCount))
         },
         rapidEvolution: {
           confidence: rapidEvolutionConfidence,
@@ -537,6 +609,8 @@
         timeWeightingIsContinuous: true,
         timelineUsesOfficialValidTimes: true,
         crossAgencyInterpolationIsTransparent: true,
+        interpolationGapAffectsConfidenceNotPhysicalThreat: true,
+        interpolationReliabilityIsContinuous: true,
         pastCheckpointsExcludedFromForecastTimeline: true,
         fixedDayBucketsUsed: false,
         checkpointSpacingIsDecisionGate: false,

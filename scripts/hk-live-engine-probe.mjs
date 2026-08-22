@@ -207,7 +207,7 @@ console.log('LIVE_ENGINE_TIMELINE', JSON.stringify(threatAssessment.timeline.map
 // Diagnostic-only reproduction of T1 timeline evidence. This mirrors the current
 // deterministic checkpoint formula so we can inspect the first threshold crossing
 // without changing product scoring or timing semantics.
-const finite = value => Number.isFinite(Number(value)) ? Number(value) : null;
+const finite = value => value == null || value === '' ? null : (Number.isFinite(Number(value)) ? Number(value) : null);
 const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 const median = values => {
   const usable = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
@@ -222,11 +222,12 @@ const smoothCloser = (distanceKm, scaleKm) => {
   return 1 / (1 + ratio ** 3);
 };
 const t1PointEvidence = (entry, checkpoint) => {
-  const distanceKm = finite(entry?.distanceKm) ?? finite(checkpoint?.distanceMedianKm);
-  const windMs = finite(entry?.maximumWindMs) ?? finite(checkpoint?.windMedianMs);
+  const agencySpecific = entry?.agency != null;
+  const distanceKm = agencySpecific ? finite(entry?.distanceKm) : (finite(entry?.distanceKm) ?? finite(checkpoint?.distanceMedianKm));
+  const windMs = agencySpecific ? finite(entry?.maximumWindMs) : (finite(entry?.maximumWindMs) ?? finite(checkpoint?.windMedianMs));
   const timeRelevance = clamp(finite(checkpoint?.timeRelevance) ?? softTime(finite(checkpoint?.leadHours)));
-  const rapid = clamp(finite(entry?.rapidEvolutionIndex) ?? finite(checkpoint?.rapidEvolutionIndex) ?? 0);
-  const approachRateKmh = finite(entry?.approachRateKmh) ?? finite(checkpoint?.approachRateKmh);
+  const rapid = clamp(agencySpecific ? (finite(entry?.rapidEvolutionIndex) ?? 0) : (finite(entry?.rapidEvolutionIndex) ?? finite(checkpoint?.rapidEvolutionIndex) ?? 0));
+  const approachRateKmh = agencySpecific ? finite(entry?.approachRateKmh) : (finite(entry?.approachRateKmh) ?? finite(checkpoint?.approachRateKmh));
   const proximity = smoothCloser(distanceKm, 800);
   const motionPotential = Number.isFinite(approachRateKmh) ? clamp((approachRateKmh + 8) / 24) : 0.45;
   const intensityPotential = Number.isFinite(windMs) ? clamp((windMs - 8) / 22) : 0.35;

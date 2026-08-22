@@ -62,4 +62,23 @@ assert.match(html, /T8/);
 assert.match(html, /非香港天文台官方風球預測/);
 assert.doesNotMatch(html, /D1|D2|D3|D4|D5/);
 
+
+// If HKO official warning context is explicitly supplied, the UI must show it as an
+// official current state rather than leaving only Storm Track's estimate visible.
+{
+  const officialHtml = ui.renderGroupSummary(group, {
+    generatedAt: '2026-08-21T12:00:00Z',
+    signalOptions: {
+      hkoWarningContext: {
+        currentSignal: 'T3',
+        issuedAt: '2026-08-21T11:40:00Z',
+        source: 'HKO-official-test'
+      }
+    }
+  });
+  assert.match(officialHtml, /HKO官方/);
+  assert.match(officialHtml, /T3/);
+  assert.match(officialHtml, /Storm Track 估算/);
+}
+
 console.log('frontend-hk-threat-ui tests: OK');

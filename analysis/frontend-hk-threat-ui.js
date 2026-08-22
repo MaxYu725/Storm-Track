@@ -143,6 +143,10 @@
 
     const forecast = result.basicForecast;
     const threat = result.threatAssessment;
+    const official = result.signalInputs?.officialHkoWarningContext || null;
+    const officialSignal = official?.provided === true && official?.currentSignal
+      ? String(official.currentSignal).trim() : null;
+    const officialIssued = officialSignal && official?.issuedAt ? formatHkt(official.issuedAt) : null;
     const impactLabel = likelihoodLabel(forecast?.impact?.likelihood);
     const t1 = signalText('T1', forecast?.signals?.T1);
     const t3 = signalText('T3', forecast?.signals?.T3);
@@ -158,6 +162,7 @@
 
     return `<div class="hk-threat-summary" style="margin-top:9px;padding-top:8px;border-top:1px solid #353535;font-size:.73rem;line-height:1.5">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="color:#8f8f8f">香港影響</span><strong style="color:#fff;font-size:.82rem">${escapeHtml(impactLabel)}</strong></div>
+      ${officialSignal ? `<div style="margin-top:5px;color:#fff"><strong>HKO官方目前：${escapeHtml(officialSignal)}</strong>${officialIssued ? ` · ${escapeHtml(officialIssued)}` : ''}</div>` : ''}
       <div style="margin-top:4px;color:#ddd">${escapeHtml(t1)}</div>
       <div style="color:#ddd">${escapeHtml(t3)}</div>
       <div style="color:#ddd">${escapeHtml(t8)}</div>

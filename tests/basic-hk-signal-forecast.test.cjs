@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const basic = require('../analysis/basic-hk-signal-forecast.js');
 
-function signalInputs({ windMs = 30, coverage = 1, agencies = 4, currentDistanceKm = null } = {}) {
+function signalInputs({ windMs = 30, coverage = 1, agencies = 4, currentDistanceKm = null, strongCoverage = 0, galeCoverage = 0, windRadiusAgencies = 0 } = {}) {
   return {
     generatedAt: '2026-08-21T12:00:00Z',
     coverage: { usableAgencyCount: agencies },
@@ -12,7 +12,13 @@ function signalInputs({ windMs = 30, coverage = 1, agencies = 4, currentDistance
       currentDistanceMedianKm: currentDistanceKm,
       closestMaximumWindMedianMs: windMs,
       currentMaximumWindMedianMs: windMs,
-      closestTimeWindFieldCoverageAgencyCount: coverage
+      closestTimeWindFieldCoverageAgencyCount: coverage,
+      windRadiusAgencyCount: windRadiusAgencies,
+      latestStrongWindFieldCoverageAgencyCount: strongCoverage,
+      closestTimeStrongWindFieldCoverageAgencyCount: strongCoverage,
+      latestGaleWindFieldCoverageAgencyCount: galeCoverage,
+      closestTimeGaleWindFieldCoverageAgencyCount: galeCoverage,
+      unknownThresholdWindFieldCoverageAgencyCount: 0
     }
   };
 }
@@ -30,7 +36,8 @@ function assessment({
   windField = 0,
   windMs = 15,
   overallThreatIndex = null,
-  confidenceIndex = 0.7
+  confidenceIndex = 0.7,
+  timeline = []
 }) {
   return {
     schemaVersion: 'hk-threat-assessment/v1',
@@ -52,7 +59,7 @@ function assessment({
       agencyDisagreement: { confidence: disagreement },
       windField: { confidence: windField, representativeWindMs: windMs, coverageAgencyCount: 1 }
     },
-    timeline: [],
+    timeline,
     semantics: { hardThreatGateUsed: false, timeWeightingIsContinuous: true }
   };
 }
@@ -85,13 +92,35 @@ function assessment({
     windField: 0.9,
     windMs: 40,
     overallThreatIndex: 0.85,
-    confidenceIndex: 0.85
+    confidenceIndex: 0.85,
+    timeline: [
+      { label: '+0h', validTime: '2026-08-21T12:00:00Z', leadHours: 0, timeRelevance: 1, distanceMedianKm: 300, windMedianMs: 40, agencies: [
+        { agency: 'HKO', distanceKm: 300, maximumWindMs: 40, rapidEvolutionIndex: 0 },
+        { agency: 'CMA', distanceKm: 300, maximumWindMs: 40, rapidEvolutionIndex: 0 },
+        { agency: 'CWA', distanceKm: 300, maximumWindMs: 40, rapidEvolutionIndex: 0 }
+      ] },
+      { label: '+6h', validTime: '2026-08-21T18:00:00Z', leadHours: 6, timeRelevance: 0.92, distanceMedianKm: 220, windMedianMs: 40, agencies: [
+        { agency: 'HKO', distanceKm: 220, maximumWindMs: 40, approachRateKmh: 13, rapidEvolutionIndex: 0.4 },
+        { agency: 'CMA', distanceKm: 220, maximumWindMs: 40, approachRateKmh: 13, rapidEvolutionIndex: 0.4 },
+        { agency: 'CWA', distanceKm: 220, maximumWindMs: 40, approachRateKmh: 13, rapidEvolutionIndex: 0.4 }
+      ] },
+      { label: '+12h', validTime: '2026-08-22T00:00:00Z', leadHours: 12, timeRelevance: 0.86, distanceMedianKm: 150, windMedianMs: 40, agencies: [
+        { agency: 'HKO', distanceKm: 150, maximumWindMs: 40, approachRateKmh: 12, rapidEvolutionIndex: 0.35 },
+        { agency: 'CMA', distanceKm: 150, maximumWindMs: 40, approachRateKmh: 12, rapidEvolutionIndex: 0.35 },
+        { agency: 'CWA', distanceKm: 150, maximumWindMs: 40, approachRateKmh: 12, rapidEvolutionIndex: 0.35 }
+      ] },
+      { label: '+18h', validTime: '2026-08-22T06:00:00Z', leadHours: 18, timeRelevance: 0.80, distanceMedianKm: 110, windMedianMs: 40, agencies: [
+        { agency: 'HKO', distanceKm: 110, maximumWindMs: 40, approachRateKmh: 7, rapidEvolutionIndex: 0.2 },
+        { agency: 'CMA', distanceKm: 110, maximumWindMs: 40, approachRateKmh: 7, rapidEvolutionIndex: 0.2 },
+        { agency: 'CWA', distanceKm: 110, maximumWindMs: 40, approachRateKmh: 7, rapidEvolutionIndex: 0.2 }
+      ] }
+    ]
   });
 
   const result = basic.buildBasicHkSignalForecast({
     impact,
     weightedImpact,
-    signalInputs: signalInputs({ windMs: 40, coverage: 3, currentDistanceKm: 300 }),
+    signalInputs: signalInputs({ windMs: 40, coverage: 3, agencies: 3, currentDistanceKm: 300, strongCoverage: 3, galeCoverage: 3, windRadiusAgencies: 3 }),
     threatAssessment
   });
   assert.equal(result.schemaVersion, 'basic-hk-signal-forecast/v1');

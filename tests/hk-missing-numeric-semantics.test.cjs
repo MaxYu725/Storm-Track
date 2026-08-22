@@ -1,31 +1,4 @@
-from pathlib import Path
-
-REPLACEMENTS = [
-    ('analysis/storm-analysis-core.js', 'asFiniteNumber'),
-    ('analysis/hk-impact-engine.js', 'asFiniteNumber'),
-    ('analysis/hko-signal-risk-inputs.js', 'finiteNumber'),
-    ('analysis/hk-threat-assessment.js', 'finite'),
-    ('analysis/basic-hk-signal-forecast.js', 'finite'),
-]
-
-for filename, helper in REPLACEMENTS:
-    path = Path(filename)
-    text = path.read_text(encoding='utf-8')
-    old = f"""    function {helper}(value) {{\n        const number = Number(value);\n        return Number.isFinite(number) ? number : null;\n    }}"""
-    # Newer files use two-space indentation.
-    old2 = f"""  function {helper}(value) {{\n    const number = Number(value);\n    return Number.isFinite(number) ? number : null;\n  }}"""
-    if old in text:
-        new = f"""    function {helper}(value) {{\n        if (value == null || (typeof value === 'string' && value.trim() === '')) return null;\n        const number = Number(value);\n        return Number.isFinite(number) ? number : null;\n    }}"""
-        text = text.replace(old, new, 1)
-    elif old2 in text:
-        new = f"""  function {helper}(value) {{\n    if (value == null || (typeof value === 'string' && value.trim() === '')) return null;\n    const number = Number(value);\n    return Number.isFinite(number) ? number : null;\n  }}"""
-        text = text.replace(old2, new, 1)
-    else:
-        raise SystemExit(f'{filename}: {helper} anchor mismatch')
-    path.write_text(text, encoding='utf-8')
-
-# Dedicated regression: optional numeric data must never silently become zero.
-Path('tests/hk-missing-numeric-semantics.test.cjs').write_text(r'''\'use strict\';
+'use strict';
 
 const assert = require('node:assert/strict');
 const core = require('../analysis/storm-analysis-core.js');
@@ -113,13 +86,3 @@ assert.ok(Number.isFinite(core.haversineKm(0, 114, 22.3, 114.1)));
 }
 
 console.log('HK missing numeric semantics: OK');
-'''.replace("\\'use strict\\';", "'use strict';"), encoding='utf-8')
-
-# Make the new contract part of the full regression command after patches are applied.
-package = Path('workers/storm-analysis/package.json')
-text = package.read_text(encoding='utf-8')
-needle = 'node ../../tests/hk-threat-rule-scenarios.test.cjs && '
-if needle not in text:
-    raise SystemExit('package test anchor for missing numeric semantics not found')
-text = text.replace(needle, needle + 'node ../../tests/hk-missing-numeric-semantics.test.cjs && ', 1)
-package.write_text(text, encoding='utf-8')

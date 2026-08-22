@@ -11,6 +11,7 @@
     const HOUR_MS = 60 * 60 * 1000;
 
     function finiteNumber(value) {
+        if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
         const number = Number(value);
         return Number.isFinite(number) ? number : null;
     }
@@ -94,6 +95,23 @@
         if (normalized < 180) return 'se';
         if (normalized < 270) return 'sw';
         return 'nw';
+    }
+
+    const WIND_FIELD_FRESHNESS_SCALE_HOURS = 12;
+    const HKO_STRONG_WIND_MS = 41 / 3.6;
+    const HKO_GALE_WIND_MS = 63 / 3.6;
+    const BEAUFORT_LOWER_BOUND_MS = Object.freeze({ 7: 13.9, 10: 24.5, 12: 32.7 });
+
+    function parseWindRadiusThresholdMs(value) {
+        if (value == null || value === '') return null;
+        const text = String(value).trim().toLowerCase();
+        const number = parseMetricNumber(value);
+        if (number == null) return null;
+        if (/m\s*\/?\s*s|mps|米.*秒/.test(text)) return number;
+        if (/km\s*\/?\s*h|kmh|kph|公里.*小時/.test(text)) return number / 3.6;
+        if (/(?:kt|kts|knot|knots|節)/.test(text)) return number * 0.514444;
+        if (/^(7|10|12)(?:\.0+)?$/.test(text)) return BEAUFORT_LOWER_BOUND_MS[Math.round(number)] ?? null;
+        return null;
     }
 
     function median(values) {
@@ -233,21 +251,29 @@
         const quadrant = quadrant4(bearingToHongKong);
         if (!Number.isFinite(distanceKm) || !quadrant) return null;
         const levels = point.windRadii.map(radius => {
-            const quadrantRadiusKm = finiteNumber(radius[quadrant]) ?? 0;
-            return {
-                level: radius.level,
-                quadrant,
-                quadrantRadiusKm,
-                hongKongInside: quadrantRadiusKm > 0 && distanceKm <= quadrantRadiusKm
-            };
+  const quadrantRadiusKm = finiteNumber(radius[quadrant]) ?? 0;
+  const thresholdMs = parseWindRadiusThresholdMs(radius.level);
+  return {
+      level: radius.level,
+      thresholdMs,
+      quadrant,
+      quadrantRadiusKm,
+      hongKongInside: quadrantRadiusKm > 0 && distanceKm <= quadrantRadiusKm
+  };
         });
+        const coveredLevels = levels.filter(level => level.hongKongInside);
+        const knownCoveredThresholds = coveredLevels.map(level => level.thresholdMs).filter(Number.isFinite);
         return {
-            time: point.time,
-            stormDistanceToHongKongKm: distanceKm,
-            bearingStormToHongKongDegrees: bearingToHongKong,
-            hongKongQuadrantFromStorm: quadrant.toUpperCase(),
-            levels,
-            anyCoverage: levels.some(level => level.hongKongInside)
+  time: point.time,
+  stormDistanceToHongKongKm: distanceKm,
+  bearingStormToHongKongDegrees: bearingToHongKong,
+  hongKongQuadrantFromStorm: quadrant.toUpperCase(),
+  levels,
+  anyCoverage: coveredLevels.length > 0,
+  strongWindCoverage: coveredLevels.some(level => Number.isFinite(level.thresholdMs) && level.thresholdMs >= HKO_STRONG_WIND_MS),
+  galeCoverage: coveredLevels.some(level => Number.isFinite(level.thresholdMs) && level.thresholdMs >= HKO_GALE_WIND_MS),
+  maximumCoveredThresholdMs: knownCoveredThresholds.length ? Math.max(...knownCoveredThresholds) : null,
+  unknownThresholdCoverage: coveredLevels.some(level => !Number.isFinite(level.thresholdMs))
         };
     }
 
@@ -260,8 +286,21 @@
         const closestTimeMs = parseTimeMs(impactEntry?.time);
         const nearClosestPoint = closestByTime(rawPoints.forecast.length ? rawPoints.forecast : rawPoints.positions, closestTimeMs);
         const windCandidates = [...rawPoints.positions, ...rawPoints.forecast].filter(point => point.windRadii.length);
-        const latestWindPoint = rawPoints.positions.slice().reverse().find(point => point.windRadii.length)
-            || windCandidates.slice().sort((a, b) => b.timeMs - a.timeMs)[0]
+        const latestAnalysisWindPoint = rawPoints.positions.slice().reverse().find(point => point.windRadii.length) || null;
+        const currentEvidenceTimeMs = current?.timeMs;
+        const nearestFutureWindPoint = Number.isFinite(currentEvidenceTimeMs)
+            ? rawPoints.forecast
+                .filter(point => point.windRadii.length && point.timeMs >= currentEvidenceTimeMs)
+                .slice()
+                .sort((a, b) => a.timeMs - b.timeMs)[0] || null
+            : null;
+        const nearestAnyWindPoint = Number.isFinite(currentEvidenceTimeMs)
+            ? windCandidates.slice().sort((a, b) =>
+                Math.abs(a.timeMs - currentEvidenceTimeMs) - Math.abs(b.timeMs - currentEvidenceTimeMs))[0] || null
+            : null;
+        const latestWindPoint = latestAnalysisWindPoint
+            || nearestFutureWindPoint
+            || nearestAnyWindPoint
             || null;
         const closestWindPoint = closestByTime(windCandidates, closestTimeMs);
         const baseTimeMs = parseTimeMs(snapshotSource?.baseTime);
@@ -271,6 +310,29 @@
         const bearingFromHongKong = current
             ? initialBearingDegrees(referencePoint.lat, referencePoint.lon, current.lat, current.lon)
             : null;
+        const currentTimeMs = parseTimeMs(current?.time);
+        const latestWindEvidence = windFieldEvidence(latestWindPoint, referencePoint);
+        const closestWindEvidence = windFieldEvidence(closestWindPoint, referencePoint);
+        const evidenceAgeHours = (evidence, targetMs) => {
+            const evidenceMs = parseTimeMs(evidence?.time);
+            return Number.isFinite(evidenceMs) && Number.isFinite(targetMs)
+                ? Math.abs(evidenceMs - targetMs) / HOUR_MS : null;
+        };
+        const evidenceFreshness = ageHours => Number.isFinite(ageHours)
+            ? Math.exp(-Math.max(0, ageHours) / WIND_FIELD_FRESHNESS_SCALE_HOURS) : 0;
+        const latestEvidenceAgeHours = evidenceAgeHours(latestWindEvidence, currentTimeMs);
+        const closestEvidenceAgeHours = evidenceAgeHours(closestWindEvidence, closestTimeMs);
+        if (latestWindEvidence) {
+            latestWindEvidence.targetOffsetHours = latestEvidenceAgeHours;
+            latestWindEvidence.freshness = evidenceFreshness(latestEvidenceAgeHours);
+        }
+        if (closestWindEvidence) {
+            closestWindEvidence.targetOffsetHours = closestEvidenceAgeHours;
+            closestWindEvidence.freshness = evidenceFreshness(closestEvidenceAgeHours);
+        }
+        const windFieldTimelineEvidence = windCandidates
+            .map(point => windFieldEvidence(point, referencePoint))
+            .filter(Boolean);
 
         return {
             agency,
@@ -305,8 +367,9 @@
                 nearestOfficialPointTime: nearClosestPoint?.time ?? null
             } : null,
             windField: {
-                latestEvidence: windFieldEvidence(latestWindPoint, referencePoint),
-                closestTimeEvidence: windFieldEvidence(closestWindPoint, referencePoint),
+                latestEvidence: latestWindEvidence,
+                closestTimeEvidence: closestWindEvidence,
+                timelineEvidence: windFieldTimelineEvidence,
                 radiusPointCount: windCandidates.length
             },
             provenance: {
@@ -376,6 +439,23 @@
         const windRadiusAgencies = usable.filter(item => item.windField.radiusPointCount > 0);
         const latestWindCoverageAgencies = usable.filter(item => item.windField.latestEvidence?.anyCoverage);
         const closestWindCoverageAgencies = usable.filter(item => item.windField.closestTimeEvidence?.anyCoverage);
+        const latestStrongWindCoverageAgencies = usable.filter(item => item.windField.latestEvidence?.strongWindCoverage);
+        const closestStrongWindCoverageAgencies = usable.filter(item => item.windField.closestTimeEvidence?.strongWindCoverage);
+        const latestGaleCoverageAgencies = usable.filter(item => item.windField.latestEvidence?.galeCoverage);
+        const closestGaleCoverageAgencies = usable.filter(item => item.windField.closestTimeEvidence?.galeCoverage);
+        const unknownThresholdCoverageAgencies = usable.filter(item =>
+            item.windField.latestEvidence?.unknownThresholdCoverage || item.windField.closestTimeEvidence?.unknownThresholdCoverage);
+        const effectiveCoverageCount = (items, evidenceKey, coverageKey) => items.reduce((sum, item) => {
+            const evidence = item.windField?.[evidenceKey];
+            if (!evidence?.[coverageKey]) return sum;
+            return sum + (finiteNumber(evidence.freshness) ?? 0);
+        }, 0);
+        const latestStrongWindCoverageEffectiveCount = effectiveCoverageCount(usable, 'latestEvidence', 'strongWindCoverage');
+        const closestStrongWindCoverageEffectiveCount = effectiveCoverageCount(usable, 'closestTimeEvidence', 'strongWindCoverage');
+        const latestGaleCoverageEffectiveCount = effectiveCoverageCount(usable, 'latestEvidence', 'galeCoverage');
+        const closestGaleCoverageEffectiveCount = effectiveCoverageCount(usable, 'closestTimeEvidence', 'galeCoverage');
+        const latestEvidenceAges = usable.map(item => finiteNumber(item.windField.latestEvidence?.targetOffsetHours)).filter(Number.isFinite);
+        const closestEvidenceAges = usable.map(item => finiteNumber(item.windField.closestTimeEvidence?.targetOffsetHours)).filter(Number.isFinite);
 
         const consensusClosest = impact?.closestApproach?.consensus ?? null;
         const consensusClosestMs = parseTimeMs(consensusClosest?.time);
@@ -439,6 +519,13 @@
                 agenciesWithRadii: windRadiusAgencies.map(item => item.agency),
                 latestCoverageAgencies: latestWindCoverageAgencies.map(item => item.agency),
                 closestTimeCoverageAgencies: closestWindCoverageAgencies.map(item => item.agency),
+                latestStrongWindCoverageAgencies: latestStrongWindCoverageAgencies.map(item => item.agency),
+                closestStrongWindCoverageAgencies: closestStrongWindCoverageAgencies.map(item => item.agency),
+                latestGaleCoverageAgencies: latestGaleCoverageAgencies.map(item => item.agency),
+                closestGaleCoverageAgencies: closestGaleCoverageAgencies.map(item => item.agency),
+                unknownThresholdCoverageAgencies: unknownThresholdCoverageAgencies.map(item => item.agency),
+                strongWindThresholdMs: HKO_STRONG_WIND_MS,
+                galeWindThresholdMs: HKO_GALE_WIND_MS,
                 quadrantMethod: 'bearing-storm-to-hong-kong-v1'
             },
             disagreement: {
@@ -469,7 +556,19 @@
                 intensitySpreadMs: closestWindRange?.span ?? currentWindRange?.span ?? null,
                 windRadiusAgencyCount: windRadiusAgencies.length,
                 latestWindFieldCoverageAgencyCount: latestWindCoverageAgencies.length,
-                closestTimeWindFieldCoverageAgencyCount: closestWindCoverageAgencies.length
+                closestTimeWindFieldCoverageAgencyCount: closestWindCoverageAgencies.length,
+                latestStrongWindFieldCoverageAgencyCount: latestStrongWindCoverageAgencies.length,
+                closestTimeStrongWindFieldCoverageAgencyCount: closestStrongWindCoverageAgencies.length,
+                latestGaleWindFieldCoverageAgencyCount: latestGaleCoverageAgencies.length,
+                closestTimeGaleWindFieldCoverageAgencyCount: closestGaleCoverageAgencies.length,
+                unknownThresholdWindFieldCoverageAgencyCount: unknownThresholdCoverageAgencies.length,
+                latestStrongWindFieldCoverageEffectiveAgencyCount: latestStrongWindCoverageEffectiveCount,
+                closestTimeStrongWindFieldCoverageEffectiveAgencyCount: closestStrongWindCoverageEffectiveCount,
+                latestGaleWindFieldCoverageEffectiveAgencyCount: latestGaleCoverageEffectiveCount,
+                closestTimeGaleWindFieldCoverageEffectiveAgencyCount: closestGaleCoverageEffectiveCount,
+                latestWindFieldEvidenceAgeMedianHours: median(latestEvidenceAges),
+                closestTimeWindFieldEvidenceAgeMedianHours: median(closestEvidenceAges),
+                windFieldTimelinePointCount: usable.reduce((sum, item) => sum + (item.windField.timelineEvidence?.length ?? 0), 0)
             },
             semantics: {
                 deterministic: true,
@@ -497,6 +596,10 @@
         compass8,
         quadrant4,
         normalizeWindRadii,
+        parseWindRadiusThresholdMs,
+        HKO_STRONG_WIND_MS,
+        HKO_GALE_WIND_MS,
+        WIND_FIELD_FRESHNESS_SCALE_HOURS,
         buildHkoSignalRiskInputs
     });
 });
