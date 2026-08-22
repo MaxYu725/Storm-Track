@@ -53,11 +53,13 @@
     };
   }
 
+  function detailsArray(warningInfo) {
+    if (Array.isArray(warningInfo?.details)) return warningInfo.details;
+    return Array.isArray(warningInfo) ? warningInfo : [];
+  }
+
   function warningDetails(warningInfo) {
-    const details = Array.isArray(warningInfo?.details)
-      ? warningInfo.details
-      : Array.isArray(warningInfo) ? warningInfo : [];
-    return details
+    return detailsArray(warningInfo)
       .filter(item => item && typeof item === 'object')
       .filter(item => String(item.warningStatementCode || '').toUpperCase() === 'WTCSGNL')
       .map(item => ({
@@ -69,10 +71,7 @@
   }
 
   function pre8Details(warningInfo) {
-    const details = Array.isArray(warningInfo?.details)
-      ? warningInfo.details
-      : Array.isArray(warningInfo) ? warningInfo : [];
-    return details
+    return detailsArray(warningInfo)
       .filter(item => item && typeof item === 'object')
       .filter(item => String(item.warningStatementCode || '').toUpperCase() === 'WTCPRE8')
       .map(item => ({
@@ -91,10 +90,6 @@
   }
 
   function normalizeSnapshot({ warnsum, warningInfo, swt, retrievedAt, sourceHashes, sourceCommit }) {
-    const warning = summaryState(warnsum);
-    const details = warningDetails(warningInfo);
-    const pre8 = pre8Details(warningInfo);
-    const tips = specialWeatherTips(swt);
     return {
       schemaVersion: VERSION,
       retrievedAt: clean(retrievedAt),
@@ -102,12 +97,12 @@
       authority: 'Hong Kong Observatory Open Data API',
       truth: {
         warningStatementCode: 'WTCSGNL',
-        ...warning,
-        details
+        ...summaryState(warnsum),
+        details: warningDetails(warningInfo)
       },
       context: {
-        pre8,
-        specialWeatherTips: tips
+        pre8: pre8Details(warningInfo),
+        specialWeatherTips: specialWeatherTips(swt)
       },
       sourceHashes: sourceHashes || {}
     };
@@ -117,8 +112,7 @@
     return {
       schemaVersion: snapshot?.schemaVersion || VERSION,
       truth: snapshot?.truth || null,
-      context: snapshot?.context || null,
-      sourceHashes: snapshot?.sourceHashes || {}
+      context: snapshot?.context || null
     };
   }
 
