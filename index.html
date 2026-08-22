@@ -819,6 +819,12 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="./analysis/storm-analysis-core.js"></script>
+<script src="./analysis/hk-impact-engine.js"></script>
+<script src="./analysis/hko-signal-risk-inputs.js"></script>
+<script src="./analysis/hk-threat-assessment.js"></script>
+<script src="./analysis/basic-hk-signal-forecast.js"></script>
+<script src="./analysis/frontend-hk-threat-ui.js"></script>
 <script>
 const WeatherApp = (() => {
     'use strict';
@@ -2385,6 +2391,7 @@ const WeatherApp = (() => {
             const source = group.sources.HKO || group.sources.CWA || group.sources.CMA || group.sources.JMA;
             const intensity = current ? translateIntensity(current.intensity) : '未提供';
             const nearest = calculateGroupNearestApproach(group);
+            const hkThreatHtml = globalThis.StormHkThreatUi?.renderGroupSummary(group) || '';
             return `<div class="panel-storm-card" data-storm-key="${escapeHtml(group.key)}">
                 <button class="card-focus" type="button">定位</button>
                 <div class="panel-storm-name">${escapeHtml(group.displayName)}</div>
@@ -2395,6 +2402,7 @@ const WeatherApp = (() => {
                     最近公報：${source?.bulletinTime ? escapeHtml(formatHkt(source.bulletinTime)) : '未提供'}<br>
                     預測最近距港：${nearest ? `${Math.round(nearest.distance)} km（${escapeHtml(nearest.agency)}）` : '未提供'}
                 </div>
+                ${hkThreatHtml}
             </div>`;
         }).join('');
     }
