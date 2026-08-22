@@ -53,6 +53,9 @@ const { isGenericStormName, mergeStormSources } = context.result;
 for (const label of [
   'Tropical Storm',
   '熱帶風暴',
+  '热带低压',
+  '热带低气压',
+  '热带风暴',
   'TC2622',
   '熱帶低氣壓 (TC2622)',
   'TD22W',
@@ -60,7 +63,7 @@ for (const label of [
 ]) {
   assert.equal(isGenericStormName(label), true, `${label} should be treated as a generic/temporary identity`);
 }
-for (const label of ['PODUL', 'KAJIKI', '沙德爾']) {
+for (const label of ['PODUL', 'KAJIKI', 'GAENARI', '沙德爾']) {
   assert.equal(isGenericStormName(label), false, `${label} should remain a specific storm identity`);
 }
 
@@ -83,6 +86,16 @@ const sameStorm = mergeStormSources([
 ]);
 assert.equal(sameStorm.length, 1, 'generic HKO/CWA labels near the named agency track should form one storm group');
 assert.deepEqual(Object.keys(sameStorm[0].sources).sort(), ['CMA', 'CWA', 'HKO']);
+
+const gaenariRename = mergeStormSources([
+  storm({ agency: 'HKO', sourceId: '2631', nameTc: '簡拉維', nameEn: 'GAENARI', lat: 25.5, lon: 124.7, time: '2026-08-22T03:00:00Z' }),
+  storm({ agency: 'CMA', sourceId: '3308554', nameTc: '热带低压', nameEn: 'nameless', lat: 25.9, lon: 124.7, time: '2026-08-22T03:00:00Z' }),
+  storm({ agency: 'JMA', sourceId: 'TC2623', nameTc: '簡拉維', nameEn: 'GAENARI', lat: 25.5, lon: 124.9, time: '2026-08-22T03:00:00Z' }),
+  storm({ agency: 'CWA', sourceId: '2026-22', nameTc: '簡拉維', nameEn: 'GAENARI', lat: 25.2, lon: 125.0, time: '2026-08-22T00:00:00Z' })
+]);
+assert.equal(gaenariRename.length, 1, 'CMA simplified generic TD label must merge with the named GAENARI group');
+assert.deepEqual(Object.keys(gaenariRename[0].sources).sort(), ['CMA', 'CWA', 'HKO', 'JMA']);
+assert.equal(gaenariRename[0].displayName, '簡拉維 (GAENARI)');
 
 const distinctNamedStorms = mergeStormSources([
   storm({ agency: 'HKO', sourceId: 'named-a', nameTc: '沙德爾', nameEn: 'SAUDEL', lat: 20.0, lon: 111.0, time: '2026-08-22T00:00:00Z' }),
