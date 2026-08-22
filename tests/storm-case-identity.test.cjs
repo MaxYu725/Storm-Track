@@ -85,7 +85,7 @@ assert.ok(tc2623Case.groupKeys.includes('TC2623'));
 assert.ok(tc2623Case.groupKeys.includes('BANYAN'));
 assert.ok(tc2623Case.names.includes('BANYAN'));
 
-// When one agency disappears and another starts tracking the same cyclone, cautious physical continuity may bridge the gap.
+// When one agency disappears and another starts tracking the same unnamed cyclone, cautious physical continuity may bridge the gap.
 const handoff = identity.reconcileProspectiveRecords([
   record('2026-09-01T00:00:00Z', 'handoff-1', [
     observation('TC2690', '熱帶低氣壓', 'TC2690', {
@@ -100,5 +100,21 @@ const handoff = identity.reconcileProspectiveRecords([
 ]);
 assert.equal(handoff.caseCount, 1, 'cross-agency handoff should preserve a case when time/position continuity is strong');
 assert.equal(handoff.index[1].resolution.reason, 'physical-continuity');
+
+// Different formal names must never be joined by proximity alone, even when tracked by disjoint agencies.
+const namedConflict = identity.reconcileProspectiveRecords([
+  record('2026-09-02T00:00:00Z', 'named-1', [
+    observation('ALPHA', '甲', 'ALPHA', {
+      JMA: source('JMA', 'TC2691', '2026-09-02T00:00:00Z', 20.0, 118.0)
+    })
+  ]),
+  record('2026-09-02T06:00:00Z', 'named-2', [
+    observation('BRAVO', '乙', 'BRAVO', {
+      HKO: source('HKO', 'hko-other', '2026-09-02T06:00:00Z', 20.2, 117.9)
+    })
+  ])
+]);
+assert.equal(namedConflict.caseCount, 2, 'different formal names must remain separate despite close positions');
+assert.equal(namedConflict.index[1].resolution.reason, 'new-case');
 
 console.log('storm case identity tests: OK');
