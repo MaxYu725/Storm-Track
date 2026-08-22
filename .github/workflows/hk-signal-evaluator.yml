@@ -1,0 +1,137 @@
+name: Evaluate HK signal Beta against HKO truth
+
+on:
+  schedule:
+    - cron: '2-57/5 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - analysis/hk-signal-evaluator.js
+      - scripts/evaluate-hk-signal.mjs
+      - tests/hk-signal-evaluator.test.cjs
+      - .github/workflows/hk-signal-evaluator.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - analysis/hk-signal-evaluator.js
+      - scripts/evaluate-hk-signal.mjs
+      - tests/hk-signal-evaluator.test.cjs
+      - .github/workflows/hk-signal-evaluator.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hk-signal-evaluator
+  cancel-in-progress: false
+
+env:
+  PROSPECTIVE_BRANCH: data/beta-prospective-observations
+  TRUTH_BRANCH: data/hko-warning-truth
+  EVALUATION_BRANCH: data/hk-signal-evaluations
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run evaluator regression
+        run: |
+          set -euo pipefail
+          node --check analysis/hk-signal-evaluator.js
+          node --check scripts/evaluate-hk-signal.mjs
+          node tests/hk-signal-evaluator.test.cjs
+
+      - name: Load immutable prospective and HKO truth corpora
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/hk-signal-prospective /tmp/hko-warning-truth
+          mkdir -p /tmp/hk-signal-prospective /tmp/hko-warning-truth
+          git fetch --no-tags origin "$PROSPECTIVE_BRANCH" "$TRUTH_BRANCH"
+          git archive "origin/$PROSPECTIVE_BRANCH" | tar -x -C /tmp/hk-signal-prospective
+          git archive "origin/$TRUTH_BRANCH" | tar -x -C /tmp/hko-warning-truth
+          test -s /tmp/hk-signal-prospective/case-index.ndjson
+          test -s /tmp/hko-warning-truth/truth-events.ndjson
+
+      - name: Build deterministic evaluation state
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/evaluate-hk-signal.mjs /tmp/hk-signal-prospective /tmp/hko-warning-truth > /tmp/hk-signal-evaluation.json
+          test -s /tmp/hk-signal-evaluation.json
+
+      - name: Validate evaluation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '
+            .schemaVersion == "hk-signal-evaluator/v1" and
+            .rubricVersion == "hk-signal-validation-rubric/v1" and
+            (.evaluationFingerprint | test("^[0-9a-f]{64}$")) and
+            (.rubric.checkpointHours == [48,24,12,6,3]) and
+            (.status == "awaiting-tc1" or .status == "evaluated" or .status == "truth-unresolved") and
+            (.prospective.trustedRecorderSchema == "beta-prospective-recorder/v2") and
+            (.evaluations | type == "array")
+          ' /tmp/hk-signal-evaluation.json >/dev/null
+          jq '{generatedAt,evaluationFingerprint,status,rubricVersion,prospective,hkoTruth,awaiting,evaluations:[.evaluations[]|{status,caseId,attribution,truth,lifecycle,grades}]}' /tmp/hk-signal-evaluation.json
+
+      - name: Check branch whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check origin/main...HEAD
+
+      - name: Persist derived evaluation state
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin "$EVALUATION_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$EVALUATION_BRANCH"
+            git switch -C "$EVALUATION_BRANCH" FETCH_HEAD
+          else
+            git switch --orphan "$EVALUATION_BRANCH"
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          fingerprint="$(jq -r '.evaluationFingerprint' /tmp/hk-signal-evaluation.json)"
+          existing="$(jq -r '.evaluationFingerprint // empty' latest.json 2>/dev/null || true)"
+          if [[ "$fingerprint" == "$existing" ]]; then
+            echo "HK_SIGNAL_EVALUATION_NOOP=true"
+            echo "HK_SIGNAL_EVALUATION_FINGERPRINT=$fingerprint"
+            exit 0
+          fi
+
+          cp /tmp/hk-signal-evaluation.json latest.json
+          jq -c '{schemaVersion,generatedAt,evaluationFingerprint,sourceCommit,status,rubricVersion,prospective,hkoTruth,awaiting:{status:.awaiting.status,activeHkoCaseIds:.awaiting.activeHkoCaseIds},evaluations:[.evaluations[]|{status,caseId,truth,grades,lifecycle}]}' /tmp/hk-signal-evaluation.json >> index.ndjson
+
+          while IFS= read -r evaluation; do
+            case_id="$(jq -r '.caseId' <<<"$evaluation")"
+            event_time="$(jq -r '.truth.eventTime' <<<"$evaluation")"
+            stamp="$(date -u -d "$event_time" +'%Y%m%dT%H%M%SZ')"
+            mkdir -p "cases/$case_id"
+            jq --arg caseId "$case_id" --arg eventTime "$event_time" \
+              '.evaluations[] | select(.status == "evaluated" and .caseId == $caseId and .truth.eventTime == $eventTime)' \
+              /tmp/hk-signal-evaluation.json > "cases/$case_id/tc1-$stamp.json"
+          done < <(jq -c '.evaluations[] | select(.status == "evaluated")' /tmp/hk-signal-evaluation.json)
+
+          git add latest.json index.ndjson cases 2>/dev/null || git add latest.json index.ndjson
+          git commit -m "Evaluate HK signal Beta ${fingerprint:0:12}"
+          git push origin "HEAD:${EVALUATION_BRANCH}"
+          echo "HK_SIGNAL_EVALUATION_STORED=true"
+          echo "HK_SIGNAL_EVALUATION_FINGERPRINT=$fingerprint"
