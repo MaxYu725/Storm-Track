@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>HK Signal Beta｜模型觀察板</title>
+  <style>
+    :root{--bg:#090909;--panel:#121212;--panel2:#181818;--line:#2d2d2d;--text:#f2f2f2;--muted:#989898;--dim:#666;--accent:#68a8ff;--good:#68d391;--warn:#f6c85f;--hot:#ff8c69;--purple:#b794f4}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;font-size:14px;line-height:1.45}
+    a{color:var(--accent);text-decoration:none}.wrap{max-width:1500px;margin:0 auto;padding:18px max(14px,env(safe-area-inset-left)) 48px}
+    header{display:flex;gap:18px;justify-content:space-between;align-items:flex-start;margin-bottom:14px}.title h1{font-size:1.35rem;margin:0 0 4px}.title p{margin:0;color:var(--muted);font-size:.82rem}
+    .badge{display:inline-block;padding:4px 8px;border:1px solid #3a3a3a;border-radius:999px;color:#bbb;font-size:.72rem;margin-top:8px}.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    button,.btn{border:1px solid #3a3a3a;background:#171717;color:#ddd;border-radius:8px;padding:7px 10px;font:inherit;font-size:.78rem;cursor:pointer}button.active{background:#eaeaea;color:#111;border-color:#eaeaea}
+    .status{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#101010;color:var(--muted);margin:12px 0}.status.error{border-color:#6d3333;color:#ffaaaa}
+    .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}.metric{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}.metric .label{color:var(--muted);font-size:.72rem}.metric .value{font-size:1.15rem;font-weight:650;margin-top:2px}.metric .sub{color:var(--dim);font-size:.7rem;margin-top:3px}
+    .section{margin-top:18px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:10px;margin-bottom:8px}.section h2{font-size:1rem;margin:0}.section-note{color:var(--dim);font-size:.72rem}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}table{border-collapse:collapse;width:100%;min-width:1050px}th,td{padding:8px 9px;border-bottom:1px solid #232323;text-align:left;white-space:nowrap}th{position:sticky;top:0;background:#151515;color:#aaa;font-size:.68rem;font-weight:600;z-index:1}td{font-size:.75rem}tr:last-child td{border-bottom:0}.storm-name{font-weight:650;color:#fff}.possible{color:var(--warn)}.likely{color:var(--hot)}.unlikely{color:#8a8a8a}.num{font-variant-numeric:tabular-nums}
+    .storm-tabs{display:flex;gap:7px;overflow:auto;padding:2px 0 7px}.storm-tabs button{white-space:nowrap}.storm-tabs .small{display:block;font-size:.62rem;color:#888;margin-top:1px}.storm-tabs button.active .small{color:#555}
+    .latest-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:7px 0 12px}.latest-card{border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:10px}.latest-card .k{font-size:.67rem;color:#888}.latest-card .v{font-size:.9rem;font-weight:600;margin-top:2px}.latest-card .s{font-size:.64rem;color:#666;margin-top:2px}
+    .charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.chart-card{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:10px;min-width:0}.chart-title{font-size:.78rem;font-weight:650;margin-bottom:2px}.chart-sub{font-size:.65rem;color:#777;margin-bottom:6px}.chart{width:100%;height:220px;display:block}.axis{stroke:#3a3a3a;stroke-width:1}.grid{stroke:#252525;stroke-width:1}.chart text{fill:#777;font-size:10px}.risk-line{fill:none;stroke:var(--accent);stroke-width:2}.start-line{fill:none;stroke:var(--warn);stroke-width:2}.end-line{fill:none;stroke:var(--purple);stroke-width:2}.distance-line{fill:none;stroke:var(--good);stroke-width:2}.lead-line{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:5 4}.dot{fill:var(--accent)}.scatter-dot{fill:var(--purple);opacity:.85}.window-bar{stroke:#555;stroke-width:3;stroke-linecap:round}
+    .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.64rem;color:#888;margin-top:4px}.swatch{display:inline-block;width:12px;height:2px;vertical-align:middle;margin-right:4px;background:#888}.agency-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.agency-card{border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:10px}.agency-card h3{font-size:.8rem;margin:0 0 6px}.agency-card dl{display:grid;grid-template-columns:auto 1fr;gap:3px 8px;margin:0}.agency-card dt{color:#777;font-size:.66rem}.agency-card dd{margin:0;text-align:right;font-size:.7rem;overflow:hidden;text-overflow:ellipsis}
+    .note{font-size:.7rem;color:#777;margin-top:8px}.delta-pos{color:#f6c85f}.delta-neg{color:#68d391}.footer{margin-top:24px;color:#555;font-size:.68rem;border-top:1px solid #202020;padding-top:10px}
+    @media(max-width:900px){.summary-grid{grid-template-columns:repeat(2,1fr)}.latest-grid{grid-template-columns:repeat(3,1fr)}.charts{grid-template-columns:1fr}.agency-grid{grid-template-columns:repeat(2,1fr)}header{display:block}.actions{justify-content:flex-start;margin-top:10px}}
+    @media(max-width:520px){.wrap{padding-top:12px}.latest-grid{grid-template-columns:repeat(2,1fr)}.agency-grid{grid-template-columns:1fr}.chart{height:200px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">
+        <h1>HK Signal Beta｜模型觀察板</h1>
+        <p>直接讀取 prospective recorder 原始紀錄，只觀察模型活動；不評分、不校準、不修改 forecast。</p>
+        <span class="badge">Observation-only · v1</span>
+      </div>
+      <div class="actions">
+        <button id="windowFilter" class="active" type="button">只顯示 T1 窗口</button>
+        <button id="refreshBtn" type="button">重新讀取</button>
+        <a class="btn" href="./?beta=hk-signal">返回 HK Signal Beta</a>
+      </div>
+    </header>
+
+    <div id="status" class="status">正在讀取最近 recorder captures…</div>
+
+    <div id="content" hidden>
+      <div class="summary-grid">
+        <div class="metric"><div class="label">Active cases</div><div id="activeCount" class="value">—</div><div class="sub">最近 48 小時內</div></div>
+        <div class="metric"><div class="label">目前有 T1 窗口</div><div id="windowCount" class="value">—</div><div class="sub">以最新乾淨 capture 計</div></div>
+        <div class="metric"><div class="label">最新 recorder capture</div><div id="latestCapture" class="value">—</div><div class="sub">香港時間</div></div>
+        <div class="metric"><div class="label">排除污染 capture</div><div id="excludedCount" class="value">—</div><div class="sub">同 case 同 capture 多個 final groups</div></div>
+      </div>
+
+      <section class="section">
+        <div class="section-head"><h2>即時總表</h2><div class="section-note">表內沒有成績或官方 outcome</div></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>風暴</th><th>T1</th><th>T1 窗口</th><th>Risk</th><th>Confidence</th><th>Persistence</th><th>共識最近距離</th><th>Path spread</th><th>時間分歧</th><th>趨勢</th><th>Uncertainty</th><th>來源</th></tr></thead>
+          <tbody id="overviewBody"></tbody>
+        </table></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><h2>單一風暴活動</h2><div id="selectedCase" class="section-note"></div></div>
+        <div id="stormTabs" class="storm-tabs"></div>
+        <div id="latestGrid" class="latest-grid"></div>
+        <div class="charts">
+          <div class="chart-card"><div class="chart-title">1. T1 Risk Index</div><div class="chart-sub">每輪 capture 的模型風險指標</div><svg id="riskChart" class="chart" viewBox="0 0 600 220" preserveAspectRatio="none"></svg></div>
+          <div class="chart-card"><div class="chart-title">2. T1 Window Movement</div><div class="chart-sub">黃色＝window start，紫色＝window end；垂直線＝每輪窗口寬度</div><svg id="windowChart" class="chart" viewBox="0 0 600 220" preserveAspectRatio="none"></svg></div>
+          <div class="chart-card"><div class="chart-title">3. Confidence vs Agency Spread</div><div class="chart-sub">觀察機構收斂／分歧與模型信心是否同步</div><svg id="scatterChart" class="chart" viewBox="0 0 600 220" preserveAspectRatio="none"></svg></div>
+          <div class="chart-card"><div class="chart-title">4. Closest Distance / Lead Time</div><div class="chart-sub">綠色＝共識最近距離；藍色虛線＝距最近時間的 lead</div><svg id="closestChart" class="chart" viewBox="0 0 600 220" preserveAspectRatio="none"></svg></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><h2>Capture Timeline</h2><div class="section-note">最新在上；最多顯示最近 18 輪</div></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Capture</th><th>T1</th><th>Risk</th><th>Confidence</th><th>Window</th><th>Δ Start</th><th>Δ End</th><th>Persistence</th><th>Closest</th><th>Spread</th><th>Δ Spread</th><th>Trend</th><th>Uncertainty</th></tr></thead>
+          <tbody id="timelineBody"></tbody>
+        </table></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><h2>最新 Agency Diagnostics</h2><div class="section-note">只描述各機構 input / movement，不作權重排名</div></div>
+        <div id="agencyGrid" class="agency-grid"></div>
+      </section>
+
+      <div id="excludedNote" class="note"></div>
+    </div>
+    <div class="footer">Storm Track HK Signal Beta Observation Board · 資料來自 immutable prospective recorder v2 · 非香港天文台官方風球預測或成績表</div>
+  </div>
+
+  <script src="./analysis/hk-signal-observation-board.js"></script>
+  <script>
+    (() => {
+      'use strict';
+      const RAW_BASE = 'https://raw.githubusercontent.com/MaxYu725/Storm-Track/data/beta-prospective-observations/';
+      const CAPTURE_LIMIT = Math.min(18, Math.max(8, Number(new URLSearchParams(location.search).get('limit')) || 14));
+      let board = null;
+      let selectedCaseId = null;
+      let onlyWindow = true;
+
+      const $ = id => document.getElementById(id);
+      const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const n = (value, digits = 2) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '—';
+      const round = value => Number.isFinite(Number(value)) ? Math.round(Number(value)) : '—';
+      const hkt = value => {
+        const d = new Date(value || ''); if (!Number.isFinite(d.getTime())) return '—';
+        return new Intl.DateTimeFormat('zh-HK',{timeZone:'Asia/Hong_Kong',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(d).replace(',','');
+      };
+      const windowText = item => item?.start && item?.end ? `${hkt(item.start)} – ${hkt(item.end)}` : '—';
+      const likelihoodText = value => value === 'likely' ? '較高' : value === 'possible' ? '可能' : value === 'unlikely' ? '較低' : '—';
+      const likelihoodClass = value => ['likely','possible','unlikely'].includes(value) ? value : '';
+      const signed = (value, digits = 1, unit = '') => Number.isFinite(Number(value)) ? `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(digits)}${unit}` : '—';
+      const deltaClass = value => !Number.isFinite(Number(value)) || Number(value) === 0 ? '' : Number(value) < 0 ? 'delta-neg' : 'delta-pos';
+
+      function parseNdjson(text) { return text.split(/\r?\n/).map(x => x.trim()).filter(Boolean).map(line => JSON.parse(line)); }
+      async function fetchText(path) {
+        const response = await fetch(`${RAW_BASE}${path}?t=${Date.now()}`, { cache:'no-store' });
+        if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+        return response.text();
+      }
+      async function fetchJson(path) { return JSON.parse(await fetchText(path)); }
+      async function mapLimit(items, limit, worker) {
+        const output = new Array(items.length); let cursor = 0;
+        async function run() { while (cursor < items.length) { const i = cursor++; try { output[i] = await worker(items[i]); } catch { output[i] = null; } } }
+        await Promise.all(Array.from({length:Math.min(limit,items.length)}, run));
+        return output.filter(Boolean);
+      }
+
+      async function loadBoard() {
+        $('status').className = 'status'; $('status').textContent = `正在讀取最近 ${CAPTURE_LIMIT} 個 recorder captures…`; $('content').hidden = true;
+        const [indexText, caseIndexText] = await Promise.all([fetchText('index.ndjson'), fetchText('case-index.ndjson')]);
+        const indexRows = parseNdjson(indexText).filter(row => row.schemaVersion === 'beta-prospective-recorder/v2').slice(-CAPTURE_LIMIT);
+        const fingerprints = new Set(indexRows.map(row => row.captureFingerprint));
+        const caseIndex = parseNdjson(caseIndexText).filter(row => fingerprints.has(row.captureFingerprint));
+        const paths = indexRows.map(row => HkSignalObservationBoard.observationPath(row.capturedAt, row.captureFingerprint)).filter(Boolean);
+        const records = await mapLimit(paths, 4, fetchJson);
+        board = HkSignalObservationBoard.deriveObservationBoard({ records, caseIndex });
+        renderAll();
+        $('status').textContent = `已載入 ${records.length} 個乾淨 recorder files；最後更新 ${hkt(board.prospective.latestCapturedAt)} HKT。此頁不讀 HKO truth 或 evaluator 成績。`;
+        $('content').hidden = false;
+      }
+
+      function visibleStorms() {
+        const storms = board?.storms || [];
+        const filtered = onlyWindow ? storms.filter(storm => storm.hasT1Window) : storms;
+        return filtered.length ? filtered : storms;
+      }
+
+      function renderAll() {
+        $('activeCount').textContent = board.summary.activeStormCount;
+        $('windowCount').textContent = board.summary.t1WindowStormCount;
+        $('latestCapture').textContent = hkt(board.prospective.latestCapturedAt);
+        $('excludedCount').textContent = board.prospective.excludedAmbiguousCaseCaptureCount;
+        renderOverview();
+        const visible = visibleStorms();
+        if (!visible.some(storm => storm.caseId === selectedCaseId)) selectedCaseId = visible[0]?.caseId || board.storms[0]?.caseId || null;
+        renderTabs(); renderSelected();
+        const excluded = board.prospective.excludedAmbiguousCaseCaptures;
+        $('excludedNote').textContent = excluded.length ? `診斷保護：已排除 ${excluded.length} 個 ambiguous same-case capture（raw evidence 保留，但不進本觀察 timeline）。` : '目前沒有 ambiguous same-case capture 被排除。';
+      }
+
+      function renderOverview() {
+        const rows = visibleStorms();
+        $('overviewBody').innerHTML = rows.map(storm => {
+          const t1 = storm.latest.signals.T1, d = storm.latest.drivers;
+          return `<tr data-case="${esc(storm.caseId)}"><td><span class="storm-name">${esc(storm.displayName)}</span><br><span style="color:#555;font-size:.62rem">${esc(storm.caseId)}</span></td><td class="${likelihoodClass(t1.likelihood)}">${esc(likelihoodText(t1.likelihood))}</td><td>${esc(windowText(t1.window))}</td><td class="num">${n(t1.riskIndex,3)}</td><td class="num">${n(t1.confidenceIndex,3)}</td><td class="num">${n(t1.persistenceHours,1)} h</td><td class="num">${round(d.consensusClosestDistanceKm)} km</td><td class="num">${round(d.comparisonSpreadKm)} km</td><td class="num">${n(d.closestTimeSpreadHours,1)} h</td><td>${esc(d.trend || '—')}</td><td>${esc(d.uncertaintyLevel || '—')}</td><td>${esc(storm.latest.sourceAgencies.join(' · '))}</td></tr>`;
+        }).join('');
+        [...$('overviewBody').querySelectorAll('tr')].forEach(row => row.addEventListener('click', () => { selectedCaseId = row.dataset.case; renderTabs(); renderSelected(); }));
+      }
+
+      function renderTabs() {
+        $('stormTabs').innerHTML = visibleStorms().map(storm => `<button type="button" data-case="${esc(storm.caseId)}" class="${storm.caseId===selectedCaseId?'active':''}">${esc(storm.displayName)}<span class="small">T1 ${esc(likelihoodText(storm.latest.signals.T1.likelihood))} · risk ${n(storm.latest.signals.T1.riskIndex,3)}</span></button>`).join('');
+        [...$('stormTabs').querySelectorAll('button')].forEach(btn => btn.addEventListener('click', () => { selectedCaseId = btn.dataset.case; renderTabs(); renderSelected(); }));
+      }
+
+      function selectedStorm() { return board.storms.find(storm => storm.caseId === selectedCaseId) || visibleStorms()[0] || null; }
+
+      function renderSelected() {
+        const storm = selectedStorm(); if (!storm) return;
+        $('selectedCase').textContent = storm.caseId;
+        const t1 = storm.latest.signals.T1, d = storm.latest.drivers;
+        $('latestGrid').innerHTML = [
+          ['T1 狀態', likelihoodText(t1.likelihood), windowText(t1.window)],
+          ['Risk', n(t1.riskIndex,3), storm.latest.deltas ? `Δ ${signed(storm.latest.deltas.t1RiskIndex,3)}` : '首次'],
+          ['Confidence', n(t1.confidenceIndex,3), storm.latest.deltas ? `Δ ${signed(storm.latest.deltas.t1ConfidenceIndex,3)}` : '首次'],
+          ['Persistence', `${n(t1.persistenceHours,1)} h`, `window ${n(t1.windowWidthHours,1)} h`],
+          ['Closest', `${round(d.consensusClosestDistanceKm)} km`, `lead ${n(d.consensusClosestLeadHours,1)} h`],
+          ['Disagreement', `${round(d.comparisonSpreadKm)} km`, `time ${n(d.closestTimeSpreadHours,1)} h`]
+        ].map(([k,v,s]) => `<div class="latest-card"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`).join('');
+        renderTimeline(storm); renderAgencies(storm.latest); renderCharts(storm.timeline);
+      }
+
+      function renderTimeline(storm) {
+        $('timelineBody').innerHTML = [...storm.timeline].reverse().map(row => {
+          const t1=row.signals.T1,d=row.drivers,delta=row.deltas||{};
+          return `<tr><td>${esc(hkt(row.capturedAt))}</td><td class="${likelihoodClass(t1.likelihood)}">${esc(likelihoodText(t1.likelihood))}</td><td class="num">${n(t1.riskIndex,3)}</td><td class="num">${n(t1.confidenceIndex,3)}</td><td>${esc(windowText(t1.window))}</td><td class="${deltaClass(delta.t1WindowStartHours)} num">${signed(delta.t1WindowStartHours,1,'h')}</td><td class="${deltaClass(delta.t1WindowEndHours)} num">${signed(delta.t1WindowEndHours,1,'h')}</td><td class="num">${n(t1.persistenceHours,1)}h</td><td class="num">${round(d.consensusClosestDistanceKm)}km</td><td class="num">${round(d.comparisonSpreadKm)}km</td><td class="${deltaClass(delta.comparisonSpreadKm)} num">${signed(delta.comparisonSpreadKm,0,'km')}</td><td>${esc(d.trend||'—')}</td><td>${esc(d.uncertaintyLevel||'—')}</td></tr>`;
+        }).join('');
+      }
+
+      function renderAgencies(row) {
+        $('agencyGrid').innerHTML = row.agencies.map(item => `<div class="agency-card"><h3>${esc(item.agency)} <span style="font-weight:400;color:#666">${esc(item.sourceId||'')}</span></h3><dl><dt>Bulletin</dt><dd>${esc(hkt(item.bulletinTime))}</dd><dt>Current</dt><dd>${item.current ? `${n(item.current.lat,1)}, ${n(item.current.lon,1)}`:'—'}</dd><dt>Intensity</dt><dd>${esc(item.current?.intensity||'—')}</dd><dt>Wind</dt><dd>${esc(item.current?.maximumWind??'—')}</dd><dt>Trend</dt><dd>${esc(item.trend.state)}</dd><dt>6h Δ distance</dt><dd>${signed(item.trend.deltaKm,0,' km')}</dd><dt>End distance</dt><dd>${round(item.trend.endDistanceKm)} km</dd><dt>Forecast end</dt><dd>${esc(hkt(item.forecastEnd?.time))}</dd></dl></div>`).join('');
+      }
+
+      function svgBase(svg, yTicks = []) {
+        const W=600,H=220,L=48,R=18,T=12,B=30; svg.innerHTML='';
+        const ns='http://www.w3.org/2000/svg';
+        const line=(x1,y1,x2,y2,cls='grid')=>{const e=document.createElementNS(ns,'line');Object.assign(e,{className:{baseVal:cls}});e.setAttribute('x1',x1);e.setAttribute('y1',y1);e.setAttribute('x2',x2);e.setAttribute('y2',y2);svg.appendChild(e)};
+        const text=(x,y,value,anchor='end')=>{const e=document.createElementNS(ns,'text');e.setAttribute('x',x);e.setAttribute('y',y);e.setAttribute('text-anchor',anchor);e.textContent=value;svg.appendChild(e)};
+        line(L,T,L,H-B,'axis'); line(L,H-B,W-R,H-B,'axis');
+        yTicks.forEach(t=>{line(L,t.y,W-R,t.y,'grid');text(L-6,t.y+3,t.label)});
+        return {W,H,L,R,T,B,ns,line,text};
+      }
+      function pointsPath(points) { return points.map((p,i)=>`${i?'L':'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '); }
+      function addPath(svg,ns,points,cls){if(points.length<2)return;const p=document.createElementNS(ns,'path');p.setAttribute('d',pointsPath(points));p.setAttribute('class',cls);svg.appendChild(p)}
+      function addDot(svg,ns,x,y,cls='dot'){const c=document.createElementNS(ns,'circle');c.setAttribute('cx',x);c.setAttribute('cy',y);c.setAttribute('r',3);c.setAttribute('class',cls);svg.appendChild(c)}
+      function xFor(i,count,L,R,W){return count<=1?(L+W-R)/2:L+i*(W-R-L)/(count-1)}
+      function addXLabels(base,rows){if(!rows.length)return;base.text(base.L,base.H-8,hkt(rows[0].capturedAt),'start');base.text(base.W-base.R,base.H-8,hkt(rows.at(-1).capturedAt),'end')}
+
+      function renderRisk(rows) {
+        const svg=$('riskChart'), base=svgBase(svg,[0,.25,.5,.75,1].map(v=>({y:12+(1-v)*178,label:v.toFixed(2)})));
+        const valid=rows.map((r,i)=>({i,v:r.signals.T1.riskIndex,r})).filter(p=>Number.isFinite(p.v));
+        const pts=valid.map(p=>({x:xFor(p.i,rows.length,base.L,base.R,base.W),y:base.T+(1-p.v)*(base.H-base.B-base.T)}));addPath(svg,base.ns,pts,'risk-line');pts.forEach(p=>addDot(svg,base.ns,p.x,p.y));addXLabels(base,rows);
+      }
+      function renderWindow(rows) {
+        const data=rows.map((r,i)=>({i,r,s:Date.parse(r.signals.T1.window?.start||''),e:Date.parse(r.signals.T1.window?.end||'')})).filter(p=>Number.isFinite(p.s)&&Number.isFinite(p.e));
+        const svg=$('windowChart'); if(!data.length){svg.innerHTML='<text x="300" y="110" text-anchor="middle">暫未有窗口資料</text>';return}
+        const min=Math.min(...data.map(p=>p.s))-3600000,max=Math.max(...data.map(p=>p.e))+3600000,span=Math.max(1,max-min);const y=v=>12+(max-v)/span*178;
+        const base=svgBase(svg,[min,(min+max)/2,max].map(v=>({y:y(v),label:hkt(v)})));
+        const starts=[],ends=[];data.forEach(p=>{const x=xFor(p.i,rows.length,base.L,base.R,base.W),ys=y(p.s),ye=y(p.e);base.line(x,ys,x,ye,'window-bar');starts.push({x,y:ys});ends.push({x,y:ye})});addPath(svg,base.ns,starts,'start-line');addPath(svg,base.ns,ends,'end-line');addXLabels(base,rows);
+      }
+      function renderScatter(rows) {
+        const data=rows.map(r=>({x:r.drivers.comparisonSpreadKm,y:r.signals.T1.confidenceIndex})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+        const maxX=Math.max(100,...data.map(p=>p.x))*1.08;const svg=$('scatterChart'),base=svgBase(svg,[0,.25,.5,.75,1].map(v=>({y:12+(1-v)*178,label:v.toFixed(2)})));
+        data.forEach(p=>addDot(svg,base.ns,base.L+p.x/maxX*(base.W-base.R-base.L),base.T+(1-p.y)*(base.H-base.B-base.T),'scatter-dot'));base.text(base.L,base.H-8,'0 km','start');base.text(base.W-base.R,base.H-8,`${Math.round(maxX)} km`,'end');
+      }
+      function renderClosest(rows) {
+        const dist=rows.map((r,i)=>({i,v:r.drivers.consensusClosestDistanceKm})).filter(p=>Number.isFinite(p.v));const lead=rows.map((r,i)=>({i,v:r.drivers.consensusClosestLeadHours})).filter(p=>Number.isFinite(p.v));
+        const maxD=Math.max(100,...dist.map(p=>p.v))*1.08,maxL=Math.max(12,...lead.map(p=>p.v))*1.08;const svg=$('closestChart');const base=svgBase(svg,[0,.5,1].map(fr=>({y:12+(1-fr)*178,label:`${Math.round(maxD*fr)}km`})));
+        const dy=v=>base.T+(1-v/maxD)*(base.H-base.B-base.T),ly=v=>base.T+(1-v/maxL)*(base.H-base.B-base.T);const dp=dist.map(p=>({x:xFor(p.i,rows.length,base.L,base.R,base.W),y:dy(p.v)})),lp=lead.map(p=>({x:xFor(p.i,rows.length,base.L,base.R,base.W),y:ly(p.v)}));addPath(svg,base.ns,dp,'distance-line');addPath(svg,base.ns,lp,'lead-line');base.text(base.W-base.R-2,base.T+10,`lead max ${Math.round(maxL)}h`,'end');addXLabels(base,rows);
+      }
+      function renderCharts(rows){renderRisk(rows);renderWindow(rows);renderScatter(rows);renderClosest(rows)}
+
+      $('windowFilter').addEventListener('click',()=>{onlyWindow=!onlyWindow;$('windowFilter').classList.toggle('active',onlyWindow);$('windowFilter').textContent=onlyWindow?'只顯示 T1 窗口':'顯示全部 active';renderAll()});
+      $('refreshBtn').addEventListener('click',()=>loadBoard().catch(showError));
+      function showError(error){$('status').className='status error';$('status').textContent=`讀取失敗：${error?.message||error}`;}
+      loadBoard().catch(showError);
+    })();
+  </script>
+</body>
+</html>
