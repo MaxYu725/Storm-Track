@@ -1,12 +1,14 @@
 name: Validate materialized HK threat model
 
 on:
+  push:
+    branches:
+      - feature/basic-hk-signal-forecast
   pull_request:
     branches:
       - feature/ai-analysis-engine
     paths:
       - .github/workflows/hk-threat-clean-validation.yml
-      - scripts/hk-threat-materialize.flag
       - scripts/hk-live-source-smoke.mjs
       - scripts/hk-live-engine-probe.mjs
       - analysis/**
@@ -19,7 +21,6 @@ permissions:
 
 jobs:
   validate:
-    if: ${{ hashFiles('scripts/hk-threat-materialize.flag') == '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
