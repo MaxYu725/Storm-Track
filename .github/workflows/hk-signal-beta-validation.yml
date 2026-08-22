@@ -1,0 +1,76 @@
+name: Validate HK signal frontend Beta
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - index.html
+      - analysis/**
+      - tests/**
+      - .github/workflows/hk-signal-beta-validation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check frontend module syntax
+        run: |
+          node --check analysis/storm-analysis-core.js
+          node --check analysis/hk-impact-engine.js
+          node --check analysis/hko-signal-risk-inputs.js
+          node --check analysis/hk-threat-assessment.js
+          node --check analysis/basic-hk-signal-forecast.js
+          node --check analysis/frontend-hk-threat-ui.js
+
+      - name: Verify Beta integration surface
+        run: |
+          grep -F '<script src="./analysis/storm-analysis-core.js"></script>' index.html
+          grep -F '<script src="./analysis/frontend-hk-threat-ui.js"></script>' index.html
+          grep -F 'StormHkThreatUi?.renderGroupSummary(group)' index.html
+          grep -F '${hkThreatHtml}' index.html
+          grep -F "get('beta') === 'hk-signal'" analysis/frontend-hk-threat-ui.js
+          grep -F '香港影響 Beta' analysis/frontend-hk-threat-ui.js
+          grep -F '非香港天文台官方風球預測' analysis/frontend-hk-threat-ui.js
+
+      - name: Run HK signal regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=(
+            tests/storm-analysis-core.test.cjs
+            tests/hk-impact-engine.test.cjs
+            tests/hko-signal-risk-inputs.test.cjs
+            tests/hk-threat-assessment.test.cjs
+            tests/hk-threat-rule-scenarios.test.cjs
+            tests/hk-missing-numeric-semantics.test.cjs
+            tests/hk-agency-evidence-independence.test.cjs
+            tests/hk-signal-timing-uncertainty.test.cjs
+            tests/hk-signal-timing-cadence-invariance.test.cjs
+            tests/hk-signal-crossing-invariants.test.cjs
+            tests/hk-forecast-horizon-invariants.test.cjs
+            tests/hk-wind-field-selection-invariants.test.cjs
+            tests/hk-interpolation-reliability-invariants.test.cjs
+            tests/hk-interpolation-chord-invariants.test.cjs
+            tests/hk-current-proximity-interpolation-independence.test.cjs
+            tests/hk-minority-exact-threat-preservation.test.cjs
+            tests/hk-interpolation-confirmation-escalation.test.cjs
+            tests/hk-wind-field-interpolation-independence.test.cjs
+            tests/hk-wind-field-freshness-escalation-invariants.test.cjs
+            tests/basic-hk-signal-forecast.test.cjs
+            tests/frontend-hk-threat-ui.test.cjs
+            tests/frontend-hk-signal-beta-gate.test.cjs
+          )
+          for test_file in "${tests[@]}"; do
+            echo "::group::$test_file"
+            node "$test_file"
+            echo "::endgroup::"
+          done
+
+      - name: Check whitespace
+        run: git diff --check origin/main...HEAD
