@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
@@ -85,6 +85,7 @@ jobs:
           npx wrangler d1 execute "$SOURCE_DB_NAME" --remote --json --experimental-provision=false --command "$SQL" > /tmp/historical-storms-raw.json
           jq '[.. | objects | select(has("storm_key") and has("forecast_point_count"))]' /tmp/historical-storms-raw.json > /tmp/historical-storms.json
           echo "HISTORICAL_AUDIT_STORM_COUNT=$(jq 'length' /tmp/historical-storms.json)"
+          echo "HISTORICAL_AUDIT_STORM_IDENTITIES=$(jq -c '[.[]|{storm_key,international_number,name_en,name_zh,status,merged_into_id,first_seen_at,last_seen_at,forecast_agency_count,forecast_advisory_count,forecast_point_count}]' /tmp/historical-storms.json)"
 
       - name: Inventory forecast-bearing advisories using SELECT only
         shell: bash
@@ -117,12 +118,12 @@ jobs:
           jq '[.. | objects | select(has("storm_id") and has("agency") and has("forecast_point_count"))]' /tmp/historical-advisories-raw.json > /tmp/historical-advisories.json
           echo "HISTORICAL_AUDIT_FORECAST_ADVISORY_COUNT=$(jq 'length' /tmp/historical-advisories.json)"
 
-      - name: Inspect wind-radii schema using SELECT only
+      - name: Inspect identity and wind-radii schemas using SELECT only
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler d1 execute "$SOURCE_DB_NAME" --remote --json --experimental-provision=false --command "SELECT name, sql FROM sqlite_master WHERE type='table' AND name='wind_radii';" > /tmp/wind-radii-schema.json
-          echo "HISTORICAL_AUDIT_WIND_RADII_SCHEMA=$(jq -c '[.. | objects | select(.name? == "wind_radii")]' /tmp/wind-radii-schema.json)"
+          npx wrangler d1 execute "$SOURCE_DB_NAME" --remote --json --experimental-provision=false --command "SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN ('storm_aliases','wind_radii') ORDER BY name;" > /tmp/historical-support-schema.json
+          echo "HISTORICAL_AUDIT_SUPPORT_SCHEMA=$(jq -c '[.. | objects | select((.name? == "storm_aliases") or (.name? == "wind_radii"))]' /tmp/historical-support-schema.json)"
 
       - name: Build deterministic replay feasibility report
         shell: bash
