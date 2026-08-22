@@ -1,0 +1,136 @@
+name: One-shot GAENARI identity fix
+
+on:
+  push:
+    branches:
+      - 'fix/gaenari-generic-labels'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/gaenari-generic-labels
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Apply bounded identity patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout origin/main -- .github/workflows/hk-signal-beta-validation.yml
+          rm -f tests/.gaenari-trigger tests/gaenari-trigger.txt
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_function(path_str, signature, replacement):
+              path = Path(path_str)
+              text = path.read_text()
+              start = text.find(signature)
+              if start < 0:
+                  raise SystemExit(f'missing {signature} in {path_str}')
+              open_brace = text.find('{', start)
+              if open_brace < 0:
+                  raise SystemExit(f'missing opening brace for {signature} in {path_str}')
+              depth = 0
+              end = None
+              for index in range(open_brace, len(text)):
+                  if text[index] == '{':
+                      depth += 1
+                  elif text[index] == '}':
+                      depth -= 1
+                      if depth == 0:
+                          end = index + 1
+                          break
+              if end is None:
+                  raise SystemExit(f'unterminated {signature} in {path_str}')
+              path.write_text(text[:start] + replacement + text[end:])
+
+          replace_function(
+              'index.html',
+              'function isGenericStormName(value)',
+              '''function isGenericStormName(value) {
+        const text = normalizeName(value);
+        if (!text) return true;
+        if (/^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴|未命名熱帶氣旋|未命名热带气旋|未命名)\\d*$/.test(text)) return true;
+        return /^(?:(?:TROPICALDEPRESSION|TROPICALSTORM|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴))?(?:TC|TD|TS)\\d+[A-Z]?$/.test(text);
+    }'''
+          )
+
+          replace_function(
+              'analysis/storm-case-identity.js',
+              'function isGenericName(value)',
+              '''function isGenericName(value) {
+    const text = normalizeName(value);
+    if (!text) return true;
+    if (/^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴|未命名熱帶氣旋|未命名热带气旋|未命名)\\d*$/.test(text)) return true;
+    return /^(?:(?:TROPICALDEPRESSION|TROPICALSTORM|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴))?(?:TC|TD|TS)\\d+[A-Z]?$/.test(text);
+  }'''
+          )
+
+          frontend = Path('tests/frontend-storm-identity-grouping.test.cjs')
+          text = frontend.read_text()
+          labels_old = "  '熱帶風暴',\n  'TC2622',"
+          labels_new = "  '熱帶風暴',\n  '热带低压',\n  '热带低气压',\n  '热带风暴',\n  'TC2622',"
+          if labels_old not in text:
+              raise SystemExit('missing frontend generic-label insertion point')
+          text = text.replace(labels_old, labels_new, 1)
+          insert_before = 'const distinctNamedStorms = mergeStormSources(['
+          if insert_before not in text:
+              raise SystemExit('missing frontend rename insertion point')
+          regression = """const gaenariRename = mergeStormSources([\n  storm({ agency: 'CMA', sourceId: '3308554', nameTc: '热带低压', nameEn: 'nameless', lat: 25.9, lon: 124.7, time: '2026-08-22T03:00:00Z' }),\n  storm({ agency: 'JMA', sourceId: 'TC2623', nameTc: '簡拉維', nameEn: 'GAENARI', lat: 25.5, lon: 124.9, time: '2026-08-22T03:00:00Z' })\n]);\nassert.equal(gaenariRename.length, 1, 'CMA simplified generic TD label must merge with newly named GAENARI');\nassert.deepEqual(Object.keys(gaenariRename[0].sources).sort(), ['CMA', 'JMA']);\n\n"""
+          frontend.write_text(text.replace(insert_before, regression + insert_before, 1))
+
+          case_test = Path('tests/storm-case-identity.test.cjs')
+          text = case_test.read_text()
+          source_marker = 'function source(agency, sourceId, time, lat, lon) {'
+          if source_marker not in text:
+              raise SystemExit('missing case identity source insertion point')
+          assertions = """assert.equal(identity.isGenericName('热带低压'), true, 'simplified Chinese tropical depression label must be generic');\nassert.equal(identity.isGenericName('热带低气压'), true, 'simplified Chinese tropical depression variant must be generic');\nassert.equal(identity.isGenericName('热带风暴'), true, 'simplified Chinese tropical storm label must be generic');\nassert.equal(identity.isGenericName('GAENARI'), false, 'formal storm name must remain specific');\n\n"""
+          text = text.replace(source_marker, assertions + source_marker, 1)
+          bridge_marker = '// When one agency disappears and another starts tracking the same unnamed cyclone, cautious physical continuity may bridge the gap.'
+          if bridge_marker not in text:
+              raise SystemExit('missing case identity bridge insertion point')
+          bridge = """const simplifiedRename = identity.reconcileProspectiveRecords([\n  record('2026-08-22T03:00:00Z', 'gaenari-1', [\n    observation('热带低压', '热带低压', 'nameless', {\n      CMA: source('CMA', '3308554', '2026-08-22T03:00:00Z', 25.9, 124.7)\n    })\n  ]),\n  record('2026-08-22T06:00:00Z', 'gaenari-2', [\n    observation('GAENARI', '簡拉維', 'GAENARI', {\n      JMA: source('JMA', 'TC2623', '2026-08-22T06:00:00Z', 25.5, 124.0)\n    })\n  ])\n]);\nassert.equal(simplifiedRename.caseCount, 1, 'simplified generic CMA identity must not block later GAENARI continuity');\nassert.equal(simplifiedRename.index[1].resolution.reason, 'physical-continuity');\nassert.equal(simplifiedRename.cases[0].names.includes('热带低压'), false, 'generic simplified label must not enter the specific-name registry');\nassert.equal(simplifiedRename.cases[0].names.includes('GAENARI'), true);\n\n"""
+          case_test.write_text(text.replace(bridge_marker, bridge + bridge_marker, 1))
+          PY
+
+      - name: Validate bounded diff and regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check analysis/storm-case-identity.js
+          node tests/frontend-storm-identity-grouping.test.cjs
+          node tests/storm-case-identity.test.cjs
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              'index.html',
+              'analysis/storm-case-identity.js',
+              'tests/frontend-storm-identity-grouping.test.cjs',
+              'tests/storm-case-identity.test.cjs',
+          }
+          actual = set(subprocess.check_output(['git', 'diff', '--name-only', 'origin/main']).decode().splitlines())
+          if actual != expected:
+              raise SystemExit(f'unexpected final diff: {sorted(actual)}')
+          PY
+
+      - name: Commit patch to feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix simplified generic storm identity labels"
+          git push origin HEAD:fix/gaenari-generic-labels
