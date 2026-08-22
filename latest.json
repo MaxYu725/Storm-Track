@@ -45,19 +45,19 @@
   },
   "prospective": {
     "caseIdentitySchemaVersion": "storm-case-identity/v1",
-    "reconciledThrough": "2026-08-22T04:09:25.728Z",
+    "reconciledThrough": "2026-08-22T04:52:33.079Z",
     "trustedRecorderSchema": "beta-prospective-recorder/v2",
-    "trustedRecordCount": 5,
+    "trustedRecordCount": 6,
     "recorderSchemaCounts": {
       "beta-prospective-recorder/v1": 1,
-      "beta-prospective-recorder/v2": 5
+      "beta-prospective-recorder/v2": 6
     },
     "excludedRecordCount": 1,
     "caseCount": 3
   },
   "hkoTruth": {
-    "latestRetrievedAt": "2026-08-22T04:17:50.140Z",
-    "latestTruthFingerprint": "06b9bc4f4a37a3baea5c0a76f1c1d7f19356fadfba8213d372ceb35cd59976a7",
+    "latestRetrievedAt": "2026-08-22T04:52:32.128Z",
+    "latestTruthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
     "eventCount": 1,
     "initialTc1IssueCount": 0,
     "signalEventCounts": {
@@ -70,10 +70,16 @@
   "awaiting": {
     "status": "awaiting-tc1",
     "activeHkoCaseIds": [
-      "STC-2026-JMA-TC2622"
+      "STC-2026-JMA-TC2622",
+      "STC-2026-JMA-TC2623"
     ],
     "pendingSignalsByCase": {
       "STC-2026-JMA-TC2622": [
+        "T1",
+        "T3",
+        "T8"
+      ],
+      "STC-2026-JMA-TC2623": [
         "T1",
         "T3",
         "T8"
@@ -82,37 +88,37 @@
     "latestPredictions": [
       {
         "caseId": "STC-2026-JMA-TC2622",
-        "capturedAt": "2026-08-22T04:09:25.728Z",
-        "captureFingerprint": "0c9857b60fe7228c3b0b0b5db950866b5489116ebe7709ac0342ffdd9a4d20ec",
+        "capturedAt": "2026-08-22T04:52:33.079Z",
+        "captureFingerprint": "535369a7b0dbc0f16251e9560942e19c7dfbf720500ffeadc499dea9df77d21b",
         "rawGroupKey": "NARRA",
         "displayName": "紫檀 (NARRA)",
         "likelihood": "possible",
         "estimatedWindow": {
-          "start": "2026-08-23T19:34:00.363Z",
-          "end": "2026-08-24T11:41:07.772Z"
+          "start": "2026-08-23T19:01:09.117Z",
+          "end": "2026-08-24T11:08:52.442Z"
         },
         "signals": {
           "T1": {
             "likelihood": "possible",
-            "riskIndex": 0.3886751010985327,
-            "confidenceIndex": 0.3556255695900087,
-            "persistenceHours": 30.34485384907847,
+            "riskIndex": 0.38899144922266327,
+            "confidenceIndex": 0.3523318255996422,
+            "persistenceHours": 30.644857009156404,
             "estimatedWindow": {
-              "start": "2026-08-23T19:34:00.363Z",
-              "end": "2026-08-24T11:41:07.772Z"
+              "start": "2026-08-23T19:01:09.117Z",
+              "end": "2026-08-24T11:08:52.442Z"
             }
           },
           "T3": {
             "likelihood": "unlikely",
-            "riskIndex": 0.286310066472746,
-            "confidenceIndex": 0.3022817341515074,
+            "riskIndex": 0.28656930044207407,
+            "confidenceIndex": 0.2994820517596959,
             "persistenceHours": 0,
             "estimatedWindow": null
           },
           "T8": {
             "likelihood": "unlikely",
-            "riskIndex": 0.07698586459692208,
-            "confidenceIndex": 0.28805671136790706,
+            "riskIndex": 0.07685596273490103,
+            "confidenceIndex": 0.2853887787357102,
             "persistenceHours": 0,
             "estimatedWindow": null
           }
@@ -131,11 +137,54 @@
           "threatAssessment": "hk-threat-assessment/v1",
           "basicForecast": "basic-hk-signal-forecast/v1"
         }
+      },
+      {
+        "caseId": "STC-2026-JMA-TC2623",
+        "capturedAt": "2026-08-22T04:52:33.079Z",
+        "captureFingerprint": "535369a7b0dbc0f16251e9560942e19c7dfbf720500ffeadc499dea9df77d21b",
+        "rawGroupKey": "热带低压",
+        "displayName": "热带低压 (nameless)",
+        "likelihood": "unlikely",
+        "estimatedWindow": null,
+        "signals": {
+          "T1": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.23769133844860088,
+            "confidenceIndex": 0.6326250000000001,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T3": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.08110523951224113,
+            "confidenceIndex": 0.44283750000000005,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T8": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.05400801925737764,
+            "confidenceIndex": 0.39222750000000006,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          }
+        },
+        "sourceAgencies": [
+          "CMA"
+        ],
+        "engineVersions": {
+          "ui": "frontend-hk-threat-ui/v1",
+          "snapshot": "storm-analysis-snapshot/v1",
+          "impact": "hk-impact/v1",
+          "signalInputs": "hko-signal-risk-inputs/v1",
+          "threatAssessment": "hk-threat-assessment/v1",
+          "basicForecast": "basic-hk-signal-forecast/v1"
+        }
       }
     ],
     "latestHkoTruth": {
-      "retrievedAt": "2026-08-22T04:17:50.140Z",
-      "truthFingerprint": "06b9bc4f4a37a3baea5c0a76f1c1d7f19356fadfba8213d372ceb35cd59976a7",
+      "retrievedAt": "2026-08-22T04:52:32.128Z",
+      "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
       "truth": {
         "warningStatementCode": "WTCSGNL",
         "present": false,
@@ -154,6 +203,10 @@
           {
             "desc": "預料熱帶氣旋紫檀會在今明兩日於北部灣一帶徘徊，然後有較大機會於星期一至星期二逐漸轉向東至東北方向移動，靠近雷州半島至廣東西部沿岸一帶。天文台會密切監察其動向及本地風力變化，評估屆時是否需要發出熱帶氣旋警告信號，市民請留意最新天氣消息。",
             "updateTime": "2026-08-22T12:00:00+08:00"
+          },
+          {
+            "desc": "天氣炎熱可能影響健康，市民應保持警惕，多補充水分。",
+            "updateTime": "2026-08-22T12:40:00+08:00"
           }
         ]
       }
@@ -177,8 +230,8 @@
   },
   "closeouts": [],
   "closeoutBlocked": [],
-  "closeoutCheckedAt": "2026-08-22T04:41:41.116Z",
-  "generatedAt": "2026-08-22T04:41:41.117Z",
-  "sourceCommit": "dd45c7eb46b44d8993db0e01f1a7528e1538d175",
-  "evaluationFingerprint": "73af2d2bf20068bcd2f24bec278240553a3c1196e9114721bf7aabd2fb61fe11"
+  "closeoutCheckedAt": "2026-08-22T05:11:00.989Z",
+  "generatedAt": "2026-08-22T05:11:00.990Z",
+  "sourceCommit": "4eb8c7ecdc5078189b90e871362d6d2237360405",
+  "evaluationFingerprint": "1ada0557de2cdd3361c712f1264ff833d08c967dc08ed762b64643e10dcb3363"
 }
