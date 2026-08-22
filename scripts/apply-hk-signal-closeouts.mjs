@@ -78,7 +78,6 @@ delete material.evaluationFingerprint;
 material.closeoutPolicyVersion = closeout.POLICY_VERSION;
 material.closeoutPolicy = closeout.POLICY;
 material.closeoutSummary = {
-  asOf,
   closeoutCount: derived.closeouts.length,
   blockedCount: derived.blocked.length,
   classifications: derived.closeouts.reduce((counts, item) => {
@@ -92,6 +91,7 @@ material.closeoutBlocked = derived.blocked;
 const evaluationFingerprint = sha256(stableJson(material));
 const output = {
   ...material,
+  closeoutCheckedAt: asOf,
   generatedAt: new Date().toISOString(),
   sourceCommit: raw.sourceCommit || process.env.SOURCE_COMMIT || null,
   evaluationFingerprint
