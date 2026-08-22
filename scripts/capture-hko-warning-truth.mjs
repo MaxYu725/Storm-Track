@@ -84,7 +84,12 @@ const output = {
     url: item.url,
     sha256: item.sha256,
     bytes: item.bytes
-  }))
+  })),
+  sourcePayloads: {
+    warnsum: warnsum.payload,
+    warningInfo: warningInfo.payload,
+    swt: swt.payload
+  }
 };
 
 process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
