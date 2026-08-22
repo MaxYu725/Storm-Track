@@ -8,7 +8,9 @@ on:
     paths:
       - historical/cases/**
       - scripts/cma-historical-adapter.mjs
+      - scripts/replay-historical-case.mjs
       - tests/historical-case-replay-inputs.test.mjs
+      - tests/historical-frozen-v1-replay.test.mjs
       - .github/workflows/historical-case-replay-inputs.yml
 
 permissions:
@@ -31,21 +33,40 @@ jobs:
         run: |
           set -euo pipefail
           node --check scripts/cma-historical-adapter.mjs
+          node --check scripts/replay-historical-case.mjs
           node tests/historical-case-replay-inputs.test.mjs
+          node tests/historical-frozen-v1-replay.test.mjs
 
       - name: Extract official CMA/NMC as-issued history for Noul
         run: |
           set -euo pipefail
           node scripts/cma-historical-adapter.mjs historical/cases/2026-noul.json --summary > /tmp/noul-cma.json
-          jq -e '.schemaVersion=="cma-historical-adapter/v1" and .caseId=="2026-noul" and .source.agency=="CMA" and .source.storm.nameEn=="NOUL" and .snapshotCount>0 and .semantics.asIssuedForecastHistory==true and .semantics.HkoTruthUsedAsForecastInput==false and .semantics.currentV1ModelModified==false' /tmp/noul-cma.json >/dev/null
+          jq -e '.schemaVersion=="cma-historical-adapter/v1" and .caseId=="2026-noul" and .source.agency=="CMA" and .source.storm.nameEn=="NOUL" and .snapshotCount>=60 and .semantics.asIssuedForecastHistory==true and .semantics.HkoTruthUsedAsForecastInput==false and .semantics.currentV1ModelModified==false and .semantics.productionWorkerUsed==false' /tmp/noul-cma.json >/dev/null
           cat /tmp/noul-cma.json
 
-      - name: Extract official CMA/NMC as-issued history for Ragasa
+      - name: Run frozen-v1 historical replay for Noul
         run: |
           set -euo pipefail
-          node scripts/cma-historical-adapter.mjs historical/cases/2025-ragasa.json --summary > /tmp/ragasa-cma.json
-          jq -e '.schemaVersion=="cma-historical-adapter/v1" and .caseId=="2025-ragasa" and .source.agency=="CMA" and .source.storm.nameEn=="RAGASA" and .snapshotCount>0 and .semantics.asIssuedForecastHistory==true and .semantics.HkoTruthUsedAsForecastInput==false and .semantics.currentV1ModelModified==false' /tmp/ragasa-cma.json >/dev/null
-          cat /tmp/ragasa-cma.json
+          node scripts/replay-historical-case.mjs historical/cases/2026-noul.json > /tmp/noul-replay.json
+          jq -e '
+            .schemaVersion=="historical-frozen-v1-replay/v1" and
+            .caseId=="2026-noul" and
+            .historicalSource.agency=="CMA" and
+            .historicalSource.snapshotCount>=60 and
+            .replay.recordCount==.historicalSource.snapshotCount and
+            .replay.availableForecastCount>0 and
+            .replay.usableAgencySet==["CMA"] and
+            .replay.events.T1.officialIssuedAt=="2026-07-24T12:40:00.000Z" and
+            .replay.events.T3.officialIssuedAt=="2026-07-25T05:20:00.000Z" and
+            .replay.events.T8.officialIssuedAt=="2026-07-25T14:10:00.000Z" and
+            .semantics.frozenCurrentV1==true and
+            .semantics.HkoTruthUsedAsForecastInput==false and
+            .semantics.calibrationOrTrainingPerformed==false and
+            .semantics.modelParametersModified==false and
+            .semantics.productionWorkerModified==false and
+            .semantics.productionDatabaseWritten==false
+          ' /tmp/noul-replay.json >/dev/null
+          jq '{schemaVersion,caseId,historicalSource,engineVersions,replay:{recordCount:.replay.recordCount,availableForecastCount:.replay.availableForecastCount,unavailableForecastCount:.replay.unavailableForecastCount,usableAgencySet:.replay.usableAgencySet,events:.replay.events},semantics}' /tmp/noul-replay.json
 
       - name: Check whitespace
         run: git diff --check
