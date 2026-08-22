@@ -204,7 +204,7 @@
       function svgBase(svg, yTicks = []) {
         const W=600,H=220,L=48,R=18,T=12,B=30; svg.innerHTML='';
         const ns='http://www.w3.org/2000/svg';
-        const line=(x1,y1,x2,y2,cls='grid')=>{const e=document.createElementNS(ns,'line');Object.assign(e,{className:{baseVal:cls}});e.setAttribute('x1',x1);e.setAttribute('y1',y1);e.setAttribute('x2',x2);e.setAttribute('y2',y2);svg.appendChild(e)};
+        const line=(x1,y1,x2,y2,cls='grid')=>{const e=document.createElementNS(ns,'line');e.setAttribute('class',cls);e.setAttribute('x1',x1);e.setAttribute('y1',y1);e.setAttribute('x2',x2);e.setAttribute('y2',y2);svg.appendChild(e)};
         const text=(x,y,value,anchor='end')=>{const e=document.createElementNS(ns,'text');e.setAttribute('x',x);e.setAttribute('y',y);e.setAttribute('text-anchor',anchor);e.textContent=value;svg.appendChild(e)};
         line(L,T,L,H-B,'axis'); line(L,H-B,W-R,H-B,'axis');
         yTicks.forEach(t=>{line(L,t.y,W-R,t.y,'grid');text(L-6,t.y+3,t.label)});
