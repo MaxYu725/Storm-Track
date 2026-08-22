@@ -4,10 +4,12 @@ const assert = require('node:assert/strict');
 const wind = require('../analysis/wind-field-overlay.js');
 
 (async () => {
+  assert.equal(wind.VERSION, 'wind-field-overlay/v1.4');
   assert.equal(wind.OPEN_METEO_ENDPOINT, 'https://api.open-meteo.com/v1/forecast');
   assert.equal(wind.OPEN_METEO_MODEL, 'ecmwf_ifs');
   assert.equal(wind.WIND_PANE_NAME, 'stormWindFieldPane');
   assert.equal(wind.WIND_PANE_Z_INDEX, 350);
+  assert.equal(wind.MAX_LOCAL_PATCHES, 3);
 
   {
     const north = wind.meteorologicalWindToUv(10, 0);
@@ -39,6 +41,22 @@ const wind = require('../analysis/wind-field-overlay.js');
   }
 
   {
+    const core = wind.buildStormCenteredGrid(
+      { key: 'SAUDEL', lat: 23, lon: 130, sourceCount: 4 },
+      { radiusKm: 360, rows: 13 }
+    );
+    assert.equal(core.kind, 'storm-core');
+    assert.equal(core.stormKey, 'SAUDEL');
+    assert.equal(core.rows, 13);
+    assert.equal(core.cols, 13);
+    assert.equal(core.points.length, 169);
+    assert.equal(core.centerLat, 23);
+    assert.equal(core.centerLon, 130);
+    assert.ok(core.latStep < 0.6);
+    assert.ok(core.lonStep < 0.7);
+  }
+
+  {
     const grid = {
       south: 0,
       north: 1,
@@ -59,6 +77,52 @@ const wind = require('../analysis/wind-field-overlay.js');
     assert.ok(Math.abs(center.u - 5) < 1e-9);
     assert.ok(Math.abs(center.v - 5) < 1e-9);
     assert.equal(wind.interpolateVector(grid, 3, 3), null);
+  }
+
+  {
+    const base = {
+      south: 0, north: 2, west: 0, east: 2,
+      rows: 2, cols: 2, latStep: 2, lonStep: 2,
+      vectors: Array.from({ length: 4 }, () => ({ u: 1, v: 0 }))
+    };
+    const local = {
+      stormKey: 'storm-a',
+      south: 0.5, north: 1.5, west: 0.5, east: 1.5,
+      rows: 2, cols: 2, latStep: 1, lonStep: 1,
+      vectors: Array.from({ length: 4 }, () => ({ u: 0, v: 5 }))
+    };
+    const refined = wind.interpolateAdaptiveVector(base, [local], 1, 1);
+    assert.equal(refined.refined, true);
+    assert.equal(refined.stormKey, 'storm-a');
+    assert.ok(Math.abs(refined.v - 5) < 1e-9);
+    const background = wind.interpolateAdaptiveVector(base, [local], 0.1, 0.1);
+    assert.equal(background.refined, false);
+    assert.ok(Math.abs(background.u - 1) < 1e-9);
+  }
+
+  {
+    const nowMs = Date.parse('2026-08-22T16:00:00Z');
+    const centers = wind.extractStormCenters([
+      {
+        observedAt: '2026-08-22T15:55:00Z',
+        group: { key: 'storm-a' },
+        sources: {
+          HKO: { current: { lat: 20, lon: 130 } },
+          CMA: { current: { lat: 22, lon: 132 } },
+          JMA: { current: { lat: 21, lon: 131 } }
+        }
+      },
+      {
+        observedAt: '2026-08-22T14:00:00Z',
+        group: { key: 'stale' },
+        sources: { HKO: { current: { lat: 10, lon: 110 } } }
+      }
+    ], { nowMs, maxAgeMs: 30 * 60 * 1000 });
+    assert.equal(centers.length, 1);
+    assert.equal(centers[0].key, 'storm-a');
+    assert.equal(centers[0].lat, 21);
+    assert.equal(centers[0].lon, 131);
+    assert.equal(centers[0].sourceCount, 3);
   }
 
   {
