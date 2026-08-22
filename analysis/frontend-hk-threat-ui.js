@@ -6,6 +6,8 @@
   'use strict';
 
   const VERSION = 'frontend-hk-threat-ui/v1';
+  const PROSPECTIVE_SCHEMA_VERSION = 'hk-beta-prospective-observation/v1';
+  const prospectiveObservations = new Map();
 
   function finite(value) {
     const number = Number(value);
@@ -49,6 +51,111 @@
         || typeof threat?.buildHkThreatAssessment !== 'function'
         || typeof forecast?.buildBasicHkSignalForecast !== 'function') return null;
     return { snapshot, impact, signal, threat, forecast };
+  }
+
+  function cloneSerializable(value) {
+    if (value == null) return value;
+    try { return JSON.parse(JSON.stringify(value)); }
+    catch { return null; }
+  }
+
+  function pointSummary(point) {
+    if (!point || typeof point !== 'object') return null;
+    return {
+      time: point.time ?? null,
+      baseTime: point.baseTime ?? null,
+      forecastHour: point.forecastHour ?? null,
+      lat: finite(point.lat),
+      lon: finite(point.lon),
+      maximumWind: point.maximumWind ?? null,
+      pressure: point.pressure ?? null,
+      intensity: point.intensity ?? null
+    };
+  }
+
+  function sourceObservation(source) {
+    const positions = Array.isArray(source?.positions) ? source.positions : [];
+    const forecast = Array.isArray(source?.forecast) ? source.forecast : [];
+    return {
+      agency: source?.agency ?? null,
+      sourceId: source?.sourceId ?? null,
+      bulletinTime: source?.bulletinTime ?? null,
+      positionCount: positions.length,
+      forecastCount: forecast.length,
+      current: pointSummary(positions[positions.length - 1]),
+      forecastStart: pointSummary(forecast[0]),
+      forecastEnd: pointSummary(forecast[forecast.length - 1]),
+      rawInput: cloneSerializable(source)
+    };
+  }
+
+  function engineVersionSummary() {
+    return {
+      ui: VERSION,
+      snapshot: root?.StormAnalysisCore?.VERSION ?? null,
+      impact: root?.StormHongKongImpactEngine?.VERSION ?? null,
+      signalInputs: root?.StormHkoSignalRiskInputs?.VERSION ?? null,
+      threatAssessment: root?.StormHkThreatAssessment?.VERSION ?? null,
+      basicForecast: root?.StormBasicHkSignalForecast?.VERSION ?? null
+    };
+  }
+
+  function compactAnalysis(result) {
+    return {
+      available: result?.available === true,
+      reason: result?.reason ?? null,
+      generatedAt: result?.generatedAt ?? null,
+      snapshotSchemaVersion: result?.snapshot?.schemaVersion ?? null,
+      impact: cloneSerializable({
+        schemaVersion: result?.impact?.schemaVersion ?? null,
+        closestApproach: result?.impact?.closestApproach ?? null,
+        trend: result?.impact?.trend ?? null,
+        uncertainty: result?.impact?.uncertainty ?? null
+      }),
+      signalInputs: cloneSerializable({
+        schemaVersion: result?.signalInputs?.schemaVersion ?? null,
+        coverage: result?.signalInputs?.coverage ?? null,
+        disagreement: result?.signalInputs?.disagreement ?? null,
+        featureVector: result?.signalInputs?.featureVector ?? null,
+        officialHkoWarningContext: result?.signalInputs?.officialHkoWarningContext ?? null
+      }),
+      threatAssessment: cloneSerializable({
+        schemaVersion: result?.threatAssessment?.schemaVersion ?? null,
+        summary: result?.threatAssessment?.summary ?? null,
+        analyzers: result?.threatAssessment?.analyzers ?? null,
+        timeline: result?.threatAssessment?.timeline ?? [],
+        semantics: result?.threatAssessment?.semantics ?? null
+      }),
+      basicForecast: cloneSerializable(result?.basicForecast ?? null)
+    };
+  }
+
+  function rememberProspectiveObservation(group, result) {
+    const sourceEntries = Object.entries(group?.sources || {})
+      .filter(([, source]) => source && typeof source === 'object')
+      .sort(([left], [right]) => left.localeCompare(right));
+    const sources = Object.fromEntries(sourceEntries.map(([agency, source]) => [agency, sourceObservation(source)]));
+    const sourceAgencies = Object.keys(sources);
+    const key = String(group?.key || group?.displayName || sourceAgencies.join('+') || 'unknown-group');
+    prospectiveObservations.set(key, {
+      schemaVersion: PROSPECTIVE_SCHEMA_VERSION,
+      observedAt: new Date().toISOString(),
+      group: {
+        key: group?.key ?? null,
+        displayName: group?.displayName ?? null,
+        nameTc: group?.nameTc ?? null,
+        nameEn: group?.nameEn ?? null
+      },
+      sourceAgencies,
+      sources,
+      engineVersions: engineVersionSummary(),
+      analysis: compactAnalysis(result)
+    });
+  }
+
+  function readProspectiveObservations() {
+    return cloneSerializable([...prospectiveObservations.values()]
+      .sort((left, right) => String(left?.group?.key || '').localeCompare(String(right?.group?.key || '')))) || [];
   }
 
   function analyzeGroup(group, options = {}) {
@@ -148,6 +255,7 @@
     if (!isBetaEnabled()) return '';
 
     const result = analyzeGroup(group, options);
+    rememberProspectiveObservation(group, result);
     if (!result.available) {
       return `<div class="hk-threat-summary" style="margin-top:9px;padding-top:8px;border-top:1px solid #292929;color:#777;font-size:.72rem;line-height:1.45">香港影響 Beta：暫未有足夠資料</div>`;
     }
@@ -185,6 +293,8 @@
 
   return Object.freeze({
     VERSION,
+    PROSPECTIVE_SCHEMA_VERSION,
+    readProspectiveObservations,
     isBetaEnabled,
     analyzeGroup,
     renderGroupSummary,
