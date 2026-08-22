@@ -1,0 +1,190 @@
+name: Record HKO tropical cyclone warning truth
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - analysis/hko-warning-truth.js
+      - scripts/capture-hko-warning-truth.mjs
+      - tests/hko-warning-truth.test.cjs
+      - .github/workflows/hko-warning-truth-recorder.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - analysis/hko-warning-truth.js
+      - scripts/capture-hko-warning-truth.mjs
+      - tests/hko-warning-truth.test.cjs
+      - .github/workflows/hko-warning-truth-recorder.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hko-warning-truth-recorder
+  cancel-in-progress: false
+
+env:
+  DATA_BRANCH: data/hko-warning-truth
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run HKO truth regression
+        run: |
+          set -euo pipefail
+          node --check analysis/hko-warning-truth.js
+          node --check scripts/capture-hko-warning-truth.mjs
+          node tests/hko-warning-truth.test.cjs
+
+      - name: Capture official HKO warning state
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          rm -f /tmp/hko-warning-truth.json
+          for attempt in 1 2 3; do
+            echo "capture attempt ${attempt}"
+            if node scripts/capture-hko-warning-truth.mjs > /tmp/hko-warning-truth.json; then
+              break
+            fi
+            rm -f /tmp/hko-warning-truth.json
+            if [[ "$attempt" -lt 3 ]]; then sleep 20; fi
+          done
+          test -s /tmp/hko-warning-truth.json
+
+      - name: Validate HKO truth contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '
+            .schemaVersion == "hko-warning-truth/v1" and
+            (.captureFingerprint | test("^[0-9a-f]{64}$")) and
+            (.truthFingerprint | test("^[0-9a-f]{64}$")) and
+            (.contextFingerprint | test("^[0-9a-f]{64}$")) and
+            .authority == "Hong Kong Observatory Open Data API" and
+            .truth.warningStatementCode == "WTCSGNL" and
+            (.truth.present | type == "boolean") and
+            (.context.pre8 | type == "array") and
+            (.context.specialWeatherTips | type == "array") and
+            (.sources | length == 3) and
+            (.sourcePayloads | has("warnsum")) and
+            (.sourcePayloads | has("warningInfo")) and
+            (.sourcePayloads | has("swt"))
+          ' /tmp/hko-warning-truth.json >/dev/null
+          jq '{retrievedAt,captureFingerprint,truthFingerprint,truth,context,sources}' /tmp/hko-warning-truth.json
+
+      - name: Check branch whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check origin/main...HEAD
+
+      - name: Persist HKO truth state
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin "$DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$DATA_BRANCH"
+            git switch -C "$DATA_BRANCH" FETCH_HEAD
+          else
+            git switch --orphan "$DATA_BRANCH"
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          fingerprint="$(jq -r '.captureFingerprint' /tmp/hko-warning-truth.json)"
+          existing="$(jq -r '.captureFingerprint // empty' latest.json 2>/dev/null || true)"
+          if [[ "$fingerprint" == "$existing" ]]; then
+            echo "HKO_TRUTH_NOOP=true"
+            echo "HKO_TRUTH_FINGERPRINT=$fingerprint"
+            exit 0
+          fi
+
+          previous_exists=false
+          previous_truth='null'
+          previous_truth_fingerprint=''
+          if [[ -s latest.json ]]; then
+            previous_exists=true
+            previous_truth="$(jq -c '.truth // null' latest.json)"
+            previous_truth_fingerprint="$(jq -r '.truthFingerprint // empty' latest.json)"
+          fi
+
+          retrieved_at="$(jq -r '.retrievedAt' /tmp/hko-warning-truth.json)"
+          truth_fingerprint="$(jq -r '.truthFingerprint' /tmp/hko-warning-truth.json)"
+          day_path="$(date -u -d "$retrieved_at" +'%Y/%m/%d')"
+          stamp="$(date -u -d "$retrieved_at" +'%Y%m%dT%H%M%SZ')"
+          short="${fingerprint:0:12}"
+          destination="observations/${day_path}/${stamp}-${short}.json"
+          mkdir -p "$(dirname "$destination")"
+          cp /tmp/hko-warning-truth.json "$destination"
+          cp /tmp/hko-warning-truth.json latest.json
+
+          jq -c '{schemaVersion,retrievedAt,captureFingerprint,truthFingerprint,contextFingerprint,sourceCommit,truth,context}' /tmp/hko-warning-truth.json >> index.ndjson
+
+          if [[ "$truth_fingerprint" != "$previous_truth_fingerprint" ]]; then
+            current_truth="$(jq -c '.truth' /tmp/hko-warning-truth.json)"
+            current_present="$(jq -r '.truth.present' /tmp/hko-warning-truth.json)"
+            current_code="$(jq -r '.truth.code // empty' /tmp/hko-warning-truth.json)"
+            current_action="$(jq -r '.truth.actionCode // empty' /tmp/hko-warning-truth.json)"
+            previous_present="$(jq -r '.present // false' <<<"$previous_truth")"
+            previous_code="$(jq -r '.code // empty' <<<"$previous_truth")"
+
+            if [[ "$previous_exists" != true ]]; then
+              event_type='BASELINE'
+            elif [[ "$current_action" == 'CANCEL' || "$current_code" == 'CANCEL' ]]; then
+              event_type='CANCEL'
+            elif [[ "$previous_present" != true && "$current_present" == true ]]; then
+              event_type='ISSUE'
+            elif [[ "$previous_present" == true && "$current_present" == true && "$previous_code" != "$current_code" ]]; then
+              event_type='SIGNAL_CHANGE'
+            elif [[ "$previous_present" == true && "$current_present" != true ]]; then
+              event_type='CLEAR_DETECTED'
+            else
+              event_type='TRUTH_UPDATE'
+            fi
+
+            official_time="$(jq -r '.truth.issueTime // .truth.updateTime // empty' /tmp/hko-warning-truth.json)"
+            if [[ -n "$official_time" ]]; then
+              time_source='HKO_OFFICIAL'
+            else
+              official_time="$retrieved_at"
+              time_source='POLL_DETECTION'
+            fi
+
+            jq -cn \
+              --arg schemaVersion 'hko-warning-truth-event/v1' \
+              --arg eventType "$event_type" \
+              --arg observedAt "$retrieved_at" \
+              --arg eventTime "$official_time" \
+              --arg timeSource "$time_source" \
+              --arg truthFingerprint "$truth_fingerprint" \
+              --arg captureFingerprint "$fingerprint" \
+              --argjson previousTruth "$previous_truth" \
+              --argjson currentTruth "$current_truth" \
+              '{schemaVersion:$schemaVersion,eventType:$eventType,observedAt:$observedAt,eventTime:$eventTime,timeSource:$timeSource,truthFingerprint:$truthFingerprint,captureFingerprint:$captureFingerprint,previousTruth:$previousTruth,currentTruth:$currentTruth}' \
+              >> truth-events.ndjson
+          fi
+
+          git add "$destination" latest.json index.ndjson
+          if [[ -f truth-events.ndjson ]]; then git add truth-events.ndjson; fi
+          git commit -m "Observe HKO warning truth ${stamp} ${short}"
+          git push origin "HEAD:${DATA_BRANCH}"
+          echo "HKO_TRUTH_STORED=$destination"
+          echo "HKO_TRUTH_FINGERPRINT=$fingerprint"
