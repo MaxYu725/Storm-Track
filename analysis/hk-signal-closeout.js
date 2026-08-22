@@ -122,6 +122,10 @@
     return `${fingerprint || ''}\u0000${groupKey || ''}`;
   }
 
+  function caseCaptureKey(caseId, fingerprint) {
+    return `${caseId || ''}\u0000${fingerprint || ''}`;
+  }
+
   function buildIdentityMap(caseIndex) {
     return new Map((caseIndex || []).map(row => [observationKey(row.captureFingerprint, row.rawGroupKey), row.caseId]));
   }
@@ -138,12 +142,21 @@
 
   function buildCaseTimelines(records, caseIndex) {
     const identityMap = buildIdentityMap(caseIndex);
+    const trustedFingerprints = new Set((records || []).map(record => record?.captureFingerprint).filter(Boolean));
+    const counts = new Map();
+    for (const row of caseIndex || []) {
+      if (!row?.caseId || !row?.captureFingerprint || !trustedFingerprints.has(row.captureFingerprint)) continue;
+      const captureKey = caseCaptureKey(row.caseId, row.captureFingerprint);
+      counts.set(captureKey, (counts.get(captureKey) || 0) + 1);
+    }
+    const ambiguous = new Set([...counts.entries()].filter(([, count]) => count > 1).map(([captureKey]) => captureKey));
     const timelines = new Map();
     for (const record of [...(records || [])].sort((a, b) => parseTimeMs(a.capturedAt) - parseTimeMs(b.capturedAt))) {
       for (const observation of record?.observations || []) {
         const groupKey = observation?.group?.key || null;
         const caseId = identityMap.get(observationKey(record.captureFingerprint, groupKey));
         if (!caseId) continue;
+        if (ambiguous.has(caseCaptureKey(caseId, record.captureFingerprint))) continue;
         if (!timelines.has(caseId)) timelines.set(caseId, []);
         timelines.get(caseId).push({
           caseId,

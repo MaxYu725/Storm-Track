@@ -14,6 +14,7 @@ on:
       - scripts/apply-hk-signal-closeouts.mjs
       - tests/hk-signal-evaluator.test.cjs
       - tests/hk-signal-closeout.test.cjs
+      - tests/hk-signal-ambiguous-case-capture.test.cjs
       - .github/workflows/hk-signal-evaluator.yml
   pull_request:
     branches:
@@ -25,6 +26,7 @@ on:
       - scripts/apply-hk-signal-closeouts.mjs
       - tests/hk-signal-evaluator.test.cjs
       - tests/hk-signal-closeout.test.cjs
+      - tests/hk-signal-ambiguous-case-capture.test.cjs
       - .github/workflows/hk-signal-evaluator.yml
 
 permissions:
@@ -61,6 +63,7 @@ jobs:
           node --check scripts/apply-hk-signal-closeouts.mjs
           node tests/hk-signal-evaluator.test.cjs
           node tests/hk-signal-closeout.test.cjs
+          node tests/hk-signal-ambiguous-case-capture.test.cjs
 
       - name: Load immutable prospective and HKO truth corpora
         shell: bash
@@ -101,6 +104,9 @@ jobs:
             (.closeoutPolicy.inactiveGraceHours == 24) and
             (.status == "awaiting-tc1" or .status == "evaluated" or .status == "truth-unresolved") and
             (.prospective.trustedRecorderSchema == "beta-prospective-recorder/v2") and
+            (.prospective.excludedAmbiguousCaseCaptureCount | type == "number") and
+            (.prospective.excludedAmbiguousCaseCaptures | type == "array") and
+            (all(.prospective.excludedAmbiguousCaseCaptures[]; (.caseId | type == "string") and (.captureFingerprint | type == "string") and (.rawGroupKeys | type == "array"))) and
             (.hkoTruth.signalEventCounts | has("T1") and has("T3") and has("T8")) and
             (.evaluations | type == "array") and
             (.closeouts | type == "array") and
