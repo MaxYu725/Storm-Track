@@ -7,7 +7,7 @@ on:
       - main
     paths:
       - historical/cases/**
-      - scripts/cwa-historical-adapter.mjs
+      - scripts/cma-historical-adapter.mjs
       - tests/historical-case-replay-inputs.test.mjs
       - .github/workflows/historical-case-replay-inputs.yml
 
@@ -30,22 +30,22 @@ jobs:
       - name: Validate local contracts
         run: |
           set -euo pipefail
-          node --check scripts/cwa-historical-adapter.mjs
+          node --check scripts/cma-historical-adapter.mjs
           node tests/historical-case-replay-inputs.test.mjs
 
-      - name: Probe official CWA archive index for Noul
+      - name: Extract official CMA/NMC as-issued history for Noul
         run: |
           set -euo pipefail
-          node scripts/cwa-historical-adapter.mjs historical/cases/2026-noul.json > /tmp/noul-cwa.json
-          jq -e '.caseId=="2026-noul" and .archive.archiveTyphoonId=="202612" and .archive.nameEn=="NOUL" and .archive.warningBulletinCount==12 and .readiness.indexVerified==true and .readiness.asIssuedForecastPointsExtracted==false and .semantics.currentV1ModelModified==false' /tmp/noul-cwa.json >/dev/null
-          jq '{caseId,readiness,relevantEndpointCandidates:[.discovery.endpointCandidates[]|select(test("typhoon_detail|warning|warn|product|json|api";"i"))]}' /tmp/noul-cwa.json
+          node scripts/cma-historical-adapter.mjs historical/cases/2026-noul.json --summary > /tmp/noul-cma.json
+          jq -e '.schemaVersion=="cma-historical-adapter/v1" and .caseId=="2026-noul" and .source.agency=="CMA" and .source.storm.nameEn=="NOUL" and .snapshotCount>0 and .semantics.asIssuedForecastHistory==true and .semantics.HkoTruthUsedAsForecastInput==false and .semantics.currentV1ModelModified==false' /tmp/noul-cma.json >/dev/null
+          cat /tmp/noul-cma.json
 
-      - name: Probe official CWA archive index for Ragasa
+      - name: Extract official CMA/NMC as-issued history for Ragasa
         run: |
           set -euo pipefail
-          node scripts/cwa-historical-adapter.mjs historical/cases/2025-ragasa.json > /tmp/ragasa-cwa.json
-          jq -e '.caseId=="2025-ragasa" and .archive.archiveTyphoonId=="202518" and .archive.nameEn=="RAGASA" and .archive.warningBulletinCount==21 and .readiness.indexVerified==true and .readiness.asIssuedForecastPointsExtracted==false and .semantics.currentV1ModelModified==false' /tmp/ragasa-cwa.json >/dev/null
-          jq '{caseId,readiness,relevantEndpointCandidates:[.discovery.endpointCandidates[]|select(test("typhoon_detail|warning|warn|product|json|api";"i"))]}' /tmp/ragasa-cwa.json
+          node scripts/cma-historical-adapter.mjs historical/cases/2025-ragasa.json --summary > /tmp/ragasa-cma.json
+          jq -e '.schemaVersion=="cma-historical-adapter/v1" and .caseId=="2025-ragasa" and .source.agency=="CMA" and .source.storm.nameEn=="RAGASA" and .snapshotCount>0 and .semantics.asIssuedForecastHistory==true and .semantics.HkoTruthUsedAsForecastInput==false and .semantics.currentV1ModelModified==false' /tmp/ragasa-cma.json >/dev/null
+          cat /tmp/ragasa-cma.json
 
       - name: Check whitespace
         run: git diff --check
