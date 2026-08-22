@@ -38,14 +38,14 @@ jobs:
           set -euo pipefail
           node scripts/cwa-historical-adapter.mjs historical/cases/2026-noul.json > /tmp/noul-cwa.json
           jq -e '.caseId=="2026-noul" and .archive.archiveTyphoonId=="202612" and .archive.nameEn=="NOUL" and .archive.warningBulletinCount==12 and .readiness.indexVerified==true and .readiness.asIssuedForecastPointsExtracted==false and .semantics.currentV1ModelModified==false' /tmp/noul-cwa.json >/dev/null
-          jq '{caseId,archive,readiness,semantics}' /tmp/noul-cwa.json
+          jq '{caseId,readiness,relevantEndpointCandidates:[.discovery.endpointCandidates[]|select(test("typhoon_detail|warning|warn|product|json|api";"i"))]}' /tmp/noul-cwa.json
 
       - name: Probe official CWA archive index for Ragasa
         run: |
           set -euo pipefail
           node scripts/cwa-historical-adapter.mjs historical/cases/2025-ragasa.json > /tmp/ragasa-cwa.json
           jq -e '.caseId=="2025-ragasa" and .archive.archiveTyphoonId=="202518" and .archive.nameEn=="RAGASA" and .archive.warningBulletinCount==21 and .readiness.indexVerified==true and .readiness.asIssuedForecastPointsExtracted==false and .semantics.currentV1ModelModified==false' /tmp/ragasa-cwa.json >/dev/null
-          jq '{caseId,archive,readiness,semantics}' /tmp/ragasa-cwa.json
+          jq '{caseId,readiness,relevantEndpointCandidates:[.discovery.endpointCandidates[]|select(test("typhoon_detail|warning|warn|product|json|api";"i"))]}' /tmp/ragasa-cwa.json
 
       - name: Check whitespace
         run: git diff --check
