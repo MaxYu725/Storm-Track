@@ -3,6 +3,11 @@
 const assert = require('node:assert/strict');
 const identity = require('../analysis/storm-case-identity.js');
 
+assert.equal(identity.isGenericName('热带低压'), true, 'simplified Chinese tropical depression label must be generic');
+assert.equal(identity.isGenericName('热带低气压'), true, 'simplified Chinese tropical depression variant must be generic');
+assert.equal(identity.isGenericName('热带风暴'), true, 'simplified Chinese tropical storm label must be generic');
+assert.equal(identity.isGenericName('GAENARI'), false, 'formal storm name must remain specific');
+
 function source(agency, sourceId, time, lat, lon) {
   return {
     agency,
@@ -84,6 +89,23 @@ const tc2623Case = result.cases.find(item => item.caseId === 'STC-2026-JMA-TC262
 assert.ok(tc2623Case.groupKeys.includes('TC2623'));
 assert.ok(tc2623Case.groupKeys.includes('BANYAN'));
 assert.ok(tc2623Case.names.includes('BANYAN'));
+
+const simplifiedRename = identity.reconcileProspectiveRecords([
+  record('2026-08-22T03:00:00Z', 'gaenari-1', [
+    observation('热带低压', '热带低压', 'nameless', {
+      CMA: source('CMA', '3308554', '2026-08-22T03:00:00Z', 25.9, 124.7)
+    })
+  ]),
+  record('2026-08-22T06:00:00Z', 'gaenari-2', [
+    observation('GAENARI', '簡拉維', 'GAENARI', {
+      JMA: source('JMA', 'TC2623', '2026-08-22T06:00:00Z', 25.5, 124.0)
+    })
+  ])
+]);
+assert.equal(simplifiedRename.caseCount, 1, 'simplified generic CMA identity must not block later GAENARI continuity');
+assert.equal(simplifiedRename.index[1].resolution.reason, 'physical-continuity');
+assert.equal(simplifiedRename.cases[0].names.includes('热带低压'), false, 'generic simplified label must not enter the specific-name registry');
+assert.equal(simplifiedRename.cases[0].names.includes('GAENARI'), true);
 
 // When one agency disappears and another starts tracking the same unnamed cyclone, cautious physical continuity may bridge the gap.
 const handoff = identity.reconcileProspectiveRecords([
