@@ -6,7 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormWindField(root) {
   'use strict';
 
-  const VERSION = 'wind-field-overlay/v1';
+  const VERSION = 'wind-field-overlay/v1.1';
   const OPEN_METEO_ENDPOINT = 'https://api.open-meteo.com/v1/ecmwf';
   const CACHE_PREFIX = 'storm-track-wind-field-v1:';
   const CACHE_TTL_MS = 20 * 60 * 1000;
@@ -14,13 +14,18 @@
   const REQUEST_TIMEOUT_MS = 12000;
   const MAP_READY_EVENT = 'stormtrack:map-ready';
 
-  function finite(value) {
+  const finite = value => {
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
-  }
+  };
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-  function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
+  function parseGmtTime(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const text = String(value).trim();
+    const normalized = /(?:Z|[+-]\d\d:\d\d)$/i.test(text) ? text : `${text}Z`;
+    const ms = Date.parse(normalized);
+    return Number.isFinite(ms) ? ms : null;
   }
 
   function meteorologicalWindToUv(speedMs, directionDeg) {
@@ -28,11 +33,7 @@
     const direction = finite(directionDeg);
     if (speed === null || direction === null || speed < 0) return null;
     const radians = direction * Math.PI / 180;
-    return {
-      u: -speed * Math.sin(radians),
-      v: -speed * Math.cos(radians),
-      speed
-    };
+    return { u: -speed * Math.sin(radians), v: -speed * Math.cos(radians), speed };
   }
 
   function buildCoordinateGrid(bounds, options = {}) {
@@ -58,23 +59,19 @@
     const points = [];
 
     for (let row = 0; row < rows; row += 1) {
-      const lat = paddedSouth + latStep * row;
       for (let col = 0; col < cols; col += 1) {
-        const lon = paddedWest + lonStep * col;
-        points.push({ lat, lon, row, col });
+        points.push({
+          lat: paddedSouth + latStep * row,
+          lon: paddedWest + lonStep * col,
+          row,
+          col
+        });
       }
     }
 
     return {
-      south: paddedSouth,
-      north: paddedNorth,
-      west: paddedWest,
-      east: paddedEast,
-      rows,
-      cols,
-      latStep,
-      lonStep,
-      points
+      south: paddedSouth, north: paddedNorth, west: paddedWest, east: paddedEast,
+      rows, cols, latStep, lonStep, points
     };
   }
 
@@ -93,19 +90,15 @@
     const col1 = clamp(col0 + 1, 0, grid.cols - 1);
     const ty = clamp(rowFloat - row0, 0, 1);
     const tx = clamp(colFloat - col0, 0, 1);
-    const vectorAt = (row, col) => grid.vectors[row * grid.cols + col] || null;
-    const q00 = vectorAt(row0, col0);
-    const q10 = vectorAt(row0, col1);
-    const q01 = vectorAt(row1, col0);
-    const q11 = vectorAt(row1, col1);
+    const at = (row, col) => grid.vectors[row * grid.cols + col] || null;
+    const q00 = at(row0, col0), q10 = at(row0, col1), q01 = at(row1, col0), q11 = at(row1, col1);
     if (![q00, q10, q01, q11].every(vector => vector && Number.isFinite(vector.u) && Number.isFinite(vector.v))) return null;
 
-    const mix = key => (
-      q00[key] * (1 - tx) * (1 - ty)
-      + q10[key] * tx * (1 - ty)
-      + q01[key] * (1 - tx) * ty
-      + q11[key] * tx * ty
-    );
+    const mix = key =>
+      q00[key] * (1 - tx) * (1 - ty) +
+      q10[key] * tx * (1 - ty) +
+      q01[key] * (1 - tx) * ty +
+      q11[key] * tx * ty;
     const u = mix('u');
     const v = mix('v');
     return { u, v, speed: Math.hypot(u, v) };
@@ -126,31 +119,43 @@
     return south >= grid.south && north <= grid.north && west >= grid.west && east <= grid.east;
   }
 
+  function firstHourlyWind(item) {
+    const hourly = item?.hourly;
+    const speed = Array.isArray(hourly?.wind_speed_10m) ? hourly.wind_speed_10m[0] : null;
+    const direction = Array.isArray(hourly?.wind_direction_10m) ? hourly.wind_direction_10m[0] : null;
+    const time = Array.isArray(hourly?.time) ? hourly.time[0] : null;
+    return { speed, direction, time };
+  }
+
   function parseOpenMeteoGrid(spec, payload) {
     const rows = Array.isArray(payload) ? payload : [payload];
-    if (rows.length !== spec.points.length) throw new Error(`wind-grid-size-mismatch:${rows.length}/${spec.points.length}`);
+    if (rows.length !== spec.points.length) {
+      throw new Error(`wind-grid-size-mismatch:${rows.length}/${spec.points.length}`);
+    }
     let validTime = null;
     const vectors = rows.map((item, index) => {
-      const current = item?.current || null;
-      const vector = meteorologicalWindToUv(current?.wind_speed_10m, current?.wind_direction_10m);
+      const hourly = firstHourlyWind(item);
+      const vector = meteorologicalWindToUv(hourly.speed, hourly.direction);
       if (!vector) throw new Error(`wind-grid-invalid-vector:${index}`);
-      if (!validTime && current?.time) validTime = current.time;
+      if (!validTime && hourly.time) validTime = hourly.time;
       return vector;
     });
+    if (parseGmtTime(validTime) === null) throw new Error('wind-grid-invalid-time');
     return { ...spec, vectors, validTime, fetchedAt: new Date().toISOString() };
   }
 
   async function fetchWindGrid(spec, options = {}) {
     const fetchImpl = options.fetchImpl || root?.fetch;
     if (typeof fetchImpl !== 'function') throw new Error('fetch-unavailable');
-    const latitudes = spec.points.map(point => point.lat.toFixed(3)).join(',');
-    const longitudes = spec.points.map(point => point.lon.toFixed(3)).join(',');
     const params = new URLSearchParams({
-      latitude: latitudes,
-      longitude: longitudes,
-      current: 'wind_speed_10m,wind_direction_10m',
+      latitude: spec.points.map(point => point.lat.toFixed(3)).join(','),
+      longitude: spec.points.map(point => point.lon.toFixed(3)).join(','),
+      hourly: 'wind_speed_10m,wind_direction_10m',
+      forecast_hours: '1',
       wind_speed_unit: 'ms',
-      timezone: 'GMT'
+      timezone: 'GMT',
+      cell_selection: 'nearest',
+      elevation: 'nan'
     });
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timeout = setTimeout(() => controller?.abort(), options.timeoutMs ?? REQUEST_TIMEOUT_MS);
@@ -184,7 +189,7 @@
     try {
       root?.sessionStorage?.setItem(`${CACHE_PREFIX}${signature}`, JSON.stringify(grid));
     } catch {
-      // Session cache is optional; quota/private-mode failures must not affect rendering.
+      // Optional cache only.
     }
   }
 
@@ -206,6 +211,7 @@
     const panel = document?.getElementById('storm-panel');
     const mapContainer = document?.getElementById('map-container');
     if (!panel || !mapContainer) return null;
+
     let checkbox = document.getElementById('toggle-model-wind-field');
     let status = document.getElementById('model-wind-field-status');
     let hud = document.getElementById('storm-wind-field-hud');
@@ -214,6 +220,7 @@
       const title = document.createElement('div');
       title.className = 'panel-title';
       title.textContent = '模式風場 Beta';
+
       const label = document.createElement('label');
       label.className = 'toggle-row';
       checkbox = document.createElement('input');
@@ -221,16 +228,17 @@
       checkbox.type = 'checkbox';
       label.appendChild(checkbox);
       label.appendChild(document.createTextNode('ECMWF IFS 10 m 動畫風場'));
+
       status = document.createElement('div');
       status.id = 'model-wind-field-status';
       status.className = 'storm-wind-status';
       status.textContent = '預設關閉 · 模式資料，非官方熱帶氣旋風圈';
 
-      const firstLegendTitle = Array.from(panel.querySelectorAll('.panel-title'))
+      const anchor = Array.from(panel.querySelectorAll('.panel-title'))
         .find(node => node.textContent?.trim() === '強度顏色');
-      panel.insertBefore(title, firstLegendTitle || null);
-      panel.insertBefore(label, firstLegendTitle || null);
-      panel.insertBefore(status, firstLegendTitle || null);
+      panel.insertBefore(title, anchor || null);
+      panel.insertBefore(label, anchor || null);
+      panel.insertBefore(status, anchor || null);
     }
 
     if (!hud) {
@@ -245,10 +253,15 @@
   }
 
   function formatValidTime(value) {
-    const ms = Date.parse(value || '');
-    if (!Number.isFinite(ms)) return '--';
+    const ms = parseGmtTime(value);
+    if (ms === null) return '--';
     return new Intl.DateTimeFormat('zh-HK', {
-      timeZone: 'Asia/Hong_Kong', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
+      timeZone: 'Asia/Hong_Kong',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
     }).format(new Date(ms)).replace(',', '');
   }
 
@@ -258,25 +271,16 @@
     installStyles(document);
 
     const state = {
-      enabled: false,
-      grid: null,
-      canvas: null,
-      ctx: null,
-      particles: [],
-      frame: null,
-      lastFrameAt: 0,
-      lastFetchAt: 0,
-      fetchSerial: 0,
-      moveTimer: null,
+      enabled: false, grid: null, canvas: null, ctx: null, particles: [],
+      frame: null, lastFrameAt: 0, lastFetchAt: 0, fetchSerial: 0, moveTimer: null,
       controls: null,
       reduceMotion: root.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true
     };
 
     const setStatus = (text, kind = 'normal') => {
-      if (state.controls?.status) {
-        state.controls.status.textContent = text;
-        state.controls.status.style.color = kind === 'error' ? '#e98181' : (kind === 'ok' ? '#aaa' : '#777');
-      }
+      if (!state.controls?.status) return;
+      state.controls.status.textContent = text;
+      state.controls.status.style.color = kind === 'error' ? '#e98181' : (kind === 'ok' ? '#aaa' : '#777');
     };
 
     const updateHud = () => {
@@ -290,7 +294,31 @@
       hud.innerHTML = `ECMWF IFS · 10 m · ${formatValidTime(state.grid.validTime)} HKT<br><span style="color:#777">模式風場 · 非 HKO/CMA/JMA/CWA 官方路徑</span> · <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>`;
     };
 
-    const resizeCanvas = () => {
+    function particleCount() {
+      const size = map.getSize();
+      const area = Math.max(1, size.x * size.y);
+      const mobile = root.innerWidth <= 640;
+      return clamp(Math.round(area * (state.reduceMotion ? 0 : (mobile ? 0.00055 : 0.00072))), 140, mobile ? 360 : 620);
+    }
+
+    function seedParticle(particle) {
+      const size = map.getSize();
+      particle.x = Math.random() * size.x;
+      particle.y = Math.random() * size.y;
+      particle.age = Math.floor(Math.random() * 70);
+      particle.maxAge = 45 + Math.floor(Math.random() * 55);
+      return particle;
+    }
+
+    function seedParticles() {
+      state.particles = Array.from({ length: particleCount() }, () => seedParticle({}));
+      if (state.ctx) {
+        const size = map.getSize();
+        state.ctx.clearRect(0, 0, size.x, size.y);
+      }
+    }
+
+    function resizeCanvas() {
       if (!state.canvas || !state.ctx) return;
       const size = map.getSize();
       const ratio = clamp(root.devicePixelRatio || 1, 1, 2);
@@ -300,44 +328,22 @@
       state.canvas.style.height = `${size.y}px`;
       state.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       seedParticles();
-    };
+    }
 
-    const ensureCanvas = () => {
+    function ensureCanvas() {
       if (state.canvas?.isConnected) return state.canvas;
       const container = map.getContainer?.();
       if (!container) return null;
-      const canvas = document.createElement('canvas');
-      canvas.className = 'storm-wind-canvas';
-      canvas.setAttribute('aria-hidden', 'true');
-      container.appendChild(canvas);
-      state.canvas = canvas;
-      state.ctx = canvas.getContext('2d', { alpha: true });
+      state.canvas = document.createElement('canvas');
+      state.canvas.className = 'storm-wind-canvas';
+      state.canvas.setAttribute('aria-hidden', 'true');
+      container.appendChild(state.canvas);
+      state.ctx = state.canvas.getContext('2d', { alpha: true });
       resizeCanvas();
-      return canvas;
-    };
+      return state.canvas;
+    }
 
-    const particleCount = () => {
-      const size = map.getSize();
-      const area = Math.max(1, size.x * size.y);
-      const base = state.reduceMotion ? 0 : (root.innerWidth <= 640 ? 0.00055 : 0.00072);
-      return clamp(Math.round(area * base), 140, root.innerWidth <= 640 ? 360 : 620);
-    };
-
-    const seedParticle = particle => {
-      const size = map.getSize();
-      particle.x = Math.random() * size.x;
-      particle.y = Math.random() * size.y;
-      particle.age = Math.floor(Math.random() * 70);
-      particle.maxAge = 45 + Math.floor(Math.random() * 55);
-      return particle;
-    };
-
-    const seedParticles = () => {
-      state.particles = Array.from({ length: particleCount() }, () => seedParticle({}));
-      if (state.ctx && state.canvas) state.ctx.clearRect(0, 0, state.canvas.width, state.canvas.height);
-    };
-
-    const renderStaticVectors = () => {
+    function renderStaticVectors() {
       if (!state.enabled || !state.grid || !state.ctx) return;
       const ctx = state.ctx;
       const size = map.getSize();
@@ -345,6 +351,7 @@
       ctx.strokeStyle = 'rgba(210,240,255,.65)';
       ctx.fillStyle = 'rgba(210,240,255,.65)';
       ctx.lineWidth = 1;
+
       for (let y = 30; y < size.y; y += 58) {
         for (let x = 30; x < size.x; x += 58) {
           const latlng = map.containerPointToLatLng([x, y]);
@@ -354,8 +361,7 @@
           const length = clamp(6 + vector.speed * 0.5, 7, 20);
           const dx = vector.u / norm * length;
           const dy = -vector.v / norm * length;
-          const endX = x + dx;
-          const endY = y + dy;
+          const endX = x + dx, endY = y + dy;
           ctx.beginPath();
           ctx.moveTo(x, y);
           ctx.lineTo(endX, endY);
@@ -369,9 +375,9 @@
           ctx.fill();
         }
       }
-    };
+    }
 
-    const animate = timestamp => {
+    function animate(timestamp) {
       state.frame = null;
       if (!state.enabled || !state.grid || !state.ctx || document.visibilityState === 'hidden') return;
       if (state.reduceMotion) {
@@ -383,6 +389,7 @@
         return;
       }
       state.lastFrameAt = timestamp;
+
       const ctx = state.ctx;
       const size = map.getSize();
       ctx.globalCompositeOperation = 'destination-in';
@@ -416,9 +423,9 @@
         particle.y = nextY;
       }
       state.frame = root.requestAnimationFrame(animate);
-    };
+    }
 
-    const startAnimation = () => {
+    function startAnimation() {
       if (!state.enabled || !state.grid) return;
       ensureCanvas();
       if (state.reduceMotion) {
@@ -426,30 +433,36 @@
         return;
       }
       if (!state.frame) state.frame = root.requestAnimationFrame(animate);
-    };
+    }
 
-    const stopAnimation = (clear = true) => {
+    function stopAnimation(clear = true) {
       if (state.frame) root.cancelAnimationFrame(state.frame);
       state.frame = null;
       if (clear && state.ctx) {
         const size = map.getSize();
         state.ctx.clearRect(0, 0, size.x, size.y);
       }
-    };
+    }
 
-    const refresh = async ({ force = false } = {}) => {
+    async function refresh({ force = false } = {}) {
       if (!state.enabled) return;
       const now = Date.now();
       if (!force && state.grid && currentGridCovers(state.grid, map.getBounds()) && now - state.lastFetchAt < MIN_REFRESH_MS) {
         startAnimation();
         return;
       }
+
       const mobile = root.innerWidth <= 640;
-      const spec = buildCoordinateGrid(map.getBounds(), { rows: mobile ? 8 : 10, cols: mobile ? 10 : 12, padRatio: 0.18 });
+      const spec = buildCoordinateGrid(map.getBounds(), {
+        rows: mobile ? 8 : 10,
+        cols: mobile ? 10 : 12,
+        padRatio: 0.18
+      });
       if (!spec) {
         setStatus('此地圖範圍暫不支援風場', 'error');
         return;
       }
+
       const signature = gridSignature(spec);
       const cached = !force ? readCachedGrid(signature) : null;
       if (cached) {
@@ -479,26 +492,26 @@
         updateHud();
         stopAnimation(false);
       }
-    };
+    }
 
-    const enable = async () => {
+    async function enable() {
       if (state.enabled) return;
       state.enabled = true;
       ensureCanvas();
       updateHud();
-      await refresh({ force: false });
-    };
+      await refresh();
+    }
 
-    const disable = () => {
+    function disable() {
       if (!state.enabled) return;
       state.enabled = false;
       state.fetchSerial += 1;
       stopAnimation(true);
       state.controls?.hud?.classList.add('hidden');
       setStatus('已關閉 · 模式資料，非官方熱帶氣旋風圈');
-    };
+    }
 
-    const scheduleRefresh = () => {
+    function scheduleRefresh() {
       if (!state.enabled) return;
       clearTimeout(state.moveTimer);
       state.moveTimer = setTimeout(() => {
@@ -506,15 +519,12 @@
           seedParticles();
           startAnimation();
         } else {
-          refresh({ force: false });
+          refresh();
         }
       }, 450);
-    };
+    }
 
-    state.controls = installControls(document, checked => {
-      if (checked) enable();
-      else disable();
-    });
+    state.controls = installControls(document, checked => checked ? enable() : disable());
     if (!state.controls) return null;
 
     map.on('movestart zoomstart', () => {
@@ -532,11 +542,12 @@
     });
 
     return Object.freeze({
-      VERSION,
-      enable,
-      disable,
-      refresh,
-      getState: () => ({ enabled: state.enabled, validTime: state.grid?.validTime || null, fetchedAt: state.grid?.fetchedAt || null })
+      VERSION, enable, disable, refresh,
+      getState: () => ({
+        enabled: state.enabled,
+        validTime: state.grid?.validTime || null,
+        fetchedAt: state.grid?.fetchedAt || null
+      })
     });
   }
 
@@ -560,6 +571,7 @@
   return Object.freeze({
     VERSION,
     OPEN_METEO_ENDPOINT,
+    parseGmtTime,
     meteorologicalWindToUv,
     buildCoordinateGrid,
     interpolateVector,
