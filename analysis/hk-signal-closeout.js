@@ -281,7 +281,10 @@
       const absenceMs = parseTimeMs(absence.capturedAt);
       const closedMs = absenceMs + INACTIVE_GRACE_HOURS * 3600000;
       if (asOfMs < closedMs) continue;
-      const firstSeenMs = parseTimeMs(item.firstSeen) || timeline.length ? parseTimeMs(timeline[0]?.capturedAt) : lastPresentMs;
+      const parsedFirstSeenMs = parseTimeMs(item.firstSeen);
+      const firstSeenMs = Number.isFinite(parsedFirstSeenMs)
+        ? parsedFirstSeenMs
+        : (timeline.length ? parseTimeMs(timeline[0]?.capturedAt) : lastPresentMs);
       if (unresolvedBetween(evaluations, Number.isFinite(firstSeenMs) ? firstSeenMs : lastPresentMs, closedMs)) {
         blocked.push({ caseId, reason: 'unresolved-truth-event-during-no-signal-case', from: item.firstSeen || timeline[0]?.capturedAt || null, to: new Date(closedMs).toISOString() });
         continue;
