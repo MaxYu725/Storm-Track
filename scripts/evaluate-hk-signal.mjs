@@ -71,6 +71,11 @@ function eventMs(event) {
   return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
 }
 
+function latestTimestamp(...values) {
+  const times = values.map(value => Date.parse(value || '')).filter(Number.isFinite);
+  return times.length ? new Date(Math.max(...times)).toISOString() : new Date(0).toISOString();
+}
+
 const caseRegistry = readJsonIfExists(path.join(prospectiveDir, 'case-registry.json'), {
   schemaVersion: 'storm-case-identity/v1',
   reconciledThrough: null,
@@ -244,7 +249,7 @@ function latestPrediction(caseId) {
 }
 
 const pseudoEvent = {
-  eventTime: latestTruth?.retrievedAt || caseRegistry?.reconciledThrough || new Date(0).toISOString(),
+  eventTime: latestTimestamp(latestTruth?.retrievedAt, caseRegistry?.reconciledThrough),
   currentTruth: latestTruth?.truth || null
 };
 const candidates = evaluator.candidateCasesForEvent(pseudoEvent, evaluationCaseIndex);
