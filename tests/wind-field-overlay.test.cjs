@@ -4,12 +4,56 @@ const assert = require('node:assert/strict');
 const wind = require('../analysis/wind-field-overlay.js');
 
 (async () => {
-  assert.equal(wind.VERSION, 'wind-field-overlay/v1.4');
+  assert.equal(wind.VERSION, 'wind-field-overlay/v1.5');
   assert.equal(wind.OPEN_METEO_ENDPOINT, 'https://api.open-meteo.com/v1/forecast');
   assert.equal(wind.OPEN_METEO_MODEL, 'ecmwf_ifs');
   assert.equal(wind.WIND_PANE_NAME, 'stormWindFieldPane');
   assert.equal(wind.WIND_PANE_Z_INDEX, 350);
-  assert.equal(wind.MAX_LOCAL_PATCHES, 3);
+  assert.equal(wind.MAX_LOCAL_PATCHES, 2);
+  assert.equal(wind.RATE_LIMIT_BACKOFF_MS, 65 * 1000);
+
+  {
+    const mobileWide = wind.samplingProfile({ mobile: true, zoom: 4 });
+    assert.deepEqual(
+      { baseRows: mobileWide.baseRows, baseCols: mobileWide.baseCols, coreRows: mobileWide.coreRows, coreCols: mobileWide.coreCols },
+      { baseRows: 7, baseCols: 9, coreRows: 9, coreCols: 9 }
+    );
+    assert.equal(mobileWide.coreRadiusKm, 460);
+    assert.equal(mobileWide.maxLocalPatches, 2);
+
+    const mobileClose = wind.samplingProfile({ mobile: true, zoom: 6 });
+    assert.equal(mobileClose.baseRows, 7);
+    assert.equal(mobileClose.baseCols, 9);
+    assert.equal(mobileClose.coreRows, 11);
+    assert.equal(mobileClose.coreCols, 11);
+    assert.equal(mobileClose.coreRadiusKm, 320);
+    assert.equal(mobileClose.maxLocalPatches, 1);
+
+    const desktopWide = wind.samplingProfile({ mobile: false, zoom: 4 });
+    assert.equal(desktopWide.baseRows, 8);
+    assert.equal(desktopWide.baseCols, 10);
+
+    const mobileWideLocations =
+      mobileWide.baseRows * mobileWide.baseCols +
+      mobileWide.maxLocalPatches * mobileWide.coreRows * mobileWide.coreCols;
+    const mobileCloseLocations =
+      mobileClose.baseRows * mobileClose.baseCols +
+      mobileClose.maxLocalPatches * mobileClose.coreRows * mobileClose.coreCols;
+    assert.ok(mobileWideLocations <= 225);
+    assert.ok(mobileCloseLocations <= 184);
+  }
+
+  {
+    const snapped = wind.snapStormCenter({ key: 'a', lat: 20.12, lon: 130.13 });
+    assert.equal(snapped.lat, 20);
+    assert.equal(snapped.lon, 130.25);
+    assert.equal(snapped.key, 'a');
+  }
+
+  {
+    assert.equal(wind.isRateLimitError(new Error('wind-http-429:Minutely API request limit exceeded')), true);
+    assert.equal(wind.isRateLimitError(new Error('wind-http-400:test')), false);
+  }
 
   {
     const north = wind.meteorologicalWindToUv(10, 0);
@@ -187,6 +231,23 @@ const wind = require('../analysis/wind-field-overlay.js');
         })
       }),
       /wind-http-400:test-api-reason/
+    );
+  }
+
+  {
+    const spec = wind.buildCoordinateGrid(
+      { south: 10, north: 12, west: 100, east: 102 },
+      { rows: 4, cols: 4, padRatio: 0 }
+    );
+    await assert.rejects(
+      wind.fetchWindGrid(spec, {
+        fetchImpl: async () => ({
+          ok: false,
+          status: 429,
+          json: async () => ({ reason: 'Minutely API request limit exceeded' })
+        })
+      }),
+      /wind-http-429:Minutely API request limit exceeded/
     );
   }
 
