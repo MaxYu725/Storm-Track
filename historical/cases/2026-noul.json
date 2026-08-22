@@ -22,66 +22,33 @@
     "sourceType": "official-monthly-warning-signal-table",
     "highestSignal": "T9",
     "signalLifecycle": [
-      {
-        "signal": "T1",
-        "issuedAt": "2026-07-24T12:40:00.000Z",
-        "endedAt": "2026-07-25T05:20:00.000Z"
-      },
-      {
-        "signal": "T3",
-        "issuedAt": "2026-07-25T05:20:00.000Z",
-        "endedAt": "2026-07-25T14:10:00.000Z"
-      },
-      {
-        "signal": "T8NW",
-        "issuedAt": "2026-07-25T14:10:00.000Z",
-        "endedAt": "2026-07-25T17:10:00.000Z"
-      },
-      {
-        "signal": "T9",
-        "issuedAt": "2026-07-25T17:10:00.000Z",
-        "endedAt": "2026-07-25T23:10:00.000Z"
-      },
-      {
-        "signal": "T8SW",
-        "issuedAt": "2026-07-25T23:10:00.000Z",
-        "endedAt": "2026-07-26T04:40:00.000Z"
-      },
-      {
-        "signal": "T3",
-        "issuedAt": "2026-07-26T04:40:00.000Z",
-        "endedAt": "2026-07-26T07:20:00.000Z"
-      },
-      {
-        "signal": "T1",
-        "issuedAt": "2026-07-26T07:20:00.000Z",
-        "endedAt": "2026-07-26T11:10:00.000Z"
-      }
+      { "signal": "T1", "issuedAt": "2026-07-24T12:40:00.000Z", "endedAt": "2026-07-25T05:20:00.000Z" },
+      { "signal": "T3", "issuedAt": "2026-07-25T05:20:00.000Z", "endedAt": "2026-07-25T14:10:00.000Z" },
+      { "signal": "T8NW", "issuedAt": "2026-07-25T14:10:00.000Z", "endedAt": "2026-07-25T17:10:00.000Z" },
+      { "signal": "T9", "issuedAt": "2026-07-25T17:10:00.000Z", "endedAt": "2026-07-25T23:10:00.000Z" },
+      { "signal": "T8SW", "issuedAt": "2026-07-25T23:10:00.000Z", "endedAt": "2026-07-26T04:40:00.000Z" },
+      { "signal": "T3", "issuedAt": "2026-07-26T04:40:00.000Z", "endedAt": "2026-07-26T07:20:00.000Z" },
+      { "signal": "T1", "issuedAt": "2026-07-26T07:20:00.000Z", "endedAt": "2026-07-26T11:10:00.000Z" }
     ],
     "allSignalsCancelledAt": "2026-07-26T11:10:00.000Z"
   },
   "forecastSources": {
+    "CMA": {
+      "role": "forecast-input-primary",
+      "provider": "NMC",
+      "historicalListYear": 2026,
+      "stormNumber": "2612",
+      "asIssuedForecastExtraction": "active"
+    },
     "CWA": {
-      "role": "forecast-input-candidate",
+      "role": "archive-metadata-only",
       "archiveUrl": "https://rdc28.cwa.gov.tw/TDB/public/typhoon_detail?typhoon_id=202612",
       "archiveTyphoonId": "202612",
       "expectedWarningBulletinCount": 12,
-      "archiveSummaryConfirmed": true,
-      "warningBulletinSectionConfirmed": true,
-      "asIssuedForecastExtraction": "pending"
+      "asIssuedForecastExtraction": "not-used-after-source-probe"
     },
-    "HKO": {
-      "role": "forecast-input-candidate",
-      "asIssuedForecastExtraction": "unassessed"
-    },
-    "CMA": {
-      "role": "forecast-input-candidate",
-      "asIssuedForecastExtraction": "unassessed"
-    },
-    "JMA": {
-      "role": "forecast-input-candidate",
-      "asIssuedForecastExtraction": "unassessed"
-    }
+    "HKO": { "role": "forecast-input-candidate", "asIssuedForecastExtraction": "unassessed" },
+    "JMA": { "role": "forecast-input-candidate", "asIssuedForecastExtraction": "unassessed" }
   },
   "safety": {
     "truthMayNotBeUsedAsForecastInput": true,
