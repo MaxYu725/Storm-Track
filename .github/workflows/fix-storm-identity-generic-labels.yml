@@ -1,4 +1,4 @@
-name: Apply storm identity generic-label fix
+name: Finalize storm identity generic-label fix
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-and-test:
+  finalize:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -19,35 +19,50 @@ jobs:
           ref: fix/storm-identity-generic-labels
           fetch-depth: 1
 
-      - name: Patch generic storm identity classification
+      - name: Normalize patch formatting and permanent CI
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          path = Path('index.html')
-          text = path.read_text()
-          old = "        return !text || /^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TD|熱帶低氣壓|未命名熱帶氣旋|未命名)(\\d+)?$/.test(text);"
-          new = """        if (!text) return true;
+
+          index = Path('index.html')
+          text = index.read_text()
+          old = """        if (!text) return true;
           if (/^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶風暴|未命名熱帶氣旋|未命名)\\d*$/.test(text)) return true;
           return /^(?:(?:TROPICALDEPRESSION|TROPICALSTORM|熱帶低氣壓|熱帶風暴))?(?:TC|TD|TS)\\d+[A-Z]?$/.test(text);"""
-          if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one generic-name rule, found {text.count(old)}')
-          path.write_text(text.replace(old, new))
+          # The first patch was behaviorally correct; normalize indentation if the YAML heredoc stripped it.
+          compact = old.replace('\n        if (', '\nif (').replace('\n        return /', '\nreturn /')
+          if compact in text:
+              text = text.replace(compact, old)
+          elif old not in text:
+              raise SystemExit('generic-name rule not found in expected patched form')
+          index.write_text(text)
+
+          workflow = Path('.github/workflows/hk-signal-beta-validation.yml')
+          validation = workflow.read_text()
+          marker = '            tests/frontend-hk-signal-beta-gate.test.cjs\n'
+          addition = marker + '            tests/frontend-storm-identity-grouping.test.cjs\n'
+          if addition not in validation:
+              if validation.count(marker) != 1:
+                  raise SystemExit('permanent CI insertion point not found exactly once')
+              validation = validation.replace(marker, addition)
+          workflow.write_text(validation)
           PY
 
-      - name: Run storm identity regression
+      - name: Run identity regression
         run: node tests/frontend-storm-identity-grouping.test.cjs
 
       - name: Check whitespace
         run: git diff --check
 
-      - name: Commit validated patch
+      - name: Commit final validated fix and remove one-shot workflow
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html
-          git commit -m "Fix generic storm identity grouping"
+          git rm .github/workflows/fix-storm-identity-generic-labels.yml
+          git add index.html .github/workflows/hk-signal-beta-validation.yml
+          git commit -m "Finalize storm identity grouping fix"
           git push origin HEAD:fix/storm-identity-generic-labels
