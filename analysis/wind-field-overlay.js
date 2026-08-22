@@ -6,8 +6,9 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormWindField(root) {
   'use strict';
 
-  const VERSION = 'wind-field-overlay/v1.1';
-  const OPEN_METEO_ENDPOINT = 'https://api.open-meteo.com/v1/ecmwf';
+  const VERSION = 'wind-field-overlay/v1.2';
+  const OPEN_METEO_ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
+  const OPEN_METEO_MODEL = 'ecmwf_ifs';
   const CACHE_PREFIX = 'storm-track-wind-field-v1:';
   const CACHE_TTL_MS = 20 * 60 * 1000;
   const MIN_REFRESH_MS = 90 * 1000;
@@ -151,11 +152,12 @@
       latitude: spec.points.map(point => point.lat.toFixed(3)).join(','),
       longitude: spec.points.map(point => point.lon.toFixed(3)).join(','),
       hourly: 'wind_speed_10m,wind_direction_10m',
+      models: OPEN_METEO_MODEL,
       forecast_hours: '1',
       wind_speed_unit: 'ms',
       timezone: 'GMT',
       cell_selection: 'nearest',
-      elevation: 'nan'
+      elevation: spec.points.map(() => 'nan').join(',')
     });
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timeout = setTimeout(() => controller?.abort(), options.timeoutMs ?? REQUEST_TIMEOUT_MS);
@@ -165,7 +167,16 @@
         headers: { Accept: 'application/json' },
         cache: 'no-store'
       });
-      if (!response?.ok) throw new Error(`wind-http-${response?.status || 'error'}`);
+      if (!response?.ok) {
+        let reason = '';
+        try {
+          const body = await response.json();
+          reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
+        } catch {
+          // Error details are optional; retain the HTTP status when the body is not JSON.
+        }
+        throw new Error(`wind-http-${response?.status || 'error'}${reason ? `:${reason}` : ''}`);
+      }
       return parseOpenMeteoGrid(spec, await response.json());
     } finally {
       clearTimeout(timeout);
@@ -571,6 +582,7 @@
   return Object.freeze({
     VERSION,
     OPEN_METEO_ENDPOINT,
+    OPEN_METEO_MODEL,
     parseGmtTime,
     meteorologicalWindToUv,
     buildCoordinateGrid,
