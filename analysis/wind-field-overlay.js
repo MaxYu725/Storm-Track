@@ -6,7 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormWindField(root) {
   'use strict';
 
-  const VERSION = 'wind-field-overlay/v1.2';
+  const VERSION = 'wind-field-overlay/v1.3';
   const OPEN_METEO_ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
   const OPEN_METEO_MODEL = 'ecmwf_ifs';
   const CACHE_PREFIX = 'storm-track-wind-field-v1:';
@@ -14,6 +14,8 @@
   const MIN_REFRESH_MS = 90 * 1000;
   const REQUEST_TIMEOUT_MS = 12000;
   const MAP_READY_EVENT = 'stormtrack:map-ready';
+  const WIND_PANE_NAME = 'stormWindFieldPane';
+  const WIND_PANE_Z_INDEX = 350;
 
   const finite = value => {
     const number = Number(value);
@@ -209,7 +211,7 @@
     const style = document.createElement('style');
     style.id = 'storm-wind-field-styles';
     style.textContent = `
-      .storm-wind-canvas{position:absolute;inset:0;z-index:250;pointer-events:none;width:100%;height:100%}
+      .storm-wind-canvas{position:absolute;left:0;top:0;pointer-events:none}
       .storm-wind-hud{position:absolute;left:10px;bottom:34px;z-index:760;padding:5px 7px;border:1px solid #3b3b3b;background:rgba(0,0,0,.78);color:#c9c9c9;font-size:.68rem;line-height:1.4;pointer-events:auto}
       .storm-wind-hud a{color:#8fd8ff;text-decoration:none}
       .storm-wind-status{margin:-3px 0 8px 29px;color:#777;font-size:.7rem;line-height:1.4}
@@ -282,7 +284,7 @@
     installStyles(document);
 
     const state = {
-      enabled: false, grid: null, canvas: null, ctx: null, particles: [],
+      enabled: false, grid: null, pane: null, canvas: null, ctx: null, particles: [],
       frame: null, lastFrameAt: 0, lastFetchAt: 0, fetchSerial: 0, moveTimer: null,
       controls: null,
       reduceMotion: root.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true
@@ -329,6 +331,29 @@
       }
     }
 
+    function ensurePane() {
+      if (state.pane?.isConnected) return state.pane;
+      let pane = map.getPane?.(WIND_PANE_NAME) || null;
+      if (!pane && typeof map.createPane === 'function') pane = map.createPane(WIND_PANE_NAME);
+      if (!pane) return null;
+      pane.style.zIndex = String(WIND_PANE_Z_INDEX);
+      pane.style.pointerEvents = 'none';
+      state.pane = pane;
+      return pane;
+    }
+
+    function positionCanvas() {
+      if (!state.canvas) return;
+      const topLeft = map.containerPointToLayerPoint?.([0, 0]);
+      if (!topLeft) return;
+      if (root?.L?.DomUtil?.setPosition) {
+        root.L.DomUtil.setPosition(state.canvas, topLeft);
+        return;
+      }
+      state.canvas.style.left = `${finite(topLeft.x) ?? 0}px`;
+      state.canvas.style.top = `${finite(topLeft.y) ?? 0}px`;
+    }
+
     function resizeCanvas() {
       if (!state.canvas || !state.ctx) return;
       const size = map.getSize();
@@ -338,17 +363,18 @@
       state.canvas.style.width = `${size.x}px`;
       state.canvas.style.height = `${size.y}px`;
       state.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      positionCanvas();
       seedParticles();
     }
 
     function ensureCanvas() {
       if (state.canvas?.isConnected) return state.canvas;
-      const container = map.getContainer?.();
-      if (!container) return null;
+      const pane = ensurePane();
+      if (!pane) return null;
       state.canvas = document.createElement('canvas');
       state.canvas.className = 'storm-wind-canvas';
       state.canvas.setAttribute('aria-hidden', 'true');
-      container.appendChild(state.canvas);
+      pane.appendChild(state.canvas);
       state.ctx = state.canvas.getContext('2d', { alpha: true });
       resizeCanvas();
       return state.canvas;
@@ -526,6 +552,7 @@
       if (!state.enabled) return;
       clearTimeout(state.moveTimer);
       state.moveTimer = setTimeout(() => {
+        positionCanvas();
         if (state.grid && currentGridCovers(state.grid, map.getBounds())) {
           seedParticles();
           startAnimation();
@@ -541,7 +568,10 @@
     map.on('movestart zoomstart', () => {
       if (state.enabled) stopAnimation(true);
     });
-    map.on('moveend zoomend', scheduleRefresh);
+    map.on('moveend zoomend', () => {
+      positionCanvas();
+      scheduleRefresh();
+    });
     map.on('resize', () => {
       resizeCanvas();
       scheduleRefresh();
@@ -583,6 +613,8 @@
     VERSION,
     OPEN_METEO_ENDPOINT,
     OPEN_METEO_MODEL,
+    WIND_PANE_NAME,
+    WIND_PANE_Z_INDEX,
     parseGmtTime,
     meteorologicalWindToUv,
     buildCoordinateGrid,

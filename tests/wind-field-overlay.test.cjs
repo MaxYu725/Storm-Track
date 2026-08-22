@@ -6,6 +6,8 @@ const wind = require('../analysis/wind-field-overlay.js');
 (async () => {
   assert.equal(wind.OPEN_METEO_ENDPOINT, 'https://api.open-meteo.com/v1/forecast');
   assert.equal(wind.OPEN_METEO_MODEL, 'ecmwf_ifs');
+  assert.equal(wind.WIND_PANE_NAME, 'stormWindFieldPane');
+  assert.equal(wind.WIND_PANE_Z_INDEX, 350);
 
   {
     const north = wind.meteorologicalWindToUv(10, 0);
