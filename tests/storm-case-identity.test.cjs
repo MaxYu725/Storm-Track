@@ -3,6 +3,10 @@
 const assert = require('node:assert/strict');
 const identity = require('../analysis/storm-case-identity.js');
 
+assert.equal(identity.isGenericName('热带低压'), true, 'simplified Chinese tropical depression label must be generic');
+assert.equal(identity.isGenericName('热带风暴'), true, 'simplified Chinese tropical storm label must be generic');
+assert.equal(identity.isGenericName('GAENARI'), false, 'formal storm names must remain specific');
+
 function source(agency, sourceId, time, lat, lon) {
   return {
     agency,

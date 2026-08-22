@@ -2076,8 +2076,8 @@ const WeatherApp = (() => {
     function isGenericStormName(value) {
         const text = normalizeName(value);
         if (!text) return true;
-if (/^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶風暴|未命名熱帶氣旋|未命名)\d*$/.test(text)) return true;
-return /^(?:(?:TROPICALDEPRESSION|TROPICALSTORM|熱帶低氣壓|熱帶風暴))?(?:TC|TD|TS)\d+[A-Z]?$/.test(text);
+if (/^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴|未命名熱帶氣旋|未命名热带气旋|未命名)\d*$/.test(text)) return true;
+return /^(?:(?:TROPICALDEPRESSION|TROPICALSTORM|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴))?(?:TC|TD|TS)\d+[A-Z]?$/.test(text);
     }
 
     function getGroupCurrent(group) {
