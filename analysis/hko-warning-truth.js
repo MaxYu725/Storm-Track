@@ -26,20 +26,22 @@
     return null;
   }
 
+  function emptySummary() {
+    return {
+      present: false,
+      code: null,
+      level: null,
+      type: null,
+      actionCode: null,
+      issueTime: null,
+      updateTime: null,
+      expireTime: null
+    };
+  }
+
   function summaryState(warnsum) {
     const item = warnsum && typeof warnsum === 'object' ? warnsum.WTCSGNL : null;
-    if (!item || typeof item !== 'object') {
-      return {
-        present: false,
-        code: null,
-        level: null,
-        type: null,
-        actionCode: null,
-        issueTime: null,
-        updateTime: null,
-        expireTime: null
-      };
-    }
+    if (!item || typeof item !== 'object') return emptySummary();
     const code = normalizeTcCode(item.code || item.subtype);
     return {
       present: Boolean(code && code !== 'CANCEL'),
@@ -89,17 +91,46 @@
       .filter(item => item.desc || item.updateTime);
   }
 
+  function resolveTruth(warnsum, warningInfo) {
+    const summary = summaryState(warnsum);
+    const details = warningDetails(warningInfo);
+    if (summary.code) return { warningStatementCode: 'WTCSGNL', ...summary, details };
+
+    const cancellation = [...details].reverse().find(item => item.subtype === 'CANCEL');
+    if (cancellation) {
+      return {
+        warningStatementCode: 'WTCSGNL',
+        ...emptySummary(),
+        code: 'CANCEL',
+        actionCode: 'CANCEL',
+        updateTime: cancellation.updateTime,
+        details
+      };
+    }
+
+    return { warningStatementCode: 'WTCSGNL', ...summary, details };
+  }
+
+  function truthStateMaterial(value) {
+    const truth = value?.truth && typeof value.truth === 'object' ? value.truth : value;
+    const code = normalizeTcCode(truth?.code);
+    return {
+      warningStatementCode: 'WTCSGNL',
+      present: truth?.present === true,
+      code,
+      level: signalLevel(code),
+      actionCode: clean(truth?.actionCode)?.toUpperCase() || null,
+      issueTime: clean(truth?.issueTime)
+    };
+  }
+
   function normalizeSnapshot({ warnsum, warningInfo, swt, retrievedAt, sourceHashes, sourceCommit }) {
     return {
       schemaVersion: VERSION,
       retrievedAt: clean(retrievedAt),
       sourceCommit: clean(sourceCommit),
       authority: 'Hong Kong Observatory Open Data API',
-      truth: {
-        warningStatementCode: 'WTCSGNL',
-        ...summaryState(warnsum),
-        details: warningDetails(warningInfo)
-      },
+      truth: resolveTruth(warnsum, warningInfo),
       context: {
         pre8: pre8Details(warningInfo),
         specialWeatherTips: specialWeatherTips(swt)
@@ -125,6 +156,8 @@
     warningDetails,
     pre8Details,
     specialWeatherTips,
+    resolveTruth,
+    truthStateMaterial,
     normalizeSnapshot,
     fingerprintMaterial
   });

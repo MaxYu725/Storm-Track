@@ -119,15 +119,17 @@ jobs:
 
           previous_exists=false
           previous_truth='null'
-          previous_truth_fingerprint=''
           if [[ -s latest.json ]]; then
             previous_exists=true
             previous_truth="$(jq -c '.truth // null' latest.json)"
-            previous_truth_fingerprint="$(jq -r '.truthFingerprint // empty' latest.json)"
           fi
 
           retrieved_at="$(jq -r '.retrievedAt' /tmp/hko-warning-truth.json)"
           truth_fingerprint="$(jq -r '.truthFingerprint' /tmp/hko-warning-truth.json)"
+          current_truth="$(jq -c '.truth' /tmp/hko-warning-truth.json)"
+          current_state="$(jq -c '{present:(.truth.present==true),code:(.truth.code//null),level:(.truth.level//null),actionCode:(.truth.actionCode//null),issueTime:(.truth.issueTime//null)}' /tmp/hko-warning-truth.json)"
+          previous_state="$(jq -c '{present:(.present==true),code:(.code//null),level:(.level//null),actionCode:(.actionCode//null),issueTime:(.issueTime//null)}' <<<"$previous_truth")"
+
           day_path="$(date -u -d "$retrieved_at" +'%Y/%m/%d')"
           stamp="$(date -u -d "$retrieved_at" +'%Y%m%dT%H%M%SZ')"
           short="${fingerprint:0:12}"
@@ -135,11 +137,9 @@ jobs:
           mkdir -p "$(dirname "$destination")"
           cp /tmp/hko-warning-truth.json "$destination"
           cp /tmp/hko-warning-truth.json latest.json
-
           jq -c '{schemaVersion,retrievedAt,captureFingerprint,truthFingerprint,contextFingerprint,sourceCommit,truth,context}' /tmp/hko-warning-truth.json >> index.ndjson
 
-          if [[ "$truth_fingerprint" != "$previous_truth_fingerprint" ]]; then
-            current_truth="$(jq -c '.truth' /tmp/hko-warning-truth.json)"
+          if [[ "$previous_exists" != true || "$current_state" != "$previous_state" ]]; then
             current_present="$(jq -r '.truth.present' /tmp/hko-warning-truth.json)"
             current_code="$(jq -r '.truth.code // empty' /tmp/hko-warning-truth.json)"
             current_action="$(jq -r '.truth.actionCode // empty' /tmp/hko-warning-truth.json)"
