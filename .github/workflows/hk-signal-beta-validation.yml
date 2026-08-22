@@ -27,26 +27,51 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Apply simplified-Chinese generic identity fix
+      - name: Replace generic-name functions by boundary
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          first_old = '|熱帶低氣壓|熱帶風暴|未命名熱帶氣旋|未命名)'
-          first_new = '|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴|未命名熱帶氣旋|未命名热带气旋|未命名)'
-          second_old = 'TROPICALDEPRESSION|TROPICALSTORM|熱帶低氣壓|熱帶風暴))?'
-          second_new = 'TROPICALDEPRESSION|TROPICALSTORM|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴))?'
+          def replace_function(text, name, replacement):
+              marker = f'function {name}('
+              start = text.find(marker)
+              if start < 0:
+                  raise SystemExit(f'missing function {name}')
+              opening = text.find('{', start)
+              if opening < 0:
+                  raise SystemExit(f'missing opening brace for {name}')
+              depth = 0
+              end = None
+              for i in range(opening, len(text)):
+                  if text[i] == '{': depth += 1
+                  elif text[i] == '}':
+                      depth -= 1
+                      if depth == 0:
+                          end = i + 1
+                          break
+              if end is None:
+                  raise SystemExit(f'unterminated function {name}')
+              return text[:start] + replacement + text[end:]
 
-          for filename in ['index.html', 'analysis/storm-case-identity.js']:
-              path = Path(filename)
-              text = path.read_text()
-              if first_old not in text or second_old not in text:
-                  raise SystemExit(f'missing expected generic-name fragments in {filename}')
-              text = text.replace(first_old, first_new, 1)
-              text = text.replace(second_old, second_new, 1)
-              path.write_text(text)
+          frontend_function = '''function isGenericStormName(value) {
+        const text = normalizeName(value);
+        if (!text) return true;
+        if (/^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴|未命名熱帶氣旋|未命名热带气旋|未命名)\\d*$/.test(text)) return true;
+        return /^(?:(?:TROPICALDEPRESSION|TROPICALSTORM|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴))?(?:TC|TD|TS)\\d+[A-Z]?$/.test(text);
+    }'''
+          identity_function = '''function isGenericName(value) {
+    const text = normalizeName(value);
+    if (!text) return true;
+    if (/^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴|未命名熱帶氣旋|未命名热带气旋|未命名)\\d*$/.test(text)) return true;
+    return /^(?:(?:TROPICALDEPRESSION|TROPICALSTORM|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴))?(?:TC|TD|TS)\\d+[A-Z]?$/.test(text);
+  }'''
+
+          index = Path('index.html')
+          index.write_text(replace_function(index.read_text(), 'isGenericStormName', frontend_function))
+          identity = Path('analysis/storm-case-identity.js')
+          identity.write_text(replace_function(identity.read_text(), 'isGenericName', identity_function))
 
           frontend = Path('tests/frontend-storm-identity-grouping.test.cjs')
           text = frontend.read_text()
