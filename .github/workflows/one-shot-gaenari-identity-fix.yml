@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           git checkout origin/main -- .github/workflows/hk-signal-beta-validation.yml
-          rm -f tests/.gaenari-trigger tests/gaenari-trigger.txt
+          rm -f tests/.gaenari-trigger tests/gaenari-trigger*.txt
 
           python3 - <<'PY'
           from pathlib import Path
@@ -121,6 +121,7 @@ jobs:
               'tests/storm-case-identity.test.cjs',
           }
           actual = set(subprocess.check_output(['git', 'diff', '--name-only', 'origin/main']).decode().splitlines())
+          actual.discard('.github/workflows/one-shot-gaenari-identity-fix.yml')
           if actual != expected:
               raise SystemExit(f'unexpected final diff: {sorted(actual)}')
           PY
