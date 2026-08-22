@@ -1,0 +1,187 @@
+name: Patch Beta prospective observation hook
+
+on:
+  push:
+    branches:
+      - feature/beta-prospective-recorder
+    paths:
+      - .github/workflows/patch-beta-prospective-recorder.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/beta-prospective-recorder
+          fetch-depth: 1
+
+      - name: Add read-only prospective observation hook
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('analysis/frontend-hk-threat-ui.js')
+          text = path.read_text()
+
+          version = "  const VERSION = 'frontend-hk-threat-ui/v1';\n"
+          version_replacement = """  const VERSION = 'frontend-hk-threat-ui/v1';
+  const PROSPECTIVE_SCHEMA_VERSION = 'hk-beta-prospective-observation/v1';
+  const prospectiveObservations = new Map();
+"""
+          if text.count(version) != 1:
+              raise SystemExit('VERSION insertion point not found exactly once')
+          text = text.replace(version, version_replacement)
+
+          marker = "  function analyzeGroup(group, options = {}) {\n"
+          helpers = r'''  function cloneSerializable(value) {
+    if (value == null) return value;
+    try { return JSON.parse(JSON.stringify(value)); }
+    catch { return null; }
+  }
+
+  function pointSummary(point) {
+    if (!point || typeof point !== 'object') return null;
+    return {
+      time: point.time ?? null,
+      baseTime: point.baseTime ?? null,
+      forecastHour: point.forecastHour ?? null,
+      lat: finite(point.lat),
+      lon: finite(point.lon),
+      maximumWind: point.maximumWind ?? null,
+      pressure: point.pressure ?? null,
+      intensity: point.intensity ?? null
+    };
+  }
+
+  function sourceObservation(source) {
+    const positions = Array.isArray(source?.positions) ? source.positions : [];
+    const forecast = Array.isArray(source?.forecast) ? source.forecast : [];
+    return {
+      agency: source?.agency ?? null,
+      sourceId: source?.sourceId ?? null,
+      bulletinTime: source?.bulletinTime ?? null,
+      positionCount: positions.length,
+      forecastCount: forecast.length,
+      current: pointSummary(positions[positions.length - 1]),
+      forecastStart: pointSummary(forecast[0]),
+      forecastEnd: pointSummary(forecast[forecast.length - 1]),
+      // The recorder hashes this exact source object and removes it before persistence.
+      // Keeping the raw input here makes the fingerprint reflect what the Beta engine
+      // actually consumed without adding any backend write path.
+      rawInput: cloneSerializable(source)
+    };
+  }
+
+  function engineVersionSummary() {
+    return {
+      ui: VERSION,
+      snapshot: root?.StormAnalysisCore?.VERSION ?? null,
+      impact: root?.StormHongKongImpactEngine?.VERSION ?? null,
+      signalInputs: root?.StormHkoSignalRiskInputs?.VERSION ?? null,
+      threatAssessment: root?.StormHkThreatAssessment?.VERSION ?? null,
+      basicForecast: root?.StormBasicHkSignalForecast?.VERSION ?? null
+    };
+  }
+
+  function compactAnalysis(result) {
+    return {
+      available: result?.available === true,
+      reason: result?.reason ?? null,
+      generatedAt: result?.generatedAt ?? null,
+      snapshotSchemaVersion: result?.snapshot?.schemaVersion ?? null,
+      impact: cloneSerializable({
+        schemaVersion: result?.impact?.schemaVersion ?? null,
+        closestApproach: result?.impact?.closestApproach ?? null,
+        trend: result?.impact?.trend ?? null,
+        uncertainty: result?.impact?.uncertainty ?? null
+      }),
+      signalInputs: cloneSerializable({
+        schemaVersion: result?.signalInputs?.schemaVersion ?? null,
+        coverage: result?.signalInputs?.coverage ?? null,
+        disagreement: result?.signalInputs?.disagreement ?? null,
+        featureVector: result?.signalInputs?.featureVector ?? null,
+        officialHkoWarningContext: result?.signalInputs?.officialHkoWarningContext ?? null
+      }),
+      threatAssessment: cloneSerializable({
+        schemaVersion: result?.threatAssessment?.schemaVersion ?? null,
+        summary: result?.threatAssessment?.summary ?? null,
+        analyzers: result?.threatAssessment?.analyzers ?? null,
+        timeline: result?.threatAssessment?.timeline ?? [],
+        semantics: result?.threatAssessment?.semantics ?? null
+      }),
+      basicForecast: cloneSerializable(result?.basicForecast ?? null)
+    };
+  }
+
+  function rememberProspectiveObservation(group, result) {
+    const sourceEntries = Object.entries(group?.sources || {})
+      .filter(([, source]) => source && typeof source === 'object')
+      .sort(([left], [right]) => left.localeCompare(right));
+    const sources = Object.fromEntries(sourceEntries.map(([agency, source]) => [agency, sourceObservation(source)]));
+    const sourceAgencies = Object.keys(sources);
+    const key = String(group?.key || group?.displayName || sourceAgencies.join('+') || 'unknown-group');
+    prospectiveObservations.set(key, {
+      schemaVersion: PROSPECTIVE_SCHEMA_VERSION,
+      observedAt: new Date().toISOString(),
+      group: {
+        key: group?.key ?? null,
+        displayName: group?.displayName ?? null,
+        nameTc: group?.nameTc ?? null,
+        nameEn: group?.nameEn ?? null
+      },
+      sourceAgencies,
+      sources,
+      engineVersions: engineVersionSummary(),
+      analysis: compactAnalysis(result)
+    });
+  }
+
+  function readProspectiveObservations() {
+    return cloneSerializable([...prospectiveObservations.values()]
+      .sort((left, right) => String(left?.group?.key || '').localeCompare(String(right?.group?.key || '')))) || [];
+  }
+
+'''
+          if text.count(marker) != 1:
+              raise SystemExit('analyzeGroup insertion point not found exactly once')
+          text = text.replace(marker, helpers + marker)
+
+          render_marker = "    const result = analyzeGroup(group, options);\n"
+          render_replacement = "    const result = analyzeGroup(group, options);\n    rememberProspectiveObservation(group, result);\n"
+          if text.count(render_marker) != 1:
+              raise SystemExit('render observation hook insertion point not found exactly once')
+          text = text.replace(render_marker, render_replacement)
+
+          return_marker = "  return Object.freeze({\n    VERSION,\n"
+          return_replacement = "  return Object.freeze({\n    VERSION,\n    PROSPECTIVE_SCHEMA_VERSION,\n    readProspectiveObservations,\n"
+          if text.count(return_marker) != 1:
+              raise SystemExit('export insertion point not found exactly once')
+          text = text.replace(return_marker, return_replacement)
+
+          path.write_text(text)
+          PY
+
+      - name: Run prospective observation regression
+        run: |
+          node --check analysis/frontend-hk-threat-ui.js
+          node tests/frontend-beta-prospective-observation.test.cjs
+          node tests/frontend-hk-threat-ui.test.cjs
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Commit validated hook
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add analysis/frontend-hk-threat-ui.js
+          git commit -m "Expose read-only Beta prospective observations"
+          git push origin HEAD:feature/beta-prospective-recorder
