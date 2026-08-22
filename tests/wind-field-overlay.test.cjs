@@ -4,6 +4,9 @@ const assert = require('node:assert/strict');
 const wind = require('../analysis/wind-field-overlay.js');
 
 (async () => {
+  assert.equal(wind.OPEN_METEO_ENDPOINT, 'https://api.open-meteo.com/v1/forecast');
+  assert.equal(wind.OPEN_METEO_MODEL, 'ecmwf_ifs');
+
   {
     const north = wind.meteorologicalWindToUv(10, 0);
     assert.ok(Math.abs(north.u) < 1e-9);
@@ -94,10 +97,31 @@ const wind = require('../analysis/wind-field-overlay.js');
       }
     });
     assert.equal(result.vectors.length, 16);
+    assert.ok(requestedUrl.startsWith('https://api.open-meteo.com/v1/forecast?'));
     assert.match(requestedUrl, /hourly=wind_speed_10m%2Cwind_direction_10m/);
+    assert.match(requestedUrl, /models=ecmwf_ifs/);
     assert.match(requestedUrl, /forecast_hours=1/);
     assert.match(requestedUrl, /cell_selection=nearest/);
-    assert.match(requestedUrl, /elevation=nan/);
+    const requested = new URL(requestedUrl);
+    assert.equal(requested.searchParams.get('elevation').split(',').length, spec.points.length);
+    assert.ok(requested.searchParams.get('elevation').split(',').every(value => value === 'nan'));
+  }
+
+  {
+    const spec = wind.buildCoordinateGrid(
+      { south: 10, north: 12, west: 100, east: 102 },
+      { rows: 4, cols: 4, padRatio: 0 }
+    );
+    await assert.rejects(
+      wind.fetchWindGrid(spec, {
+        fetchImpl: async () => ({
+          ok: false,
+          status: 400,
+          json: async () => ({ reason: 'test-api-reason' })
+        })
+      }),
+      /wind-http-400:test-api-reason/
+    );
   }
 
   console.log('wind-field-overlay tests: OK');
