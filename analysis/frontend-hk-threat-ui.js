@@ -18,6 +18,15 @@
     return Number.isFinite(ms) ? ms : null;
   }
 
+  function isBetaEnabled() {
+    if (!root?.location) return true;
+    try {
+      return new URLSearchParams(root.location.search || '').get('beta') === 'hk-signal';
+    } catch {
+      return false;
+    }
+  }
+
   function latestDataTime(group) {
     const times = [];
     Object.values(group?.sources || {}).forEach(source => {
@@ -136,9 +145,11 @@
   }
 
   function renderGroupSummary(group, options = {}) {
+    if (!isBetaEnabled()) return '';
+
     const result = analyzeGroup(group, options);
     if (!result.available) {
-      return `<div class="hk-threat-summary" style="margin-top:9px;padding-top:8px;border-top:1px solid #292929;color:#777;font-size:.72rem;line-height:1.45">香港影響分析：暫未有足夠資料</div>`;
+      return `<div class="hk-threat-summary" style="margin-top:9px;padding-top:8px;border-top:1px solid #292929;color:#777;font-size:.72rem;line-height:1.45">香港影響 Beta：暫未有足夠資料</div>`;
     }
 
     const forecast = result.basicForecast;
@@ -161,7 +172,7 @@
     }
 
     return `<div class="hk-threat-summary" style="margin-top:9px;padding-top:8px;border-top:1px solid #353535;font-size:.73rem;line-height:1.5">
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="color:#8f8f8f">香港影響</span><strong style="color:#fff;font-size:.82rem">${escapeHtml(impactLabel)}</strong></div>
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="color:#8f8f8f">香港影響 Beta</span><strong style="color:#fff;font-size:.82rem">${escapeHtml(impactLabel)}</strong></div>
       ${officialSignal ? `<div style="margin-top:5px;color:#fff"><strong>HKO官方目前：${escapeHtml(officialSignal)}</strong>${officialIssued ? ` · ${escapeHtml(officialIssued)}` : ''}</div>` : ''}
       <div style="margin-top:4px;color:#ddd">${escapeHtml(t1)}</div>
       <div style="color:#ddd">${escapeHtml(t3)}</div>
@@ -174,6 +185,7 @@
 
   return Object.freeze({
     VERSION,
+    isBetaEnabled,
     analyzeGroup,
     renderGroupSummary,
     likelihoodLabel,
