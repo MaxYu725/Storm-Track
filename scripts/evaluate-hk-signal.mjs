@@ -62,6 +62,10 @@ function key(fingerprint, groupKey) {
   return `${fingerprint || ''}\u0000${groupKey || ''}`;
 }
 
+function caseCaptureKey(caseId, fingerprint) {
+  return `${caseId || ''}\u0000${fingerprint || ''}`;
+}
+
 function eventMs(event) {
   const value = Date.parse(event?.eventTime || '');
   return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
@@ -89,6 +93,28 @@ const trustedRecords = records
   .filter(record => record?.schemaVersion === 'beta-prospective-recorder/v2')
   .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
 
+const trustedCaptureFingerprints = new Set(trustedRecords.map(record => record.captureFingerprint).filter(Boolean));
+const caseCaptureRows = new Map();
+for (const row of caseIndex) {
+  if (!row?.caseId || !row?.captureFingerprint || !trustedCaptureFingerprints.has(row.captureFingerprint)) continue;
+  const captureKey = caseCaptureKey(row.caseId, row.captureFingerprint);
+  if (!caseCaptureRows.has(captureKey)) caseCaptureRows.set(captureKey, []);
+  caseCaptureRows.get(captureKey).push(row);
+}
+const ambiguousCaseCaptures = [...caseCaptureRows.entries()]
+  .filter(([, rows]) => rows.length > 1)
+  .map(([captureKey, rows]) => ({
+    captureKey,
+    caseId: rows[0].caseId,
+    captureFingerprint: rows[0].captureFingerprint,
+    capturedAt: rows[0].capturedAt || null,
+    rawGroupKeys: [...new Set(rows.map(row => row.rawGroupKey).filter(Boolean))].sort()
+  }))
+  .sort((a, b) => Date.parse(a.capturedAt || '') - Date.parse(b.capturedAt || '')
+    || a.caseId.localeCompare(b.caseId));
+const ambiguousCaseCaptureKeys = new Set(ambiguousCaseCaptures.map(item => item.captureKey));
+const evaluationCaseIndex = caseIndex.filter(row => !ambiguousCaseCaptureKeys.has(caseCaptureKey(row.caseId, row.captureFingerprint)));
+
 const identityByObservation = new Map();
 for (const row of caseIndex) {
   identityByObservation.set(key(row.captureFingerprint, row.rawGroupKey), row);
@@ -100,6 +126,7 @@ for (const record of trustedRecords) {
     const groupKey = observation?.group?.key || null;
     const identity = identityByObservation.get(key(record.captureFingerprint, groupKey));
     if (!identity?.caseId) continue;
+    if (ambiguousCaseCaptureKeys.has(caseCaptureKey(identity.caseId, record.captureFingerprint))) continue;
     if (!timelines.has(identity.caseId)) timelines.set(identity.caseId, []);
     timelines.get(identity.caseId).push({
       caseId: identity.caseId,
@@ -145,7 +172,7 @@ function unresolvedEvaluation(signal, event, attribution) {
 const realEvaluations = [];
 for (const signal of evaluator.SIGNALS) {
   for (const event of signalEvents[signal]) {
-    const attribution = evaluator.attributeCase(event, caseIndex);
+    const attribution = evaluator.attributeCase(event, evaluationCaseIndex);
     if (attribution.status !== 'attributed') {
       realEvaluations.push(unresolvedEvaluation(signal, event, attribution));
       continue;
@@ -220,7 +247,7 @@ const pseudoEvent = {
   eventTime: latestTruth?.retrievedAt || caseRegistry?.reconciledThrough || new Date(0).toISOString(),
   currentTruth: latestTruth?.truth || null
 };
-const candidates = evaluator.candidateCasesForEvent(pseudoEvent, caseIndex);
+const candidates = evaluator.candidateCasesForEvent(pseudoEvent, evaluationCaseIndex);
 const activeCaseIds = [...new Set(candidates.map(row => row.caseId))];
 const completedByCase = new Map();
 for (const item of evaluations.filter(item => item.caseId && (item.status === 'evaluated' || item.status === 'not-issued'))) {
@@ -261,6 +288,8 @@ const material = {
     trustedRecordCount: trustedRecords.length,
     recorderSchemaCounts,
     excludedRecordCount: records.length - trustedRecords.length,
+    excludedAmbiguousCaseCaptureCount: ambiguousCaseCaptures.length,
+    excludedAmbiguousCaseCaptures: ambiguousCaseCaptures.map(({ captureKey, ...item }) => item),
     caseCount: caseRegistry.caseCount || caseRegistry.cases?.length || 0
   },
   hkoTruth: {
