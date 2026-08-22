@@ -38,34 +38,65 @@ function normalizeName(value) {
   return String(value || '').trim().toUpperCase().replace(/[\s_()（）\-–—./]+/g, '');
 }
 
+function resolveUrl(value, baseUrl) {
+  try {
+    return new URL(decodeHtml(value), baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+export function extractScriptSources(html, archiveUrl) {
+  const scripts = [];
+  const seen = new Set();
+  const re = /<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+  let match;
+  while ((match = re.exec(String(html || '')))) {
+    const absolute = resolveUrl(match[1], archiveUrl);
+    if (!absolute || seen.has(absolute)) continue;
+    try {
+      const url = new URL(absolute);
+      if (url.hostname !== CWA_HOST) continue;
+    } catch {
+      continue;
+    }
+    seen.add(absolute);
+    scripts.push(absolute);
+  }
+  return scripts.slice(0, 20);
+}
+
+export function extractEndpointCandidatesFromScript(scriptText, scriptUrl) {
+  const candidates = [];
+  const seen = new Set();
+  const quoted = /["'`]([^"'`\r\n]{3,300})["'`]/g;
+  let match;
+  while ((match = quoted.exec(String(scriptText || '')))) {
+    const value = match[1].trim();
+    if (!/(warning|warn|bulletin|typhoon|ajax|api)/i.test(value)) continue;
+    if (/\s/.test(value) && !value.includes('/')) continue;
+    const absolute = /^(?:https?:|\/|\.\.?\/)/i.test(value) ? resolveUrl(value, scriptUrl) : null;
+    const normalized = absolute || value;
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    candidates.push(normalized);
+  }
+  return candidates.slice(0, 100);
+}
+
 export function parseCwaTyphoonDetailHtml(html, archiveUrl) {
   const text = htmlToText(html);
   const name = text.match(/名稱\s*([^\s(（]+)\s*[（(]\s*([^）)]+)\s*[）)]/);
   const typhoonId = text.match(/編號\s*(\d{6})/);
   const bulletinCount = text.match(/發布報數\s*(\d+)/);
   const warningBulletinSection = /颱風警報單/.test(text);
-  const links = [];
-  const seen = new Set();
-  const hrefRe = /href\s*=\s*["']([^"']+)["']/gi;
-  let match;
-  while ((match = hrefRe.exec(String(html || '')))) {
-    try {
-      const absolute = new URL(decodeHtml(match[1]), archiveUrl).toString();
-      if (!seen.has(absolute) && /(warning|warn|typhoon|bulletin|\.pdf(?:$|[?#])|\.png(?:$|[?#])|\.jpe?g(?:$|[?#]))/i.test(absolute)) {
-        seen.add(absolute);
-        links.push(absolute);
-      }
-    } catch {
-      // Ignore malformed links from unrelated page widgets.
-    }
-  }
   return {
     nameZh: name?.[1]?.trim() || null,
     nameEn: name?.[2]?.trim().toUpperCase() || null,
     archiveTyphoonId: typhoonId?.[1] || null,
     warningBulletinCount: bulletinCount ? Number(bulletinCount[1]) : null,
     warningBulletinSection,
-    candidateLinks: links.slice(0, 50)
+    scriptSources: extractScriptSources(html, archiveUrl)
   };
 }
 
@@ -104,11 +135,48 @@ export function validateHistoricalCaseManifest(manifest) {
   return manifest;
 }
 
+async function discoverDynamicEndpoints(scriptSources, timeoutMs) {
+  const endpointCandidates = [];
+  const errors = [];
+  const seen = new Set();
+  for (const scriptUrl of scriptSources.slice(0, 12)) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(scriptUrl, {
+        redirect: 'follow',
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Storm-Track historical replay source audit/1.0' }
+      });
+      if (!response.ok) {
+        errors.push({ scriptUrl, error: `HTTP ${response.status}` });
+        continue;
+      }
+      const text = await response.text();
+      for (const candidate of extractEndpointCandidatesFromScript(text, scriptUrl)) {
+        if (seen.has(candidate)) continue;
+        seen.add(candidate);
+        endpointCandidates.push(candidate);
+      }
+    } catch (error) {
+      errors.push({ scriptUrl, error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return {
+    inspectedScriptCount: Math.min(scriptSources.length, 12),
+    endpointCandidates: endpointCandidates.slice(0, 100),
+    errors
+  };
+}
+
 export async function fetchCwaArchiveIndex(manifest, options = {}) {
   validateHistoricalCaseManifest(manifest);
   const cwa = manifest.forecastSources.CWA;
+  const timeoutMs = Number(options.timeoutMs || 15000);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Number(options.timeoutMs || 15000));
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(cwa.archiveUrl, {
       redirect: 'follow',
@@ -124,6 +192,7 @@ export async function fetchCwaArchiveIndex(manifest, options = {}) {
     assert(parsed.archiveTyphoonId === String(cwa.archiveTyphoonId), `${manifest.caseId}: CWA archive typhoon id mismatch`);
     assert(normalizeName(parsed.nameEn) === normalizeName(manifest.storm.nameEn), `${manifest.caseId}: CWA English name mismatch`);
     assert(parsed.warningBulletinCount === Number(cwa.expectedWarningBulletinCount), `${manifest.caseId}: CWA bulletin count mismatch`);
+    const discovery = await discoverDynamicEndpoints(parsed.scriptSources, timeoutMs);
     return {
       schemaVersion: ADAPTER_VERSION,
       caseId: manifest.caseId,
@@ -135,14 +204,16 @@ export async function fetchCwaArchiveIndex(manifest, options = {}) {
         official: true
       },
       archive: parsed,
+      discovery,
       readiness: {
         indexVerified: true,
-        warningBulletinArchiveAdvertised: parsed.warningBulletinSection,
-        staticCandidateLinkCount: parsed.candidateLinks.length,
+        warningBulletinArchiveAdvertisedInStaticHtml: parsed.warningBulletinSection,
+        scriptSourceCount: parsed.scriptSources.length,
+        dynamicEndpointCandidateCount: discovery.endpointCandidates.length,
         asIssuedForecastPointsExtracted: false,
-        state: parsed.candidateLinks.length > 0
-          ? 'candidate-bulletin-links-found'
-          : (parsed.warningBulletinSection ? 'bulletin-links-dynamic-or-not-in-static-html' : 'warning-bulletin-section-not-visible')
+        state: discovery.endpointCandidates.length > 0
+          ? 'dynamic-endpoint-candidates-found'
+          : 'dynamic-endpoint-not-discovered'
       },
       semantics: {
         archiveIndexOnly: true,
