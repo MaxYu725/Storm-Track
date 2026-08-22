@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '3.3.6';
+const VERSION = '3.3.7';
 const CACHE_PREFIX = 'storm-track-';
 const SHELL_CACHE = `${CACHE_PREFIX}shell-${VERSION}`;
 const STATIC_CACHE = `${CACHE_PREFIX}static-${VERSION}`;
