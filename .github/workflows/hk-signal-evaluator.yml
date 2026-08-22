@@ -79,15 +79,19 @@ jobs:
         run: |
           set -euo pipefail
           jq -e '
-            .schemaVersion == "hk-signal-evaluator/v1" and
+            .schemaVersion == "hk-signal-evaluator/v2" and
             .rubricVersion == "hk-signal-validation-rubric/v1" and
+            .eventPolicyVersion == "hk-signal-event-policy/v1" and
             (.evaluationFingerprint | test("^[0-9a-f]{64}$")) and
             (.rubric.checkpointHours == [48,24,12,6,3]) and
+            (.eventPolicy.version == "hk-signal-event-policy/v1") and
             (.status == "awaiting-tc1" or .status == "evaluated" or .status == "truth-unresolved") and
             (.prospective.trustedRecorderSchema == "beta-prospective-recorder/v2") and
-            (.evaluations | type == "array")
+            (.hkoTruth.signalEventCounts | has("T1") and has("T3") and has("T8")) and
+            (.evaluations | type == "array") and
+            (all(.evaluations[]; (.signal == "T1" or .signal == "T3" or .signal == "T8")))
           ' /tmp/hk-signal-evaluation.json >/dev/null
-          jq '{generatedAt,evaluationFingerprint,status,rubricVersion,prospective,hkoTruth,awaiting,evaluations:[.evaluations[]|{status,caseId,attribution,truth,lifecycle,grades}]}' /tmp/hk-signal-evaluation.json
+          jq '{generatedAt,evaluationFingerprint,status,rubricVersion,eventPolicyVersion,prospective,hkoTruth,awaiting,evaluations:[.evaluations[]|{status,signal,caseId,attribution,truth,lifecycle,grades}]}' /tmp/hk-signal-evaluation.json
 
       - name: Check branch whitespace
         if: github.event_name == 'pull_request'
@@ -118,17 +122,24 @@ jobs:
           fi
 
           cp /tmp/hk-signal-evaluation.json latest.json
-          jq -c '{schemaVersion,generatedAt,evaluationFingerprint,sourceCommit,status,rubricVersion,prospective,hkoTruth,awaiting:{status:.awaiting.status,activeHkoCaseIds:.awaiting.activeHkoCaseIds},evaluations:[.evaluations[]|{status,caseId,truth,grades,lifecycle}]}' /tmp/hk-signal-evaluation.json >> index.ndjson
+          jq -c '{schemaVersion,generatedAt,evaluationFingerprint,sourceCommit,status,rubricVersion,eventPolicyVersion,prospective,hkoTruth,awaiting:{status:.awaiting.status,activeHkoCaseIds:.awaiting.activeHkoCaseIds,pendingSignalsByCase:.awaiting.pendingSignalsByCase},evaluations:[.evaluations[]|{status,signal,caseId,truth,grades,lifecycle}]}' /tmp/hk-signal-evaluation.json >> index.ndjson
 
           while IFS= read -r evaluation; do
             case_id="$(jq -r '.caseId' <<<"$evaluation")"
+            signal="$(jq -r '.signal | ascii_downcase' <<<"$evaluation")"
+            status="$(jq -r '.status' <<<"$evaluation")"
             event_time="$(jq -r '.truth.eventTime' <<<"$evaluation")"
             stamp="$(date -u -d "$event_time" +'%Y%m%dT%H%M%SZ')"
             mkdir -p "cases/$case_id"
-            jq --arg caseId "$case_id" --arg eventTime "$event_time" \
-              '.evaluations[] | select(.status == "evaluated" and .caseId == $caseId and .truth.eventTime == $eventTime)' \
-              /tmp/hk-signal-evaluation.json > "cases/$case_id/tc1-$stamp.json"
-          done < <(jq -c '.evaluations[] | select(.status == "evaluated")' /tmp/hk-signal-evaluation.json)
+            if [[ "$status" == 'evaluated' ]]; then
+              destination="cases/$case_id/${signal}-$stamp.json"
+            else
+              destination="cases/$case_id/${signal}-skipped-$stamp.json"
+            fi
+            jq --arg caseId "$case_id" --arg signal "${signal^^}" --arg status "$status" --arg eventTime "$event_time" \
+              '.evaluations[] | select(.caseId == $caseId and .signal == $signal and .status == $status and .truth.eventTime == $eventTime)' \
+              /tmp/hk-signal-evaluation.json > "$destination"
+          done < <(jq -c '.evaluations[] | select(.caseId != null and (.status == "evaluated" or .status == "not-issued"))' /tmp/hk-signal-evaluation.json)
 
           git add latest.json index.ndjson cases 2>/dev/null || git add latest.json index.ndjson
           git commit -m "Evaluate HK signal Beta ${fingerprint:0:12}"
