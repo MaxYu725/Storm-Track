@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  extractEndpointCandidatesFromScript,
   parseCwaTyphoonDetailHtml,
   validateHistoricalCaseManifest
 } from '../scripts/cwa-historical-adapter.mjs';
@@ -27,7 +28,7 @@ const sample = `
 <tr><th>發布報數</th><td>12</td></tr>
 </table>
 <h5>颱風警報單</h5>
-<a href="/TDB/public/warning/sample.pdf">warning</a>
+<script src="/TDB/pages/public/typhoon_detail/typhoon_detail.js"></script>
 </body></html>`;
 const parsed = parseCwaTyphoonDetailHtml(sample, 'https://rdc28.cwa.gov.tw/TDB/public/typhoon_detail?typhoon_id=202612');
 assert.equal(parsed.nameZh, '紅霞');
@@ -35,7 +36,13 @@ assert.equal(parsed.nameEn, 'NOUL');
 assert.equal(parsed.archiveTyphoonId, '202612');
 assert.equal(parsed.warningBulletinCount, 12);
 assert.equal(parsed.warningBulletinSection, true);
-assert.equal(parsed.candidateLinks.length, 1);
+assert.deepEqual(parsed.scriptSources, ['https://rdc28.cwa.gov.tw/TDB/pages/public/typhoon_detail/typhoon_detail.js']);
+
+const endpointCandidates = extractEndpointCandidatesFromScript(
+  `fetch('/TDB/api/typhoon_warning?typhoon_id=202612'); const page='typhoon_detail';`,
+  'https://rdc28.cwa.gov.tw/TDB/pages/public/typhoon_detail/typhoon_detail.js'
+);
+assert.ok(endpointCandidates.includes('https://rdc28.cwa.gov.tw/TDB/api/typhoon_warning?typhoon_id=202612'));
 
 const noul = readCase('2026-noul.json');
 assert.equal(noul.truth.highestSignal, 'T9');
