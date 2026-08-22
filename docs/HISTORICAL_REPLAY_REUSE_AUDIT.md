@@ -66,21 +66,53 @@ Therefore:
 - do not replay historical storms through the old weighted model and compare that result as current v1 performance;
 - do reuse the old cutoff, provenance, leakage and truth-verification infrastructure concepts.
 
+## Live production Archive feasibility result — 2026-08-22
+
+PR #45 ran a read-only audit directly against production D1 `storm-track-db` (UUID `eb0bf995-3ea7-4bf6-bbca-b425892c4d7e`) using only `SELECT` statements.
+
+Observed inventory:
+
+- 15 storm rows in the requested 2025–2026 query range;
+- 479 forecast-bearing advisories;
+- the earliest returned storm `first_seen_at` is `2026-08-05T08:00:27.000Z`;
+- there are no 2025 storm rows in the current production Archive inventory;
+- the current rows are the storms accumulated since early August 2026, including CHAN-HOM, WP-2026-16, WP-2026-17, NARRA-related identities and TC2623;
+- neither 2026 紅霞 nor 2025 樺加沙 / RAGASA exists as a production `storms` row in this Archive coverage window.
+
+Therefore the first two requested historical T8 cases **cannot be reconstructed from the current production D1 alone**. This is a source-coverage limitation, not a failure of the AI-21/22 walk-forward logic and not an alias-only problem.
+
+The production schema does contain the structures required for future replay where archived data exists:
+
+- `storm_aliases(storm_id, agency, agency_storm_id, agency_name, first_seen_at, last_seen_at)`;
+- `wind_radii(track_point_id, threshold_code, threshold_ms, radius_ne_km, radius_se_km, radius_sw_km, radius_nw_km)`.
+
+The presence of `wind_radii` means archived cases can potentially preserve the strong-wind/gale-radius evidence needed by current T3/T8 logic, but target-specific row coverage still has to be audited before replay.
+
+### Consequence
+
+Historical replay now has two source paths:
+
+1. **Archive-native replay** — for storms actually captured by `storm-track-db`; reuse AI-21/22 extraction directly.
+2. **External official historical reconstruction** — for pre-Archive cases such as 2025 樺加沙 and earlier-2026 紅霞; acquire auditable as-issued official advisories first, then feed them through the same cutoff/provenance contract.
+
+External reconstruction must not substitute final best track for historical forecasts. Each replay snapshot still requires evidence that the advisory was genuinely issued and available by the chosen cutoff.
+
 ## New historical replay path
 
-1. Read production `storm-track-db` with `SELECT` only.
-2. Identify the historical storm and stable production identity.
-3. Inventory per-agency forecast-bearing advisories and provenance.
-4. Reconstruct the latest advisory available to each agency at each cutoff.
-5. Build current `storm-analysis-snapshot/v1` input without future advisory leakage.
-6. Run the current frozen HK Signal Beta analysis stack.
-7. Compare T1/T3/T8 against historical HKO official signal lifecycle using the same event policy/rubric where applicable.
-8. Keep historical results explicitly marked retrospective.
-9. Diagnose repeated biases before creating any v2 candidate.
+1. Read production `storm-track-db` with `SELECT` only when the case exists there.
+2. Otherwise acquire an auditable official historical advisory corpus outside production D1.
+3. Identify the historical storm and stable agency identities.
+4. Inventory per-agency forecast-bearing advisories and provenance.
+5. Reconstruct the latest advisory available to each agency at each cutoff.
+6. Build current `storm-analysis-snapshot/v1` input without future advisory leakage.
+7. Run the current frozen HK Signal Beta analysis stack.
+8. Compare T1/T3/T8 against historical HKO official signal lifecycle using the same event policy/rubric where applicable.
+9. Keep historical results explicitly marked retrospective and record input completeness.
+10. Diagnose repeated biases before creating any v2 candidate.
 
 ## First target cases
 
-- 2026 紅霞 — requested T8 stress case.
-- 2025 樺加沙 / RAGASA — requested T8 stress case.
+- 2026 紅霞 — requested T8 stress case; requires external official historical reconstruction because it predates current production Archive coverage.
+- 2025 樺加沙 / RAGASA — requested T8 stress case; requires external official historical reconstruction because current production Archive has no 2025 rows.
 
-The first PR only audits whether production Archive data is sufficient to reconstruct these cases. It performs no model changes, no training and no production database writes.
+The first PR only audits replay feasibility and records the source-coverage boundary. It performs no model changes, no training and no production database writes.
