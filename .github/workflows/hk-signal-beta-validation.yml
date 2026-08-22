@@ -7,6 +7,7 @@ on:
     paths:
       - index.html
       - analysis/**
+      - scripts/reconcile-beta-case-identities.mjs
       - tests/**
       - .github/workflows/hk-signal-beta-validation.yml
 
@@ -29,6 +30,8 @@ jobs:
           node --check analysis/hk-threat-assessment.js
           node --check analysis/basic-hk-signal-forecast.js
           node --check analysis/frontend-hk-threat-ui.js
+          node --check analysis/storm-case-identity.js
+          node --check scripts/reconcile-beta-case-identities.mjs
 
       - name: Verify Beta integration surface
         run: |
@@ -68,6 +71,7 @@ jobs:
             tests/frontend-hk-threat-ui.test.cjs
             tests/frontend-hk-signal-beta-gate.test.cjs
             tests/frontend-storm-identity-grouping.test.cjs
+            tests/storm-case-identity.test.cjs
           )
           for test_file in "${tests[@]}"; do
             echo "::group::$test_file"

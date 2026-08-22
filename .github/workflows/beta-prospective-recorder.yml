@@ -11,8 +11,10 @@ on:
       - analysis/**
       - index.html
       - scripts/capture-beta-prospective.mjs
+      - scripts/reconcile-beta-case-identities.mjs
       - .github/workflows/beta-prospective-recorder.yml
       - tests/frontend-beta-prospective-observation.test.cjs
+      - tests/storm-case-identity.test.cjs
   pull_request:
     branches:
       - main
@@ -20,8 +22,10 @@ on:
       - analysis/**
       - index.html
       - scripts/capture-beta-prospective.mjs
+      - scripts/reconcile-beta-case-identities.mjs
       - .github/workflows/beta-prospective-recorder.yml
       - tests/frontend-beta-prospective-observation.test.cjs
+      - tests/storm-case-identity.test.cjs
 
 permissions:
   contents: write
@@ -50,9 +54,26 @@ jobs:
       - name: Run recorder unit regression
         run: |
           node --check analysis/frontend-hk-threat-ui.js
+          node --check analysis/storm-case-identity.js
           node --check scripts/capture-beta-prospective.mjs
+          node --check scripts/reconcile-beta-case-identities.mjs
           node tests/frontend-beta-prospective-observation.test.cjs
           node tests/frontend-hk-threat-ui.test.cjs
+          node tests/storm-case-identity.test.cjs
+
+      - name: Reconcile existing prospective corpus
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/beta-case-corpus
+          mkdir -p /tmp/beta-case-corpus
+          if git show-ref --verify --quiet "refs/remotes/origin/${DATA_BRANCH}"; then
+            git archive "origin/${DATA_BRANCH}" | tar -x -C /tmp/beta-case-corpus
+            node scripts/reconcile-beta-case-identities.mjs /tmp/beta-case-corpus > /tmp/beta-case-reconcile.json
+            jq '{schemaVersion,reconciledThrough,recordCount,caseCount,cases}' /tmp/beta-case-reconcile.json
+            jq -e '.schemaVersion == "storm-case-identity/v1" and (.caseCount >= 1)' /tmp/beta-case-reconcile.json >/dev/null
+          fi
 
       - name: Install lightweight browser driver
         run: npm install --no-save --ignore-scripts playwright-core@1.55.0
@@ -111,13 +132,18 @@ jobs:
         if: github.event_name == 'pull_request'
         run: git diff --check origin/main...HEAD
 
-      - name: Persist new prospective fingerprint
+      - name: Persist prospective state and reconcile cases
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          rm -rf /tmp/beta-case-runtime
+          mkdir -p /tmp/beta-case-runtime/analysis /tmp/beta-case-runtime/scripts
+          cp analysis/storm-case-identity.js /tmp/beta-case-runtime/analysis/
+          cp scripts/reconcile-beta-case-identities.mjs /tmp/beta-case-runtime/scripts/
 
           if git ls-remote --exit-code --heads origin "$DATA_BRANCH" >/dev/null 2>&1; then
             git fetch --no-tags origin "$DATA_BRANCH"
@@ -129,25 +155,37 @@ jobs:
 
           fingerprint="$(jq -r '.captureFingerprint' /tmp/beta-prospective.json)"
           existing="$(jq -r '.captureFingerprint // empty' latest.json 2>/dev/null || true)"
-          if [[ "$fingerprint" == "$existing" ]]; then
+          stored=false
+          stamp="identity"
+          short="${fingerprint:0:12}"
+
+          if [[ "$fingerprint" != "$existing" ]]; then
+            captured_at="$(jq -r '.capturedAt' /tmp/beta-prospective.json)"
+            day_path="$(date -u -d "$captured_at" +'%Y/%m/%d')"
+            stamp="$(date -u -d "$captured_at" +'%Y%m%dT%H%M%SZ')"
+            destination="observations/${day_path}/${stamp}-${short}.json"
+            mkdir -p "$(dirname "$destination")"
+            cp /tmp/beta-prospective.json "$destination"
+            cp /tmp/beta-prospective.json latest.json
+            jq -c '{schemaVersion,capturedAt,captureFingerprint,sourceCommit,sourceStates,visibleGroupKeys,discardedStaleObservationKeys,observationCount,groups:[.observations[]|{key:.group.key,displayName:.group.displayName,sourceAgencies:.sourceAgencies,engineVersions:.engineVersions,generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T8:.analysis.basicForecast.signals.T8.likelihood,disagreement:.analysis.threatAssessment.analyzers.agencyDisagreement.confidence}]}' /tmp/beta-prospective.json >> index.ndjson
+            stored=true
+          fi
+
+          node /tmp/beta-case-runtime/scripts/reconcile-beta-case-identities.mjs . > /tmp/beta-case-reconcile.json
+          jq '{schemaVersion,reconciledThrough,recordCount,caseCount,cases}' /tmp/beta-case-reconcile.json
+
+          git add -A observations latest.json index.ndjson case-registry.json case-index.ndjson 2>/dev/null || true
+          if git diff --cached --quiet; then
             echo "BETA_PROSPECTIVE_NOOP=true"
             echo "BETA_PROSPECTIVE_FINGERPRINT=$fingerprint"
             exit 0
           fi
 
-          captured_at="$(jq -r '.capturedAt' /tmp/beta-prospective.json)"
-          day_path="$(date -u -d "$captured_at" +'%Y/%m/%d')"
-          stamp="$(date -u -d "$captured_at" +'%Y%m%dT%H%M%SZ')"
-          short="${fingerprint:0:12}"
-          destination="observations/${day_path}/${stamp}-${short}.json"
-          mkdir -p "$(dirname "$destination")"
-          cp /tmp/beta-prospective.json "$destination"
-          cp /tmp/beta-prospective.json latest.json
-
-          jq -c '{schemaVersion,capturedAt,captureFingerprint,sourceCommit,sourceStates,visibleGroupKeys,discardedStaleObservationKeys,observationCount,groups:[.observations[]|{key:.group.key,displayName:.group.displayName,sourceAgencies:.sourceAgencies,engineVersions:.engineVersions,generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T8:.analysis.basicForecast.signals.T8.likelihood,disagreement:.analysis.threatAssessment.analyzers.agencyDisagreement.confidence}]}' /tmp/beta-prospective.json >> index.ndjson
-
-          git add "$destination" latest.json index.ndjson
-          git commit -m "Observe HK signal Beta ${stamp} ${short}"
+          if [[ "$stored" == "true" ]]; then
+            git commit -m "Observe HK signal Beta ${stamp} ${short}"
+          else
+            git commit -m "Reconcile HK signal Beta storm case identities"
+          fi
           git push origin "HEAD:${DATA_BRANCH}"
-          echo "BETA_PROSPECTIVE_STORED=$destination"
+          echo "BETA_PROSPECTIVE_STORED=$stored"
           echo "BETA_PROSPECTIVE_FINGERPRINT=$fingerprint"
