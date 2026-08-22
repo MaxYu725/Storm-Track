@@ -62,6 +62,11 @@ function key(fingerprint, groupKey) {
   return `${fingerprint || ''}\u0000${groupKey || ''}`;
 }
 
+function eventMs(event) {
+  const value = Date.parse(event?.eventTime || '');
+  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+}
+
 const caseRegistry = readJsonIfExists(path.join(prospectiveDir, 'case-registry.json'), {
   schemaVersion: 'storm-case-identity/v1',
   reconciledThrough: null,
@@ -69,7 +74,8 @@ const caseRegistry = readJsonIfExists(path.join(prospectiveDir, 'case-registry.j
   cases: []
 });
 const caseIndex = readNdjson(path.join(prospectiveDir, 'case-index.ndjson'));
-const truthEvents = readNdjson(path.join(truthDir, 'truth-events.ndjson'));
+const truthEvents = readNdjson(path.join(truthDir, 'truth-events.ndjson'))
+  .sort((a, b) => eventMs(a) - eventMs(b));
 const latestTruth = readJsonIfExists(path.join(truthDir, 'latest.json'), null);
 
 const observationFiles = listJsonFiles(path.join(prospectiveDir, 'observations'));
@@ -106,79 +112,148 @@ for (const record of trustedRecords) {
   }
 }
 
-const tc1Events = truthEvents.filter(evaluator.isInitialTc1Issue);
-const evaluations = tc1Events.map(event => {
-  const attribution = evaluator.attributeCase(event, caseIndex);
-  if (attribution.status !== 'attributed') {
-    return {
-      schemaVersion: evaluator.VERSION,
-      rubricVersion: evaluator.RUBRIC_VERSION,
-      status: attribution.status,
-      caseId: null,
-      attribution,
-      truth: {
-        eventType: event.eventType,
-        eventTime: event.eventTime,
-        timeSource: event.timeSource,
-        code: event?.currentTruth?.code || null,
-        level: event?.currentTruth?.level ?? null,
-        issueTime: event?.currentTruth?.issueTime || null,
-        truthFingerprint: event.truthFingerprint || null
-      },
-      rubric: evaluator.RUBRIC
-    };
+const signalEvents = Object.fromEntries(evaluator.SIGNALS.map(signal => [
+  signal,
+  truthEvents.filter(event => evaluator.isInitialSignalEvent(event, signal))
+]));
+
+function unresolvedEvaluation(signal, event, attribution) {
+  return {
+    schemaVersion: evaluator.VERSION,
+    rubricVersion: evaluator.RUBRIC_VERSION,
+    eventPolicyVersion: evaluator.EVENT_POLICY_VERSION,
+    status: attribution.status,
+    signal,
+    caseId: null,
+    attribution,
+    truth: {
+      signal,
+      eventType: event.eventType,
+      eventTime: event.eventTime,
+      timeSource: event.timeSource,
+      code: event?.currentTruth?.code || null,
+      level: event?.currentTruth?.level ?? null,
+      issueTime: event?.currentTruth?.issueTime || null,
+      updateTime: event?.currentTruth?.updateTime || null,
+      truthFingerprint: event.truthFingerprint || null
+    },
+    rubric: evaluator.RUBRIC,
+    eventPolicy: evaluator.EVENT_POLICY
+  };
+}
+
+const realEvaluations = [];
+for (const signal of evaluator.SIGNALS) {
+  for (const event of signalEvents[signal]) {
+    const attribution = evaluator.attributeCase(event, caseIndex);
+    if (attribution.status !== 'attributed') {
+      realEvaluations.push(unresolvedEvaluation(signal, event, attribution));
+      continue;
+    }
+    realEvaluations.push(evaluator.evaluateSignalEvent({
+      signal,
+      event,
+      timeline: timelines.get(attribution.caseId) || [],
+      caseId: attribution.caseId,
+      attribution
+    }));
   }
-  return evaluator.evaluateTc1Event({
-    event,
-    timeline: timelines.get(attribution.caseId) || [],
-    caseId: attribution.caseId,
-    attribution
+}
+
+function eligibleTruthBefore(signal, cutoff) {
+  const cutoffMs = Date.parse(cutoff || '');
+  if (!Number.isFinite(cutoffMs)) return false;
+  return signalEvents[signal].some(event => {
+    const ms = Date.parse(event?.eventTime || '');
+    return Number.isFinite(ms) && ms <= cutoffMs;
   });
+}
+
+const skipped = [];
+const skippedKeys = new Set();
+for (const higher of realEvaluations.filter(item => item.status === 'evaluated')) {
+  const lowerSignals = higher.signal === 'T8' ? ['T1', 'T3'] : higher.signal === 'T3' ? ['T1'] : [];
+  for (const lower of lowerSignals) {
+    if (eligibleTruthBefore(lower, higher.truth.eventTime)) continue;
+    const skipKey = `${higher.caseId}\u0000${lower}`;
+    if (skippedKeys.has(skipKey)) continue;
+    skippedKeys.add(skipKey);
+    skipped.push(evaluator.skippedLowerSignal({ signal: lower, higherSignalEvaluation: higher }));
+  }
+}
+
+const evaluations = [...realEvaluations, ...skipped].sort((a, b) => {
+  const timeDiff = Date.parse(a?.truth?.eventTime || '') - Date.parse(b?.truth?.eventTime || '');
+  if (Number.isFinite(timeDiff) && timeDiff !== 0) return timeDiff;
+  return evaluator.SIGNALS.indexOf(a.signal) - evaluator.SIGNALS.indexOf(b.signal);
 });
 
 function latestPrediction(caseId) {
   const timeline = timelines.get(caseId) || [];
   const row = timeline.at(-1) || null;
   if (!row) return null;
-  const prediction = evaluator.t1Prediction(row.observation);
+  const signals = Object.fromEntries(evaluator.SIGNALS.map(signal => {
+    const prediction = evaluator.signalPrediction(row.observation, signal);
+    return [signal, {
+      likelihood: prediction.likelihood,
+      riskIndex: prediction.riskIndex,
+      confidenceIndex: prediction.confidenceIndex,
+      persistenceHours: prediction.persistenceHours,
+      estimatedWindow: prediction.window
+    }];
+  }));
   return {
     caseId,
     capturedAt: row.capturedAt,
     captureFingerprint: row.captureFingerprint,
     rawGroupKey: row.rawGroupKey,
     displayName: row.observation?.group?.displayName || null,
-    likelihood: prediction.likelihood,
-    estimatedWindow: prediction.window,
+    likelihood: signals.T1.likelihood,
+    estimatedWindow: signals.T1.estimatedWindow,
+    signals,
     sourceAgencies: row.observation?.sourceAgencies || [],
     engineVersions: row.observation?.engineVersions || null
   };
 }
 
-let awaiting = null;
-if (!tc1Events.length) {
-  const pseudoEvent = {
-    eventTime: latestTruth?.retrievedAt || caseRegistry?.reconciledThrough || new Date(0).toISOString(),
-    currentTruth: latestTruth?.truth || null
-  };
-  const candidates = evaluator.candidateCasesForEvent(pseudoEvent, caseIndex);
-  const caseIds = [...new Set(candidates.map(row => row.caseId))];
-  awaiting = {
-    status: 'awaiting-tc1',
-    activeHkoCaseIds: caseIds,
-    latestPredictions: caseIds.map(latestPrediction).filter(Boolean),
-    latestHkoTruth: latestTruth ? {
-      retrievedAt: latestTruth.retrievedAt,
-      truthFingerprint: latestTruth.truthFingerprint,
-      truth: latestTruth.truth,
-      context: latestTruth.context
-    } : null
-  };
+const pseudoEvent = {
+  eventTime: latestTruth?.retrievedAt || caseRegistry?.reconciledThrough || new Date(0).toISOString(),
+  currentTruth: latestTruth?.truth || null
+};
+const candidates = evaluator.candidateCasesForEvent(pseudoEvent, caseIndex);
+const activeCaseIds = [...new Set(candidates.map(row => row.caseId))];
+const completedByCase = new Map();
+for (const item of evaluations.filter(item => item.caseId && (item.status === 'evaluated' || item.status === 'not-issued'))) {
+  if (!completedByCase.has(item.caseId)) completedByCase.set(item.caseId, new Set());
+  completedByCase.get(item.caseId).add(item.signal);
 }
+const pendingSignalsByCase = Object.fromEntries(activeCaseIds.map(caseId => [
+  caseId,
+  evaluator.SIGNALS.filter(signal => !completedByCase.get(caseId)?.has(signal))
+]));
 
+const awaiting = {
+  status: signalEvents.T1.length ? 'monitoring-higher-signals' : 'awaiting-tc1',
+  activeHkoCaseIds: activeCaseIds,
+  pendingSignalsByCase,
+  latestPredictions: activeCaseIds.map(latestPrediction).filter(Boolean),
+  latestHkoTruth: latestTruth ? {
+    retrievedAt: latestTruth.retrievedAt,
+    truthFingerprint: latestTruth.truthFingerprint,
+    truth: latestTruth.truth,
+    context: latestTruth.context
+  } : null
+};
+
+const signalEventCounts = Object.fromEntries(evaluator.SIGNALS.map(signal => [signal, signalEvents[signal].length]));
+const hasTruthEvents = Object.values(signalEventCounts).some(count => count > 0);
+const hasEvaluated = evaluations.some(item => item.status === 'evaluated');
 const material = {
   schemaVersion: evaluator.VERSION,
   rubricVersion: evaluator.RUBRIC_VERSION,
+  eventPolicyVersion: evaluator.EVENT_POLICY_VERSION,
   rubric: evaluator.RUBRIC,
+  eventPolicy: evaluator.EVENT_POLICY,
   prospective: {
     caseIdentitySchemaVersion: caseRegistry.schemaVersion || null,
     reconciledThrough: caseRegistry.reconciledThrough || null,
@@ -192,9 +267,10 @@ const material = {
     latestRetrievedAt: latestTruth?.retrievedAt || null,
     latestTruthFingerprint: latestTruth?.truthFingerprint || null,
     eventCount: truthEvents.length,
-    initialTc1IssueCount: tc1Events.length
+    initialTc1IssueCount: signalEvents.T1.length,
+    signalEventCounts
   },
-  status: tc1Events.length ? (evaluations.some(item => item.status === 'evaluated') ? 'evaluated' : 'truth-unresolved') : 'awaiting-tc1',
+  status: !hasTruthEvents ? 'awaiting-tc1' : hasEvaluated ? 'evaluated' : 'truth-unresolved',
   awaiting,
   evaluations
 };
