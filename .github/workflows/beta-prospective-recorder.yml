@@ -102,7 +102,7 @@ jobs:
             (.observations | type == "array") and
             (.observationCount == (.observations | length)) and
             (.observationCount == (.visibleGroupKeys | length)) and
-            ([.observations[].group.key] | sort == (.visibleGroupKeys | sort)) and
+            (([.observations[].group.key] | sort) == (.visibleGroupKeys | sort)) and
             ([.. | objects | has("rawInput")] | any | not)
           ' /tmp/beta-prospective.json >/dev/null
           jq '{capturedAt,captureFingerprint,sourceCommit,sourceStates,visibleGroupKeys,discardedStaleObservationKeys,observationCount,groups:[.observations[]|{key:.group.key,name:.group.displayName,sources:.sourceAgencies,engineVersions:.engineVersions,generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T8:.analysis.basicForecast.signals.T8.likelihood,disagreement:.analysis.threatAssessment.analyzers.agencyDisagreement.confidence}]}' /tmp/beta-prospective.json
