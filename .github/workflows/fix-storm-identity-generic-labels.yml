@@ -1,0 +1,53 @@
+name: Apply storm identity generic-label fix
+
+on:
+  push:
+    branches:
+      - fix/storm-identity-generic-labels
+    paths:
+      - .github/workflows/fix-storm-identity-generic-labels.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/storm-identity-generic-labels
+          fetch-depth: 1
+
+      - name: Patch generic storm identity classification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('index.html')
+          text = path.read_text()
+          old = "        return !text || /^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TD|熱帶低氣壓|未命名熱帶氣旋|未命名)(\\d+)?$/.test(text);"
+          new = """        if (!text) return true;
+          if (/^(UNNAMED|NAMELESS|TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶風暴|未命名熱帶氣旋|未命名)\\d*$/.test(text)) return true;
+          return /^(?:(?:TROPICALDEPRESSION|TROPICALSTORM|熱帶低氣壓|熱帶風暴))?(?:TC|TD|TS)\\d+[A-Z]?$/.test(text);"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one generic-name rule, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+
+      - name: Run storm identity regression
+        run: node tests/frontend-storm-identity-grouping.test.cjs
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Commit validated patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Fix generic storm identity grouping"
+          git push origin HEAD:fix/storm-identity-generic-labels
