@@ -22,71 +22,34 @@
     "sourceType": "official-tropical-cyclone-report",
     "highestSignal": "T10",
     "signalLifecycle": [
-      {
-        "signal": "T1",
-        "issuedAt": "2025-09-22T04:20:00.000Z",
-        "endedAt": "2025-09-22T13:40:00.000Z"
-      },
-      {
-        "signal": "T3",
-        "issuedAt": "2025-09-22T13:40:00.000Z",
-        "endedAt": "2025-09-23T06:20:00.000Z"
-      },
-      {
-        "signal": "T8NW",
-        "issuedAt": "2025-09-23T06:20:00.000Z",
-        "endedAt": "2025-09-23T17:40:00.000Z"
-      },
-      {
-        "signal": "T9",
-        "issuedAt": "2025-09-23T17:40:00.000Z",
-        "endedAt": "2025-09-23T18:40:00.000Z"
-      },
-      {
-        "signal": "T10",
-        "issuedAt": "2025-09-23T18:40:00.000Z",
-        "endedAt": "2025-09-24T05:20:00.000Z"
-      },
-      {
-        "signal": "T8SE",
-        "issuedAt": "2025-09-24T05:20:00.000Z",
-        "endedAt": "2025-09-24T12:20:00.000Z"
-      },
-      {
-        "signal": "T3",
-        "issuedAt": "2025-09-24T12:20:00.000Z",
-        "endedAt": "2025-09-25T00:20:00.000Z"
-      },
-      {
-        "signal": "T1",
-        "issuedAt": "2025-09-25T00:20:00.000Z",
-        "endedAt": "2025-09-25T03:20:00.000Z"
-      }
+      { "signal": "T1", "issuedAt": "2025-09-22T04:20:00.000Z", "endedAt": "2025-09-22T13:40:00.000Z" },
+      { "signal": "T3", "issuedAt": "2025-09-22T13:40:00.000Z", "endedAt": "2025-09-23T06:20:00.000Z" },
+      { "signal": "T8NW", "issuedAt": "2025-09-23T06:20:00.000Z", "endedAt": "2025-09-23T17:40:00.000Z" },
+      { "signal": "T9", "issuedAt": "2025-09-23T17:40:00.000Z", "endedAt": "2025-09-23T18:40:00.000Z" },
+      { "signal": "T10", "issuedAt": "2025-09-23T18:40:00.000Z", "endedAt": "2025-09-24T05:20:00.000Z" },
+      { "signal": "T8SE", "issuedAt": "2025-09-24T05:20:00.000Z", "endedAt": "2025-09-24T12:20:00.000Z" },
+      { "signal": "T3", "issuedAt": "2025-09-24T12:20:00.000Z", "endedAt": "2025-09-25T00:20:00.000Z" },
+      { "signal": "T1", "issuedAt": "2025-09-25T00:20:00.000Z", "endedAt": "2025-09-25T03:20:00.000Z" }
     ],
     "allSignalsCancelledAt": "2025-09-25T03:20:00.000Z"
   },
   "forecastSources": {
+    "CMA": {
+      "role": "forecast-input-primary",
+      "provider": "NMC",
+      "historicalListYear": 2025,
+      "stormNumber": "2518",
+      "asIssuedForecastExtraction": "active"
+    },
     "CWA": {
-      "role": "forecast-input-candidate",
+      "role": "archive-metadata-only",
       "archiveUrl": "https://rdc28.cwa.gov.tw/TDB/public/typhoon_detail?typhoon_id=202518",
       "archiveTyphoonId": "202518",
       "expectedWarningBulletinCount": 21,
-      "archiveSummaryConfirmed": true,
-      "warningBulletinSectionConfirmed": true,
-      "asIssuedForecastExtraction": "pending"
+      "asIssuedForecastExtraction": "not-used-after-source-probe"
     },
-    "HKO": {
-      "role": "forecast-input-candidate",
-      "asIssuedForecastExtraction": "unassessed"
-    },
-    "CMA": {
-      "role": "forecast-input-candidate",
-      "asIssuedForecastExtraction": "unassessed"
-    },
-    "JMA": {
-      "role": "forecast-input-candidate",
-      "asIssuedForecastExtraction": "unassessed"
-    }
+    "HKO": { "role": "forecast-input-candidate", "asIssuedForecastExtraction": "unassessed" },
+    "JMA": { "role": "forecast-input-candidate", "asIssuedForecastExtraction": "unassessed" }
   },
   "safety": {
     "truthMayNotBeUsedAsForecastInput": true,
