@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "historical-replay-case/v1",
+  "caseId": "2026-noul",
+  "retrospective": true,
+  "storm": {
+    "season": 2026,
+    "basin": "WNP",
+    "nameEn": "NOUL",
+    "nameZh": "紅霞",
+    "internationalNumber": "2612"
+  },
+  "identities": {
+    "HKO": "NOUL/2612",
+    "CWA": "202612",
+    "JMA": "2612",
+    "CMA": "2612"
+  },
+  "truth": {
+    "authority": "HKO",
+    "role": "verification-only",
+    "sourceUrl": "https://www.hko.gov.hk/tc/wxinfo/pastwx/mws2026/mws202607.htm",
+    "sourceType": "official-monthly-warning-signal-table",
+    "highestSignal": "T9",
+    "signalLifecycle": [
+      {
+        "signal": "T1",
+        "issuedAt": "2026-07-24T12:40:00.000Z",
+        "endedAt": "2026-07-25T05:20:00.000Z"
+      },
+      {
+        "signal": "T3",
+        "issuedAt": "2026-07-25T05:20:00.000Z",
+        "endedAt": "2026-07-25T14:10:00.000Z"
+      },
+      {
+        "signal": "T8NW",
+        "issuedAt": "2026-07-25T14:10:00.000Z",
+        "endedAt": "2026-07-25T17:10:00.000Z"
+      },
+      {
+        "signal": "T9",
+        "issuedAt": "2026-07-25T17:10:00.000Z",
+        "endedAt": "2026-07-25T23:10:00.000Z"
+      },
+      {
+        "signal": "T8SW",
+        "issuedAt": "2026-07-25T23:10:00.000Z",
+        "endedAt": "2026-07-26T04:40:00.000Z"
+      },
+      {
+        "signal": "T3",
+        "issuedAt": "2026-07-26T04:40:00.000Z",
+        "endedAt": "2026-07-26T07:20:00.000Z"
+      },
+      {
+        "signal": "T1",
+        "issuedAt": "2026-07-26T07:20:00.000Z",
+        "endedAt": "2026-07-26T11:10:00.000Z"
+      }
+    ],
+    "allSignalsCancelledAt": "2026-07-26T11:10:00.000Z"
+  },
+  "forecastSources": {
+    "CWA": {
+      "role": "forecast-input-candidate",
+      "archiveUrl": "https://rdc28.cwa.gov.tw/TDB/public/typhoon_detail?typhoon_id=202612",
+      "archiveTyphoonId": "202612",
+      "expectedWarningBulletinCount": 12,
+      "archiveSummaryConfirmed": true,
+      "warningBulletinSectionConfirmed": true,
+      "asIssuedForecastExtraction": "pending"
+    },
+    "HKO": {
+      "role": "forecast-input-candidate",
+      "asIssuedForecastExtraction": "unassessed"
+    },
+    "CMA": {
+      "role": "forecast-input-candidate",
+      "asIssuedForecastExtraction": "unassessed"
+    },
+    "JMA": {
+      "role": "forecast-input-candidate",
+      "asIssuedForecastExtraction": "unassessed"
+    }
+  },
+  "safety": {
+    "truthMayNotBeUsedAsForecastInput": true,
+    "futureAdvisoryLeakageForbidden": true,
+    "missingAgencyMayNotBeSubstituted": true,
+    "currentV1ModelFrozen": true
+  }
+}
