@@ -14,18 +14,25 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const readCase = name => JSON.parse(fs.readFileSync(path.join(root, 'historical/cases', name), 'utf8'));
 
-for (const file of ['2026-noul.json', '2025-ragasa.json']) {
-  const manifest = validateHistoricalCaseManifest(readCase(file));
-  assert.equal(manifest.truth.role, 'verification-only');
-  assert.equal(manifest.forecastSources.CMA.role, 'forecast-input-primary');
-  assert.equal(manifest.forecastSources.CWA.role, 'archive-metadata-only');
-  assert.equal(manifest.safety.currentV1ModelFrozen, true);
-  assert.equal(manifest.safety.truthMayNotBeUsedAsForecastInput, true);
-  assert.ok(manifest.truth.signalLifecycle.some(item => /^T8/.test(item.signal)));
-}
+const noul = validateHistoricalCaseManifest(readCase('2026-noul.json'));
+assert.equal(noul.truth.role, 'verification-only');
+assert.equal(noul.forecastSources.CMA.role, 'forecast-input-primary');
+assert.equal(noul.forecastSources.CWA.role, 'archive-metadata-only');
+assert.equal(noul.safety.currentV1ModelFrozen, true);
+assert.equal(noul.safety.truthMayNotBeUsedAsForecastInput, true);
+assert.ok(noul.truth.signalLifecycle.some(item => /^T8/.test(item.signal)));
+
+const ragasa = readCase('2025-ragasa.json');
+assert.equal(ragasa.schemaVersion, 'historical-replay-case/v1');
+assert.equal(ragasa.retrospective, true);
+assert.equal(ragasa.truth.role, 'verification-only');
+assert.equal(ragasa.forecastSources.CMA.role, 'forecast-input-unavailable');
+assert.equal(ragasa.forecastSources.CMA.asIssuedForecastExtraction, 'unavailable-no-babj-history');
+assert.match(ragasa.forecastSources.CMA.reason, /Do not add case-specific parser fallbacks/);
+assert.equal(ragasa.safety.truthMayNotBeUsedAsForecastInput, true);
+assert.equal(ragasa.safety.currentV1ModelFrozen, true);
 
 const parsedJsonp = parseNmcJson('typhoon_jsons_list_2026(({"typhoonList":[[123,"NOUL","红霞","2612","2612",null,null,"stop"]]}))');
-const noul = readCase('2026-noul.json');
 const resolved = selectNmcStorm(parsedJsonp, noul);
 assert.equal(resolved.id, '123');
 assert.equal(resolved.nameEn, 'NOUL');
@@ -69,7 +76,6 @@ assert.ok(snapshots.every(snapshot => snapshot.provenance.futureSourceLeakage ==
 
 assert.equal(noul.truth.highestSignal, 'T9');
 assert.equal(noul.truth.signalLifecycle.find(item => item.signal === 'T8NW')?.issuedAt, '2026-07-25T14:10:00.000Z');
-const ragasa = readCase('2025-ragasa.json');
 assert.equal(ragasa.truth.highestSignal, 'T10');
 assert.equal(ragasa.truth.signalLifecycle.find(item => item.signal === 'T8NW')?.issuedAt, '2025-09-23T06:20:00.000Z');
 assert.equal(ragasa.truth.signalLifecycle.find(item => item.signal === 'T10')?.issuedAt, '2025-09-23T18:40:00.000Z');
