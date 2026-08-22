@@ -160,7 +160,25 @@
     }
   },
   "evaluations": [],
-  "generatedAt": "2026-08-22T02:32:28.157Z",
-  "sourceCommit": "587dcabdfafc6c1cbc858d4b48b5f26258274ac9",
-  "evaluationFingerprint": "129bf499d8140a98ecf5d3c95e6b26fe5f24611283979864f1d4d176df640888"
+  "closeoutPolicyVersion": "hk-signal-closeout-policy/v1",
+  "closeoutPolicy": {
+    "version": "hk-signal-closeout-policy/v1",
+    "inactiveGraceHours": 24,
+    "noSignalCase": "A case that has carried an HKO source may close without TC1 only after it disappears from a healthy settled prospective capture and remains absent for at least 24 hours.",
+    "warnedCase": "Once an HKO warning episode has started, missing higher signals close only on HKO CANCEL or CLEAR_DETECTED.",
+    "unresolvedTruthGuard": "Any unresolved or ambiguous eligible HKO signal event in the relevant interval blocks automatic negative closeout.",
+    "negativeScoring": "Not-issued signals receive no A/B/C/D timing grade; forecast evidence is retained as correct-negative, transient-false-alarm, or stable-false-alarm.",
+    "immutableEvidence": "Closeout is derived from trusted beta-prospective-recorder/v2 observations and HKO truth events; raw corpora are never rewritten."
+  },
+  "closeoutSummary": {
+    "closeoutCount": 0,
+    "blockedCount": 0,
+    "classifications": {}
+  },
+  "closeouts": [],
+  "closeoutBlocked": [],
+  "closeoutCheckedAt": "2026-08-22T02:56:38.531Z",
+  "generatedAt": "2026-08-22T02:56:38.533Z",
+  "sourceCommit": "c4ca20e3aac7f6cc52d790086a71e3fbfeb61ccb",
+  "evaluationFingerprint": "7fc01353f144323e69984fffe158c7cfb5bbf4e4a7ee5193d86ce20665c47a89"
 }
