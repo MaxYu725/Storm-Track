@@ -30,6 +30,7 @@ jobs:
           node --check analysis/hk-threat-assessment.js
           node --check analysis/basic-hk-signal-forecast.js
           node --check analysis/frontend-hk-threat-ui.js
+          node --check analysis/wind-field-overlay.js
           node --check analysis/storm-case-identity.js
           node --check scripts/reconcile-beta-case-identities.mjs
 
@@ -40,6 +41,8 @@ jobs:
           grep -F 'StormHkThreatUi?.renderGroupSummary(group)' index.html
           grep -F '${hkThreatHtml}' index.html
           grep -F "get('beta') === 'hk-signal'" analysis/frontend-hk-threat-ui.js
+          grep -F "script.src = './analysis/wind-field-overlay.js'" analysis/frontend-hk-threat-ui.js
+          grep -F '模式風場 Beta' analysis/wind-field-overlay.js
           grep -F '香港影響 Beta' analysis/frontend-hk-threat-ui.js
           grep -F '非香港天文台官方風球預測' analysis/frontend-hk-threat-ui.js
 
@@ -72,6 +75,7 @@ jobs:
             tests/frontend-hk-signal-beta-gate.test.cjs
             tests/frontend-storm-identity-grouping.test.cjs
             tests/storm-case-identity.test.cjs
+            tests/wind-field-overlay.test.cjs
           )
           for test_file in "${tests[@]}"; do
             echo "::group::$test_file"

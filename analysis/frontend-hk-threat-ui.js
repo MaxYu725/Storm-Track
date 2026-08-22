@@ -1,7 +1,43 @@
 (function attachStormHkThreatUi(root, factory) {
+  installOptionalWindLayer(root);
   const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.StormHkThreatUi = api;
+
+  function installOptionalWindLayer(browserRoot) {
+    if (!browserRoot?.document || !browserRoot?.L || typeof browserRoot.L.map !== 'function') return;
+    try {
+      if (new URLSearchParams(browserRoot.location?.search || '').get('beta') !== 'hk-signal') return;
+    } catch {
+      return;
+    }
+
+    const runtime = browserRoot.StormTrackRuntime || (browserRoot.StormTrackRuntime = {});
+    if (!runtime.mapCaptureInstalled) {
+      const originalMap = browserRoot.L.map;
+      const captureMap = function captureStormTrackMap(...args) {
+        const leafletMap = originalMap.apply(this, args);
+        const container = args[0];
+        const id = typeof container === 'string' ? container : container?.id;
+        if (id === 'storm-map') {
+          runtime.map = leafletMap;
+          browserRoot.dispatchEvent?.(new CustomEvent('stormtrack:map-ready', { detail: { map: leafletMap } }));
+        }
+        return leafletMap;
+      };
+      Object.assign(captureMap, originalMap);
+      browserRoot.L.map = captureMap;
+      runtime.mapCaptureInstalled = true;
+    }
+
+    if (!browserRoot.document.querySelector('script[data-storm-wind-field]')) {
+      const script = browserRoot.document.createElement('script');
+      script.src = './analysis/wind-field-overlay.js';
+      script.async = true;
+      script.dataset.stormWindField = 'true';
+      browserRoot.document.head.appendChild(script);
+    }
+  }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormHkThreatUi(root) {
   'use strict';
 
