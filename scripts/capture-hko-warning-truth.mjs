@@ -53,13 +53,12 @@ async function fetchJson(name, url) {
   }
 }
 
-const retrievedAt = new Date().toISOString();
 const [warnsum, warningInfo, swt] = await Promise.all([
   fetchJson('warnsum', ENDPOINTS.warnsum),
   fetchJson('warningInfo', ENDPOINTS.warningInfo),
   fetchJson('swt', ENDPOINTS.swt)
 ]);
-
+const retrievedAt = new Date().toISOString();
 const sourceHashes = Object.fromEntries([warnsum, warningInfo, swt].map(item => [item.name, item.sha256]));
 const snapshot = truth.normalizeSnapshot({
   warnsum: warnsum.payload,
@@ -70,7 +69,7 @@ const snapshot = truth.normalizeSnapshot({
   sourceCommit: process.env.SOURCE_COMMIT || null
 });
 
-const truthFingerprint = sha256(stableJson(snapshot.truth));
+const truthFingerprint = sha256(stableJson(truth.truthStateMaterial(snapshot.truth)));
 const contextFingerprint = sha256(stableJson(snapshot.context));
 const captureFingerprint = sha256(stableJson(truth.fingerprintMaterial(snapshot)));
 
