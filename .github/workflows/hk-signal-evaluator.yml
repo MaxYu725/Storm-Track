@@ -9,16 +9,22 @@ on:
       - main
     paths:
       - analysis/hk-signal-evaluator.js
+      - analysis/hk-signal-closeout.js
       - scripts/evaluate-hk-signal.mjs
+      - scripts/apply-hk-signal-closeouts.mjs
       - tests/hk-signal-evaluator.test.cjs
+      - tests/hk-signal-closeout.test.cjs
       - .github/workflows/hk-signal-evaluator.yml
   pull_request:
     branches:
       - main
     paths:
       - analysis/hk-signal-evaluator.js
+      - analysis/hk-signal-closeout.js
       - scripts/evaluate-hk-signal.mjs
+      - scripts/apply-hk-signal-closeouts.mjs
       - tests/hk-signal-evaluator.test.cjs
+      - tests/hk-signal-closeout.test.cjs
       - .github/workflows/hk-signal-evaluator.yml
 
 permissions:
@@ -50,8 +56,11 @@ jobs:
         run: |
           set -euo pipefail
           node --check analysis/hk-signal-evaluator.js
+          node --check analysis/hk-signal-closeout.js
           node --check scripts/evaluate-hk-signal.mjs
+          node --check scripts/apply-hk-signal-closeouts.mjs
           node tests/hk-signal-evaluator.test.cjs
+          node tests/hk-signal-closeout.test.cjs
 
       - name: Load immutable prospective and HKO truth corpora
         shell: bash
@@ -71,7 +80,9 @@ jobs:
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          node scripts/evaluate-hk-signal.mjs /tmp/hk-signal-prospective /tmp/hko-warning-truth > /tmp/hk-signal-evaluation.json
+          node scripts/evaluate-hk-signal.mjs /tmp/hk-signal-prospective /tmp/hko-warning-truth > /tmp/hk-signal-evaluation-raw.json
+          test -s /tmp/hk-signal-evaluation-raw.json
+          node scripts/apply-hk-signal-closeouts.mjs /tmp/hk-signal-evaluation-raw.json /tmp/hk-signal-prospective /tmp/hko-warning-truth > /tmp/hk-signal-evaluation.json
           test -s /tmp/hk-signal-evaluation.json
 
       - name: Validate evaluation contract
@@ -82,16 +93,22 @@ jobs:
             .schemaVersion == "hk-signal-evaluator/v2" and
             .rubricVersion == "hk-signal-validation-rubric/v1" and
             .eventPolicyVersion == "hk-signal-event-policy/v1" and
+            .closeoutPolicyVersion == "hk-signal-closeout-policy/v1" and
             (.evaluationFingerprint | test("^[0-9a-f]{64}$")) and
             (.rubric.checkpointHours == [48,24,12,6,3]) and
             (.eventPolicy.version == "hk-signal-event-policy/v1") and
+            (.closeoutPolicy.version == "hk-signal-closeout-policy/v1") and
+            (.closeoutPolicy.inactiveGraceHours == 24) and
             (.status == "awaiting-tc1" or .status == "evaluated" or .status == "truth-unresolved") and
             (.prospective.trustedRecorderSchema == "beta-prospective-recorder/v2") and
             (.hkoTruth.signalEventCounts | has("T1") and has("T3") and has("T8")) and
             (.evaluations | type == "array") and
-            (all(.evaluations[]; (.signal == "T1" or .signal == "T3" or .signal == "T8")))
+            (.closeouts | type == "array") and
+            (.closeoutBlocked | type == "array") and
+            (all(.evaluations[]; (.signal == "T1" or .signal == "T3" or .signal == "T8"))) and
+            (all(.closeouts[]; .status == "not-issued" and .officialOutcome == "not-issued" and .rubricGradeApplied == false and (.timingGrade == null)))
           ' /tmp/hk-signal-evaluation.json >/dev/null
-          jq '{generatedAt,evaluationFingerprint,status,rubricVersion,eventPolicyVersion,prospective,hkoTruth,awaiting,evaluations:[.evaluations[]|{status,signal,caseId,attribution,truth,lifecycle,grades}]}' /tmp/hk-signal-evaluation.json
+          jq '{generatedAt,evaluationFingerprint,status,rubricVersion,eventPolicyVersion,closeoutPolicyVersion,prospective,hkoTruth,awaiting,closeoutSummary,closeouts:[.closeouts[]|{caseId,signal,closedAt,closeoutReason,forecastOutcome}],closeoutBlocked,evaluations:[.evaluations[]|{status,signal,caseId,attribution,truth,lifecycle,grades}]}' /tmp/hk-signal-evaluation.json
 
       - name: Check branch whitespace
         if: github.event_name == 'pull_request'
@@ -122,7 +139,7 @@ jobs:
           fi
 
           cp /tmp/hk-signal-evaluation.json latest.json
-          jq -c '{schemaVersion,generatedAt,evaluationFingerprint,sourceCommit,status,rubricVersion,eventPolicyVersion,prospective,hkoTruth,awaiting:{status:.awaiting.status,activeHkoCaseIds:.awaiting.activeHkoCaseIds,pendingSignalsByCase:.awaiting.pendingSignalsByCase},evaluations:[.evaluations[]|{status,signal,caseId,truth,grades,lifecycle}]}' /tmp/hk-signal-evaluation.json >> index.ndjson
+          jq -c '{schemaVersion,generatedAt,evaluationFingerprint,sourceCommit,status,rubricVersion,eventPolicyVersion,closeoutPolicyVersion,prospective,hkoTruth,awaiting:{status:.awaiting.status,activeHkoCaseIds:.awaiting.activeHkoCaseIds,pendingSignalsByCase:.awaiting.pendingSignalsByCase},closeoutSummary,closeouts:[.closeouts[]|{caseId,signal,closedAt,closeoutReason,forecastOutcome}],evaluations:[.evaluations[]|{status,signal,caseId,truth,grades,lifecycle}]}' /tmp/hk-signal-evaluation.json >> index.ndjson
 
           while IFS= read -r evaluation; do
             case_id="$(jq -r '.caseId' <<<"$evaluation")"
@@ -140,6 +157,17 @@ jobs:
               '.evaluations[] | select(.caseId == $caseId and .signal == $signal and .status == $status and .truth.eventTime == $eventTime)' \
               /tmp/hk-signal-evaluation.json > "$destination"
           done < <(jq -c '.evaluations[] | select(.caseId != null and (.status == "evaluated" or .status == "not-issued"))' /tmp/hk-signal-evaluation.json)
+
+          while IFS= read -r closeout; do
+            case_id="$(jq -r '.caseId' <<<"$closeout")"
+            signal="$(jq -r '.signal | ascii_downcase' <<<"$closeout")"
+            closed_at="$(jq -r '.closedAt' <<<"$closeout")"
+            stamp="$(date -u -d "$closed_at" +'%Y%m%dT%H%M%SZ')"
+            mkdir -p "cases/$case_id"
+            jq --arg caseId "$case_id" --arg signal "${signal^^}" --arg closedAt "$closed_at" \
+              '.closeouts[] | select(.caseId == $caseId and .signal == $signal and .closedAt == $closedAt)' \
+              /tmp/hk-signal-evaluation.json > "cases/$case_id/${signal}-closeout-$stamp.json"
+          done < <(jq -c '.closeouts[]' /tmp/hk-signal-evaluation.json)
 
           git add latest.json index.ndjson cases 2>/dev/null || git add latest.json index.ndjson
           git commit -m "Evaluate HK signal Beta ${fingerprint:0:12}"
