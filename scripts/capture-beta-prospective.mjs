@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright-core';
 
-const RECORDER_VERSION = 'beta-prospective-recorder/v1';
+const RECORDER_VERSION = 'beta-prospective-recorder/v2';
 const DEFAULT_URL = 'https://maxyu725.github.io/Storm-Track/?beta=hk-signal';
 const targetUrl = process.env.STORM_BETA_URL || DEFAULT_URL;
 const sourceCommit = process.env.SOURCE_COMMIT || null;
@@ -52,6 +52,7 @@ function fingerprintBasis(record) {
       state: item.state,
       message: item.message
     })),
+    visibleGroupKeys: record.visibleGroupKeys,
     observations: record.observations.map(item => {
       const copy = structuredClone(item);
       delete copy.observedAt;
@@ -105,7 +106,20 @@ try {
         message: title.replace(/\s*·\s*最後檢查.*$/u, '').trim() || null
       };
     });
+    const visibleGroupKeys = [...document.querySelectorAll('#active-storms-container .panel-storm-card[data-storm-key]')]
+      .map(card => String(card.dataset.stormKey || ''))
+      .filter(Boolean)
+      .sort();
+    const visibleKeySet = new Set(visibleGroupKeys);
     const ui = globalThis.StormHkThreatUi;
+    const allObservations = typeof ui?.readProspectiveObservations === 'function'
+      ? ui.readProspectiveObservations()
+      : [];
+    const observations = allObservations.filter(item => visibleKeySet.has(String(item?.group?.key || '')));
+    const discardedStaleObservationKeys = allObservations
+      .map(item => String(item?.group?.key || ''))
+      .filter(key => key && !visibleKeySet.has(key))
+      .sort();
     return {
       capturedAt: new Date().toISOString(),
       pageTitle: document.title,
@@ -113,7 +127,9 @@ try {
       prospectiveSchemaVersion: ui?.PROSPECTIVE_SCHEMA_VERSION ?? null,
       observationApiAvailable: typeof ui?.readProspectiveObservations === 'function',
       sourceStates,
-      observations: typeof ui?.readProspectiveObservations === 'function' ? ui.readProspectiveObservations() : []
+      visibleGroupKeys,
+      discardedStaleObservationKeys,
+      observations
     };
   });
 
@@ -121,6 +137,9 @@ try {
   if (!pagePayload.observationApiAvailable) throw new Error('Prospective observation API is unavailable in the loaded frontend');
   if (pagePayload.prospectiveSchemaVersion !== 'hk-beta-prospective-observation/v1') {
     throw new Error(`Unexpected prospective schema: ${pagePayload.prospectiveSchemaVersion}`);
+  }
+  if (pagePayload.observations.length !== pagePayload.visibleGroupKeys.length) {
+    throw new Error(`Final UI/observation mismatch: ${pagePayload.visibleGroupKeys.length} visible groups but ${pagePayload.observations.length} observations`);
   }
 
   const observations = pagePayload.observations.map(finalizeObservation);
@@ -132,6 +151,8 @@ try {
     pageTitle: pagePayload.pageTitle,
     prospectiveSchemaVersion: pagePayload.prospectiveSchemaVersion,
     sourceStates: pagePayload.sourceStates,
+    visibleGroupKeys: pagePayload.visibleGroupKeys,
+    discardedStaleObservationKeys: pagePayload.discardedStaleObservationKeys,
     observationCount: observations.length,
     observations
   };

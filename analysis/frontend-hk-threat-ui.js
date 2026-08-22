@@ -92,9 +92,9 @@
   function engineVersionSummary() {
     return {
       ui: VERSION,
-      snapshot: root?.StormAnalysisCore?.VERSION ?? null,
-      impact: root?.StormHongKongImpactEngine?.VERSION ?? null,
-      signalInputs: root?.StormHkoSignalRiskInputs?.VERSION ?? null,
+      snapshot: root?.StormAnalysisCore?.VERSION ?? root?.StormAnalysisCore?.SNAPSHOT_VERSION ?? null,
+      impact: root?.StormHongKongImpactEngine?.VERSION ?? root?.StormHongKongImpactEngine?.IMPACT_VERSION ?? null,
+      signalInputs: root?.StormHkoSignalRiskInputs?.VERSION ?? root?.StormHkoSignalRiskInputs?.INPUT_VERSION ?? null,
       threatAssessment: root?.StormHkThreatAssessment?.VERSION ?? null,
       basicForecast: root?.StormBasicHkSignalForecast?.VERSION ?? null
     };
