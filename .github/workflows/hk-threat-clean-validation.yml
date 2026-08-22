@@ -1,0 +1,60 @@
+name: Validate materialized HK threat model
+
+on:
+  pull_request:
+    branches:
+      - feature/ai-analysis-engine
+    paths:
+      - .github/workflows/hk-threat-clean-validation.yml
+      - scripts/hk-threat-materialize.flag
+      - scripts/hk-live-source-smoke.mjs
+      - scripts/hk-live-engine-probe.mjs
+      - analysis/**
+      - tests/**
+      - workers/storm-analysis/**
+      - index.html
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: ${{ hashFiles('scripts/hk-threat-materialize.flag') == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/basic-hk-signal-forecast
+          fetch-depth: 0
+
+      - name: Run focused tests directly from committed source
+        working-directory: workers/storm-analysis
+        run: |
+          node ../../tests/hk-threat-assessment.test.cjs
+          node ../../tests/hk-threat-rule-scenarios.test.cjs
+          node ../../tests/hk-missing-numeric-semantics.test.cjs
+          node ../../tests/hk-agency-evidence-independence.test.cjs
+          node ../../tests/hk-signal-timing-uncertainty.test.cjs
+          node ../../tests/hk-signal-timing-cadence-invariance.test.cjs
+          node ../../tests/hk-signal-crossing-invariants.test.cjs
+          node ../../tests/hk-forecast-horizon-invariants.test.cjs
+          node ../../tests/hk-wind-field-selection-invariants.test.cjs
+          node ../../tests/hk-interpolation-reliability-invariants.test.cjs
+          node ../../tests/hk-interpolation-chord-invariants.test.cjs
+          node ../../tests/hk-current-proximity-interpolation-independence.test.cjs
+          node ../../tests/hk-minority-exact-threat-preservation.test.cjs
+          node ../../tests/hk-interpolation-confirmation-escalation.test.cjs
+          node ../../tests/hk-wind-field-interpolation-independence.test.cjs
+          node ../../tests/hk-wind-field-freshness-escalation-invariants.test.cjs
+          node ../../tests/basic-hk-signal-forecast.test.cjs
+          node ../../tests/frontend-hk-threat-ui.test.cjs
+
+      - name: Run full regression
+        working-directory: workers/storm-analysis
+        run: npm test
+
+      - name: Read-only live source smoke
+        run: node scripts/hk-live-source-smoke.mjs
+
+      - name: Run live HKO CMA CWA acceptance through committed engine
+        run: node scripts/hk-live-engine-probe.mjs
