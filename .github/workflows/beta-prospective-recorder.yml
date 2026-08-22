@@ -94,13 +94,18 @@ jobs:
         run: |
           set -euo pipefail
           jq -e '
-            .schemaVersion == "beta-prospective-recorder/v1" and
+            .schemaVersion == "beta-prospective-recorder/v2" and
             (.captureFingerprint | test("^[0-9a-f]{64}$")) and
             (.sourceStates | length == 4) and
+            (.visibleGroupKeys | type == "array") and
+            (.discardedStaleObservationKeys | type == "array") and
             (.observations | type == "array") and
+            (.observationCount == (.observations | length)) and
+            (.observationCount == (.visibleGroupKeys | length)) and
+            ([.observations[].group.key] | sort == (.visibleGroupKeys | sort)) and
             ([.. | objects | has("rawInput")] | any | not)
           ' /tmp/beta-prospective.json >/dev/null
-          jq '{capturedAt,captureFingerprint,sourceCommit,sourceStates,observationCount,groups:[.observations[]|{key:.group.key,name:.group.displayName,sources:.sourceAgencies,generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T8:.analysis.basicForecast.signals.T8.likelihood,disagreement:.analysis.threatAssessment.analyzers.agencyDisagreement.confidence}]}' /tmp/beta-prospective.json
+          jq '{capturedAt,captureFingerprint,sourceCommit,sourceStates,visibleGroupKeys,discardedStaleObservationKeys,observationCount,groups:[.observations[]|{key:.group.key,name:.group.displayName,sources:.sourceAgencies,engineVersions:.engineVersions,generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T8:.analysis.basicForecast.signals.T8.likelihood,disagreement:.analysis.threatAssessment.analyzers.agencyDisagreement.confidence}]}' /tmp/beta-prospective.json
 
       - name: Check branch whitespace
         if: github.event_name == 'pull_request'
@@ -139,7 +144,7 @@ jobs:
           cp /tmp/beta-prospective.json "$destination"
           cp /tmp/beta-prospective.json latest.json
 
-          jq -c '{capturedAt,captureFingerprint,sourceCommit,sourceStates,observationCount,groups:[.observations[]|{key:.group.key,displayName:.group.displayName,sourceAgencies:.sourceAgencies,generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T8:.analysis.basicForecast.signals.T8.likelihood,disagreement:.analysis.threatAssessment.analyzers.agencyDisagreement.confidence}]}' /tmp/beta-prospective.json >> index.ndjson
+          jq -c '{schemaVersion,capturedAt,captureFingerprint,sourceCommit,sourceStates,visibleGroupKeys,discardedStaleObservationKeys,observationCount,groups:[.observations[]|{key:.group.key,displayName:.group.displayName,sourceAgencies:.sourceAgencies,engineVersions:.engineVersions,generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T8:.analysis.basicForecast.signals.T8.likelihood,disagreement:.analysis.threatAssessment.analyzers.agencyDisagreement.confidence}]}' /tmp/beta-prospective.json >> index.ndjson
 
           git add "$destination" latest.json index.ndjson
           git commit -m "Observe HK signal Beta ${stamp} ${short}"
