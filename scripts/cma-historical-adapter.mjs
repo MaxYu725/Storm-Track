@@ -49,14 +49,10 @@ export function parseNmcJson(text) {
   const raw = String(text || '').trim();
   const objectStart = raw.indexOf('{');
   const objectEnd = raw.lastIndexOf('}');
-  if (objectStart >= 0 && objectEnd > objectStart) {
-    return JSON.parse(raw.slice(objectStart, objectEnd + 1));
-  }
+  if (objectStart >= 0 && objectEnd > objectStart) return JSON.parse(raw.slice(objectStart, objectEnd + 1));
   const arrayStart = raw.indexOf('[');
   const arrayEnd = raw.lastIndexOf(']');
-  if (arrayStart >= 0 && arrayEnd > arrayStart) {
-    return JSON.parse(raw.slice(arrayStart, arrayEnd + 1));
-  }
+  if (arrayStart >= 0 && arrayEnd > arrayStart) return JSON.parse(raw.slice(arrayStart, arrayEnd + 1));
   throw new Error('NMC JSON/JSONP response has no JSON payload');
 }
 
@@ -198,9 +194,10 @@ export function buildCmaHistoricalSnapshots(detailData, manifest, resolvedStorm)
     if (!forecastRaw.length) continue;
 
     const positions = dedupePoints(pastRaw.slice(0, index + 1).map(parseNmcHistoryPoint));
-    const forecast = dedupePoints(forecastRaw.map(parseNmcForecastPoint));
+    const forecast = dedupePoints(forecastRaw.map(parseNmcForecastPoint))
       .filter(point => parseTimeMs(point.baseTime) <= baseMs + 1000 && parseTimeMs(point.time) > baseMs);
     if (!positions.length || !forecast.length) continue;
+
     assert(forecast.every(point => parseTimeMs(point.baseTime) <= baseMs + 1000), `${manifest.caseId}: forecast base time after cutoff`);
     assert(forecast.every(point => parseTimeMs(point.time) > baseMs), `${manifest.caseId}: non-future forecast point in historical snapshot`);
 
@@ -268,13 +265,7 @@ export async function fetchCmaHistoricalCase(manifest, options = {}) {
     schemaVersion: ADAPTER_VERSION,
     caseId: manifest.caseId,
     retrospective: true,
-    source: {
-      agency: 'CMA',
-      provider: 'NMC',
-      listUrl,
-      detailUrl,
-      storm
-    },
+    source: { agency: 'CMA', provider: 'NMC', listUrl, detailUrl, storm },
     snapshotCount: snapshots.length,
     firstAsOf: snapshots[0].asOf,
     lastAsOf: snapshots.at(-1).asOf,
