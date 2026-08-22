@@ -88,7 +88,7 @@ try {
     const allSettled = allPresent && badges.every(badge => !badge.classList.contains('loading'));
     const progress = document.getElementById('top-progress-bar');
     return allSettled && (!progress || progress.classList.contains('hidden'));
-  }, { timeout: settleTimeoutMs });
+  }, null, { timeout: settleTimeoutMs });
 
   // Let the final synchronous rebuild/render complete and avoid sampling mid-layout.
   await page.waitForTimeout(750);
