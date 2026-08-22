@@ -127,6 +127,7 @@
     const sourceOverlap = intersectCount(features.sourceTokens, stormCase.sourceTokens);
     const nameOverlap = intersectCount(features.names, stormCase.names);
     const conflict = agencyConflict(features, stormCase);
+    const specificNameConflict = features.names.length > 0 && stormCase.names.length > 0 && nameOverlap === 0;
     const continuity = continuityMetrics(features, stormCase);
 
     if (sourceOverlap > 0) {
@@ -139,6 +140,7 @@
     }
 
     if (conflict) return { matched: false, reason: 'agency-source-id-conflict', score: -Infinity, ...continuity };
+    if (specificNameConflict) return { matched: false, reason: 'specific-name-conflict', score: -Infinity, ...continuity };
 
     if (nameOverlap > 0 && continuity.gapHours <= MAX_NAME_GAP_HOURS) {
       return {
