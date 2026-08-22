@@ -4,7 +4,6 @@ import { pathToFileURL } from 'node:url';
 
 export const ADAPTER_VERSION = 'cma-historical-adapter/v1';
 const NMC_ORIGIN = 'https://typhoon.nmc.cn';
-const DEFAULT_PROXY_ORIGIN = 'https://storm.max-yu.workers.dev';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -77,10 +76,7 @@ export function parseNmcHistoryPoint(point) {
   const time = normalizeNmcTime(point[1]);
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(parseTimeMs(time))) return null;
   return {
-    kind: 'past',
-    lat,
-    lon,
-    time,
+    kind: 'past', lat, lon, time,
     pressure: point[6] ?? null,
     maximumWind: point[7] ?? null,
     intensity: point[3] ?? null,
@@ -99,12 +95,7 @@ export function parseNmcForecastPoint(point) {
   if (!Number.isFinite(forecastHour) || forecastHour <= 0 || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   if (!Number.isFinite(parseTimeMs(baseTime)) || !Number.isFinite(parseTimeMs(time))) return null;
   return {
-    kind: 'forecast',
-    forecastHour,
-    lat,
-    lon,
-    time,
-    baseTime,
+    kind: 'forecast', forecastHour, lat, lon, time, baseTime,
     pressure: point[4] ?? null,
     maximumWind: point[5] ?? null,
     intensity: point[7] ?? null,
@@ -198,14 +189,10 @@ export function buildCmaHistoricalSnapshots(detailData, manifest, resolvedStorm)
       .filter(point => parseTimeMs(point.baseTime) <= baseMs + 1000 && parseTimeMs(point.time) > baseMs);
     if (!positions.length || !forecast.length) continue;
 
-    assert(forecast.every(point => parseTimeMs(point.baseTime) <= baseMs + 1000), `${manifest.caseId}: forecast base time after cutoff`);
-    assert(forecast.every(point => parseTimeMs(point.time) > baseMs), `${manifest.caseId}: non-future forecast point in historical snapshot`);
-
     snapshots.push({
       asOf: new Date(baseMs).toISOString(),
       source: {
-        agency: 'CMA',
-        sourceId: resolvedStorm.id,
+        agency: 'CMA', sourceId: resolvedStorm.id,
         bulletinTime: new Date(baseMs).toISOString(),
         nameEn: resolvedStorm.nameEn || manifest.storm.nameEn,
         nameTc: resolvedStorm.nameZh || manifest.storm.nameZh,
@@ -226,22 +213,25 @@ export function buildCmaHistoricalSnapshots(detailData, manifest, resolvedStorm)
 
   snapshots.sort((a, b) => parseTimeMs(a.asOf) - parseTimeMs(b.asOf));
   assert(snapshots.length > 0, `${manifest.caseId}: no historical BABJ forecast snapshots found`);
+  assert(snapshots.every(item => item.source.forecast.every(point => parseTimeMs(point.baseTime) <= parseTimeMs(item.asOf) + 1000)), `${manifest.caseId}: forecast base time after cutoff`);
+  assert(snapshots.every(item => item.source.forecast.every(point => parseTimeMs(point.time) > parseTimeMs(item.asOf))), `${manifest.caseId}: non-future forecast point in historical snapshot`);
   return snapshots;
 }
 
-async function fetchThroughStormProxy(url, options = {}) {
-  const proxyOrigin = clean(options.proxyOrigin || process.env.STORM_PROXY_ORIGIN || DEFAULT_PROXY_ORIGIN).replace(/\/$/, '');
-  const proxyUrl = `${proxyOrigin}/?url=${encodeURIComponent(url)}`;
+async function fetchNmcText(url, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Number(options.timeoutMs || 20000));
   try {
-    const response = await fetch(proxyUrl, {
+    const response = await fetch(url, {
       signal: controller.signal,
       redirect: 'follow',
-      headers: { Accept: 'application/json,application/javascript,text/plain,*/*' }
+      headers: {
+        Accept: 'application/json,application/javascript,text/plain,*/*',
+        Referer: 'https://typhoon.nmc.cn/'
+      }
     });
     const text = await response.text();
-    assert(response.ok, `Storm proxy returned HTTP ${response.status}: ${text.slice(0, 120)}`);
+    assert(response.ok, `NMC returned HTTP ${response.status}: ${text.slice(0, 120)}`);
     return text;
   } finally {
     clearTimeout(timeout);
@@ -252,13 +242,13 @@ export async function fetchCmaHistoricalCase(manifest, options = {}) {
   validateHistoricalCaseManifest(manifest);
   const year = Number(manifest.forecastSources.CMA.historicalListYear);
   const listUrl = `${NMC_ORIGIN}/weatherservice/typhoon/jsons/list_${year}?callback=typhoon_jsons_list_${year}`;
-  const listData = parseNmcJson(await fetchThroughStormProxy(listUrl, options));
+  const listData = parseNmcJson(await fetchNmcText(listUrl, options));
   const storm = selectNmcStorm(listData, manifest);
   assert(storm.id, `${manifest.caseId}: NMC historical storm id is missing`);
 
   const callback = `typhoon_jsons_view_${storm.id.replace(/[^A-Za-z0-9_]/g, '_')}`;
   const detailUrl = `${NMC_ORIGIN}/weatherservice/typhoon/jsons/view_${encodeURIComponent(storm.id)}?callback=${callback}`;
-  const detailData = parseNmcJson(await fetchThroughStormProxy(detailUrl, options));
+  const detailData = parseNmcJson(await fetchNmcText(detailUrl, options));
   const snapshots = buildCmaHistoricalSnapshots(detailData, manifest, storm);
 
   return {
@@ -277,6 +267,7 @@ export async function fetchCmaHistoricalCase(manifest, options = {}) {
       missingAgenciesNotSubstituted: true,
       HkoTruthUsedAsForecastInput: false,
       currentV1ModelModified: false,
+      productionWorkerUsed: false,
       productionDatabaseWritten: false
     }
   };
