@@ -44,11 +44,26 @@ function observation() {
   };
 }
 
-(function testExplicitVisualBetaGate() {
-  assert.equal(overlay.isEnabled('?beta=hk-signal&consensusTrack=1'), true);
-  assert.equal(overlay.isEnabled('?beta=hk-signal&consensusTrack=true'), true);
-  assert.equal(overlay.isEnabled('?beta=hk-signal'), false);
-  assert.equal(overlay.isEnabled('?consensusTrack=1'), false);
+(function testExplicitVisualBetaGateAndStoredOptIn() {
+  assert.equal(overlay.STORAGE_KEY, 'storm-track-consensus-track-beta-enabled-v1');
+  assert.equal(overlay.betaEnabled('?beta=hk-signal'), true);
+  assert.equal(overlay.betaEnabled('?consensusTrack=1'), false);
+  assert.equal(overlay.isEnabled('?beta=hk-signal&consensusTrack=1', false), true);
+  assert.equal(overlay.isEnabled('?beta=hk-signal&consensusTrack=true', false), true);
+  assert.equal(overlay.isEnabled('?beta=hk-signal', false), false, 'normal Beta must default off');
+  assert.equal(overlay.isEnabled('?beta=hk-signal', true), true, 'stored opt-in should enable');
+  assert.equal(overlay.isEnabled('?consensusTrack=1', true), false, 'HK Signal Beta gate remains mandatory');
+
+  const memory = new Map();
+  const storage = {
+    getItem: key => memory.has(key) ? memory.get(key) : null,
+    setItem: (key, value) => memory.set(key, value)
+  };
+  assert.equal(overlay.readStoredEnabled(storage), false);
+  overlay.writeStoredEnabled(true, storage);
+  assert.equal(overlay.readStoredEnabled(storage), true);
+  overlay.writeStoredEnabled(false, storage);
+  assert.equal(overlay.readStoredEnabled(storage), false);
 })();
 
 (function testBuildRenderableTrackUsesConsensusOnly() {
