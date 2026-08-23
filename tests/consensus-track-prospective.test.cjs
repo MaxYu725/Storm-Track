@@ -79,6 +79,13 @@ function build(capturedAt, sourceCommit) {
   }));
 }
 
+function hasObjectKey(value, key) {
+  if (Array.isArray(value)) return value.some(item => hasObjectKey(item, key));
+  if (!value || typeof value !== 'object') return false;
+  if (Object.prototype.hasOwnProperty.call(value, key)) return true;
+  return Object.values(value).some(item => hasObjectKey(item, key));
+}
+
 const first = build('2026-08-23T01:00:00.000Z', 'commit-a');
 const second = build('2026-08-23T01:15:00.000Z', 'commit-b');
 
@@ -98,11 +105,10 @@ assert.equal(first.semantics.derivedConsensusCoordinatesPersisted, true);
 assert.equal(first.semantics.forecastSkillEvaluated, false);
 assert.equal(first.semantics.probabilityCalibrated, false);
 
-const serialized = JSON.stringify(first);
-assert.equal(serialized.includes('rawInput'), false);
-assert.equal(serialized.includes('mustNotPersist'), false);
-assert.equal(serialized.includes('entries'), false);
-assert.equal(serialized.includes('"lat":1'), false);
-assert.equal(serialized.includes('"lon":2'), false);
+assert.equal(hasObjectKey(first, 'rawInput'), false);
+assert.equal(hasObjectKey(first, 'entries'), false);
+assert.equal(hasObjectKey(first, 'lat'), false);
+assert.equal(hasObjectKey(first, 'lon'), false);
+assert.equal(JSON.stringify(first).includes('mustNotPersist'), false);
 
 console.log('consensus-track prospective tests: OK');
