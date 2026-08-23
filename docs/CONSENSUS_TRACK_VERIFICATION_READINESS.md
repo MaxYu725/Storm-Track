@@ -105,3 +105,22 @@ One of these paths must establish reliable prospective as-issued agency baseline
 Because authoritative production Worker source is not currently versioned in this repository, do not restore or redeploy an old Worker implementation from Git history merely to unblock CT-2.
 
 Until baseline evidence is complete, continue CT-0 prospective collection. CT-1C read-only observation UI can proceed independently because it does not require skill scoring.
+
+## Selected remediation: separate prospective agency baselines
+
+The selected path is the second option: preserve future as-issued agency baselines in a separate immutable evidence stream without changing production Worker or D1.
+
+The baseline schema is `storm-agency-baseline-prospective/v1`. Each source stream stores only the track evidence needed later for homogeneous verification:
+
+- agency, source ID and source token;
+- bulletin time as supplied by the live source;
+- latest valid analysis point only;
+- all valid as-issued forecast points with valid time, optional forecast base time / forecast hour, latitude and longitude;
+- exact source-token case ID from the existing Consensus Track case registry when already resolvable;
+- evidence and cycle fingerprints for deduplication.
+
+It explicitly does not persist the full historical analysis track, intensity fields, verification truth, consensus output, forecast error, ranking or weighting.
+
+First PR-local live validation captured all 13 active source streams across GAENARI, NARRA, SAUDEL and Tropical Depression. All 13 source tokens resolved to the existing CT case registry. Forecast point counts were non-zero for every stream; HKO/JMA sources that do not supply forecast `baseTime` remain `null` rather than receiving an inferred value.
+
+This recorder prevents additional prospective baseline loss after deployment. It does not repair the older D1 Archive and therefore does not by itself open CT-2.
