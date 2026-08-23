@@ -49,23 +49,35 @@ Consensus Track Beta 已進入 `main`，是獨立於 HK Signal v1 的 app-comput
 
 在 `?beta=hk-signal` 的 **設定 → 實驗圖層 → 共識路徑 Beta** 可手動開啟；預設為 OFF。`consensus.html` 保留作 isolated force-on visual test entry。
 
-Consensus Track 現階段的主線是 prospective evidence collection，不在單一 live storm 期間調整方法或權重。
+Consensus Track 現階段的主線是 prospective evidence collection，不在單一 live storm 期間調整方法或權重。CT-1C 已把 read-only prospective diagnostics 加入現有 Observation Board，但不會因此打開 CT-2 skill gate。
 
 正式 CT-0 → CT-X evidence-gated roadmap：`docs/CONSENSUS_TRACK_ROADMAP.md`。後續階段不是必須逐級完成的 checklist；只有前一 evidence gate 真正滿足才進入下一階段。
 
 ### Observation Board
 
-Observation Board 只讀 prospective recorder 原始紀錄，用於觀察模型活動，不讀 evaluator 成績、不作校準。
+Observation Board 只讀 HK Signal 與 Consensus Track 的 prospective recorder evidence，用於觀察模型／共識路徑活動；不讀 evaluator 成績作校準，也不把 diagnostics 當成 forecast skill。
 
 入口：<https://maxyu725.github.io/Storm-Track/observation.html>
 
-主要觀察：
+HK Signal 主要觀察：
 
 - T1 risk / confidence / persistence
 - T1 window movement
 - agency spread / timing disagreement
 - closest distance / lead time
 - 各機構最新 input / movement diagnostics
+
+Consensus Track 主要觀察：
+
+- stable case ID、最新 capture 與 reference valid time
+- continuous supported horizon / consensus point count
+- exact +24 / +48 / +72 / +96 / +120h consensus availability
+- 各 exact target lead 的 agency count / spread
+- participating agencies
+- capture timeline
+- successive consensus movement，但只在前後兩輪都存在的**相同 exact valid time**計算；沒有共同 valid time 時保持 unavailable
+
+CT Observation 不讀 verification truth / evaluator，不計 track error，不排名機構，不產生 probability / calibrated confidence，也不修改 CT-0。
 
 ### Prospective validation
 
@@ -142,9 +154,9 @@ Historical replay 目前用作 stress test / diagnosis，不作自動調參。
 ```text
 index.html                 主 PWA / live storm UI
 consensus.html             Consensus Track isolated visual Beta entry
-observation.html           HK Signal observation-only board
-analysis/                  現行 deterministic analysis modules
-scripts/                   recorder / evaluator / historical replay / read-only audit scripts
+observation.html           HK Signal + Consensus Track read-only observation board
+analysis/                  現行 deterministic analysis / observation modules
+scripts/                   recorder / evaluator / historical replay / read-only audit / UI smoke scripts
 historical/cases/          historical case manifests
 tests/                     deterministic regression tests
 .github/workflows/         active deployment / recording / evaluation CI
@@ -163,7 +175,7 @@ docs/WEATHER_APP_INTEGRATION.md
 保留的 workflow 只有仍有實際用途的流程：
 
 - Pages deployment
-- HK Signal Beta regression validation
+- HK Signal Beta regression validation（包括 Observation Board / CT-1C browser smoke）
 - HK Signal prospective recorder
 - HKO warning truth recorder
 - HK Signal evaluator / closeout
@@ -206,10 +218,10 @@ PR #35 已正式 withdrawn，不應合併。
 - 持續收集 HK Signal live prospective evidence
 - 持續收集 Consensus Track v2 derived prospective forecasts與 stable case identity
 - 持續收集 HKO / CMA / JMA / CWA as-issued prospective agency baselines，避免 CT-2 必需 evidence 再流失
+- 使用 CT-1C Observation Board 觀察 supported horizon、target-lead agency count/spread 及 exact-common-valid-time 路徑移動，但不要把這些 diagnostics 解讀成 skill
 - **CT-2 暫停**：目前 D1 Archive 無法重建與 CT v2 同一 as-issued agency cycles；禁止以 10–18 小時較舊公報代替
 - Prospective agency baseline recorder 只補未來 evidence；仍需完成案例及 verification truth 才可重新檢查 CT-2 gate
 - 未取得 authoritative production Worker source 前不可從舊 Git history 還原 production Worker；若未來要修 Archive ingest，必須先取得／重建 authoritative source
-- **CT-1C read-only observation UI 可獨立繼續**，因為它只展示 prospective diagnostics，不依賴 skill scoring
 - 只有累積多個完成 case，而且 CT forecast / agency as-issued forecast / verification truth 能 homogeneous pairing，才重開 **CT-2 +24/+48/+72/+96/+120h skill verification**
 - weighting 屬 CT-3 conditional research；沒有跨案例穩定 skill difference 就不做
 - ECMWF IFS/AIFS 屬 CT-4 separate model-family research，不作第五個 agency vote

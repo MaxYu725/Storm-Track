@@ -63,7 +63,7 @@ Detailed evidence is recorded in `docs/CONSENSUS_TRACK_VERIFICATION_READINESS.md
 
 The safer remediation is a separate immutable prospective recorder rather than changing the unversioned production Worker.
 
-The recorder is intentionally independent of the existing CT prospective dataset. The CT dataset continues to avoid individual-agency coordinates; the new baseline evidence stream exists only to preserve the as-issued HKO / CMA / JMA / CWA track points that future homogeneous verification requires.
+The recorder is intentionally independent of the existing CT prospective dataset. The CT dataset continues to avoid individual-agency coordinates; the baseline evidence stream exists only to preserve the as-issued HKO / CMA / JMA / CWA track points that future homogeneous verification requires.
 
 Baseline evidence contract:
 
@@ -76,28 +76,32 @@ Baseline evidence contract:
 - immutable evidence/cycle fingerprints for deduplication;
 - no intensity fields, verification truth, consensus output, forecast error, ranking or weighting.
 
-The intended data-only branch is `data/agency-baseline-prospective-observations`.
+Production-active data-only branch: `data/agency-baseline-prospective-observations`.
 
 This remediation removes the avoidable **future** baseline-loss problem, but it does not retroactively repair the stale D1 Archive corpus and it does not by itself open CT-2. CT-2 still requires enough completed independent cases and matching verification truth.
 
 ### CT-1C — Consensus observation UI
 
-**Status: optional; can proceed independently of the CT-2 data blocker.**
+**Status: complete / read-only production observation surface.**
 
-Prefer extending the existing observation surface rather than creating another dashboard.
+CT diagnostics extend the existing `observation.html` surface rather than creating another dashboard.
 
-Read-only fields may include:
+Implemented fields:
 
-- case ID / storm name;
-- latest capture / forecast cycle;
-- available +24 / +48 / +72 / +96 / +120h consensus points;
-- agency count;
-- spread;
-- interpolation share / provenance;
-- supported horizon;
-- movement of successive consensus forecasts.
+- stable case ID / storm name;
+- latest CT capture and reference valid time;
+- continuous supported horizon and consensus point count;
+- exact +24 / +48 / +72 / +96 / +120h consensus availability;
+- agency count and spread at those exact target leads;
+- participating agencies;
+- capture timeline;
+- movement between successive consensus forecasts only for **exact valid times present in both captures**.
 
-Do not label these as accuracy, probability or calibrated confidence before CT-2 evidence exists.
+The movement diagnostic deliberately does not compare different valid times and does not interpolate a second diagnostic track merely to create a movement number. If two captures share no exact valid time, movement remains unavailable.
+
+The observation layer reads only immutable `storm-consensus-track-prospective/v1-v2` records plus `storm-case-identity/v1` reconciliation. It does not read verification truth or evaluator output, calculate track error, rank agencies, tune weights, or label spread/movement as accuracy, probability or calibrated confidence.
+
+CT-1C is observability only and does not change the CT-2 evidence gate.
 
 ## CT-2 — Homogeneous forecast-skill verification
 
