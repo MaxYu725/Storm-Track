@@ -51,6 +51,8 @@ Consensus Track Beta 已進入 `main`，是獨立於 HK Signal v1 的 app-comput
 
 Consensus Track 現階段的主線是 prospective evidence collection，不在單一 live storm 期間調整方法或權重。
 
+正式 CT-0 → CT-X evidence-gated roadmap：`docs/CONSENSUS_TRACK_ROADMAP.md`。後續階段不是必須逐級完成的 checklist；只有前一 evidence gate 真正滿足才進入下一階段。
+
 ### Observation Board
 
 Observation Board 只讀 prospective recorder 原始紀錄，用於觀察模型活動，不讀 evaluator 成績、不作校準。
@@ -80,7 +82,9 @@ live Beta forecast
 
 Raw observations 與 HKO truth 保持 immutable；evaluation / closeout 屬 derived output。
 
-Consensus Track 另有獨立 prospective recorder，只保存 derived consensus coordinates、valid time、參與機構、spread 與 provenance；不保存各機構逐點 raw coordinates，也不在 capture 階段評估 forecast skill。未來只有累積跨風暴樣本後，才做 24/48/72/96/120h homogeneous skill verification。
+Consensus Track 另有獨立 prospective recorder。新 capture 使用 `storm-consensus-track-prospective/v2`：保存 derived consensus coordinates、valid time、參與機構、spread、provenance，以及不含座標的 agency source references（source ID、bulletin/base/valid times、point counts）；仍不保存各機構逐點 raw coordinates，也不在 capture 階段評估 forecast skill。舊 v1 snapshots 保持可讀、不改寫。
+
+Consensus Track stable case identity 重用 `storm-case-identity/v1`，透過 CT adapter 由完整 prospective corpus 產生 derived `case-registry.json` / `case-index.ndjson`。Generic TD 可先用已保存的 consensus lead-0 位置維持 physical continuity；一旦新 v2 capture 有 source ID，後續 generic → named transition 以 source overlap 鎖定同一 case。Snapshot 本身保持 immutable。
 
 相關 data-only branches：
 
@@ -117,6 +121,8 @@ scripts/                   recorder / evaluator / historical replay scripts
 historical/cases/          historical case manifests
 tests/                     deterministic regression tests
 .github/workflows/         active deployment / recording / evaluation CI
+docs/CONSENSUS_TRACK_ROADMAP.md
+                           CT-0 → CT-X evidence-gated roadmap
 docs/HK_SIGNAL_POST_CASE_REVIEW.md
                            HK Signal 結案備查與統一 review checklist
 docs/WEATHER_APP_INTEGRATION.md
@@ -133,7 +139,7 @@ docs/WEATHER_APP_INTEGRATION.md
 - HKO warning truth recorder
 - HK Signal evaluator / closeout
 - Consensus Track live dry-run / visual regression
-- Consensus Track prospective recorder
+- Consensus Track prospective recorder + stable case reconciliation
 - historical case replay inputs
 
 已完成使命的一次性 feasibility / probe workflow 不應重新加入 main。
@@ -167,12 +173,17 @@ PR #35 已正式 withdrawn，不應合併。
 目前主線不是增加新模型功能，而是：
 
 - 持續收集 HK Signal live prospective evidence
-- 持續收集 Consensus Track derived prospective forecasts
+- 持續收集 Consensus Track v2 derived prospective forecasts與 stable case identity
+- Consensus Track 下一 evidence gate 是 **CT-1B verification-readiness audit**：證明每個 agency source reference 能否可靠 join 回當時 as-issued forecast；這一步只量 join coverage，不評分
+- CT-1B 足夠後可做 **CT-1C read-only observation UI**；優先擴充現有 Observation surface，不另建平行 dashboard
+- 只有累積多個完成 case，而且 CT forecast / agency as-issued forecast / verification truth 能 homogeneous pairing，才進入 **CT-2 +24/+48/+72/+96/+120h skill verification**
+- weighting 屬 CT-3 conditional research；沒有跨案例穩定 skill difference 就不做
+- ECMWF IFS/AIFS 屬 CT-4 separate model-family research，不作第五個 agency vote
+- ML / probability / own-model work 留在 CT-X backlog，非 active roadmap
 - 使用 Observation Board 觀察不同風暴的 HK Signal 模型活動
 - 在出現正式 HKO outcome / closeout 後產生 HK Signal v1 diagnosis
-- Consensus Track 累積跨風暴樣本後才比較 24/48/72/96/120h forecast skill；沒有足夠樣本前不引入 weighting / ML
 - 結案時統一按 `docs/HK_SIGNAL_POST_CASE_REVIEW.md` 檢查已記錄現象
-- 只有多個獨立案例顯示一致偏差時，才考慮 v2 candidate / shadow comparison
+- 只有多個獨立案例顯示一致偏差時，才考慮 HK Signal v2 candidate / shadow comparison
 
 Weather App integration 與 wind-field animation 可以平行研究，但不應阻塞或改寫 HK Signal validation pipeline。
 
