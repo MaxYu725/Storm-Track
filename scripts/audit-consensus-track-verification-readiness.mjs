@@ -39,6 +39,33 @@ export function objectHasExactPrimitive(value, expected) {
   return primitiveStrings(value).some(item => item === target);
 }
 
+export function sourceIdentityTokens(agency, sourceId) {
+  const code = clean(agency).toUpperCase();
+  const raw = clean(sourceId);
+  if (!raw) return [];
+  const tokens = new Set([raw]);
+
+  if (code === 'CWA') {
+    const match = raw.match(/^(\d{4})-(.+)$/);
+    if (match?.[2]) tokens.add(match[2]);
+  }
+
+  if (code === 'JMA') {
+    const match = raw.toUpperCase().match(/^TC(\d{2})(\d{2,3})$/);
+    if (match) {
+      const year = 2000 + Number(match[1]);
+      const sequence = Number(match[2]);
+      if (Number.isFinite(year) && Number.isFinite(sequence)) tokens.add(`WP-${year}-${sequence}`);
+    }
+  }
+
+  return [...tokens];
+}
+
+function objectHasAnyExactPrimitive(value, expectedValues) {
+  return (expectedValues || []).some(expected => objectHasExactPrimitive(value, expected));
+}
+
 function isGenericNameToken(token) {
   return /^(TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴)$/.test(token);
 }
@@ -74,16 +101,16 @@ function stormTimeOverlapsReference(storm, reference) {
   return true;
 }
 
-export function shortlistStorms(storms, group, reference) {
+export function shortlistStorms(storms, group, reference, agency = reference?.agency) {
   const names = groupSpecificNames(group);
-  const sourceId = clean(reference?.sourceId);
+  const identityTokens = sourceIdentityTokens(agency, reference?.sourceId);
   const timed = (Array.isArray(storms) ? storms : []).filter(storm => stormTimeOverlapsReference(storm, reference));
   const scored = timed.map(storm => {
     const tokens = stormNameTokens(storm);
-    const exactSourceId = sourceId && objectHasExactPrimitive(storm, sourceId);
+    const exactSourceIdentity = objectHasAnyExactPrimitive(storm, identityTokens);
     const nameOverlap = names.filter(name => tokens.includes(name)).length;
-    const score = (exactSourceId ? 1000 : 0) + nameOverlap * 100;
-    return { storm, score, exactSourceId, nameOverlap };
+    const score = (exactSourceIdentity ? 1000 : 0) + nameOverlap * 100;
+    return { storm, score, exactSourceIdentity, nameOverlap };
   }).sort((left, right) => right.score - left.score || String(left.storm?.id || '').localeCompare(String(right.storm?.id || '')));
 
   const strong = scored.filter(item => item.score > 0);
@@ -107,16 +134,27 @@ export function selectCycleAdvisory(advisories, agency, reference) {
   const candidates = (Array.isArray(advisories) ? advisories : [])
     .filter(item => advisoryAgency(item) === clean(agency).toUpperCase());
   const targets = sourceReferenceTimes(reference);
+  const identityTokens = sourceIdentityTokens(agency, reference?.sourceId);
   if (!candidates.length || !targets.length) return null;
 
   return candidates.map(advisory => {
     const issued = parseTimeMs(advisory?.issued_at);
-    const diffMs = Number.isFinite(issued)
-      ? Math.min(...targets.map(target => Math.abs(issued - target)))
-      : Infinity;
-    const sourceIdExact = objectHasExactPrimitive(advisory, reference?.sourceId);
-    return { advisory, diffMs, sourceIdExact };
-  }).sort((left, right) => (right.sourceIdExact - left.sourceIdExact)
+    let matchedReferenceTime = null;
+    let offsetMs = null;
+    let diffMs = Infinity;
+    if (Number.isFinite(issued)) {
+      for (const target of targets) {
+        const difference = issued - target;
+        if (Math.abs(difference) < diffMs) {
+          diffMs = Math.abs(difference);
+          offsetMs = difference;
+          matchedReferenceTime = target;
+        }
+      }
+    }
+    const sourceIdentityExact = objectHasAnyExactPrimitive(advisory, identityTokens);
+    return { advisory, diffMs, offsetMs, matchedReferenceTime, sourceIdentityExact };
+  }).sort((left, right) => (right.sourceIdentityExact - left.sourceIdentityExact)
     || left.diffMs - right.diffMs
     || String(left.advisory?.id || '').localeCompare(String(right.advisory?.id || '')))[0] || null;
 }
@@ -182,6 +220,17 @@ function roundPct(numerator, denominator) {
   return denominator ? Number((numerator * 100 / denominator).toFixed(1)) : null;
 }
 
+function roundMinutes(ms) {
+  return Number.isFinite(ms) ? Number((ms / 60000).toFixed(1)) : null;
+}
+
+function median(values) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
 async function fetchJson(origin, path, fetchImpl = fetch) {
   const response = await fetchImpl(`${origin}${path}`, {
     headers: { Accept: 'application/json' },
@@ -208,30 +257,68 @@ async function loadStormBundle(origin, stormId, fetchImpl) {
 }
 
 function chooseStormMatch(shortlist, bundles, group, agency, reference) {
-  const sourceId = clean(reference?.sourceId);
+  const identityTokens = sourceIdentityTokens(agency, reference?.sourceId);
   const specificNames = groupSpecificNames(group);
   const evaluated = shortlist.map(item => {
     const stormId = clean(item?.storm?.id);
     const bundle = bundles.get(stormId);
     const metadata = { storm: item?.storm, detail: bundle?.detail, advisories: bundle?.advisories };
-    const sourceIdExact = sourceId && objectHasExactPrimitive(metadata, sourceId);
+    const sourceIdentityExact = objectHasAnyExactPrimitive(metadata, identityTokens);
     const nameOverlap = specificNames.filter(name => stormNameTokens(item?.storm).includes(name)).length;
     const cycle = selectCycleAdvisory(bundle?.advisories, agency, reference);
     const cycleWithinTolerance = Boolean(cycle && Number.isFinite(cycle.diffMs) && cycle.diffMs <= CYCLE_TOLERANCE_MS);
-    const score = (sourceIdExact ? 10000 : 0) + nameOverlap * 100 + (cycleWithinTolerance ? 20 : 0);
-    return { storm: item.storm, bundle, sourceIdExact, nameOverlap, cycle, cycleWithinTolerance, score };
-  }).sort((left, right) => right.score - left.score || (left.cycle?.diffMs ?? Infinity) - (right.cycle?.diffMs ?? Infinity));
+    const identityScore = (sourceIdentityExact ? 10000 : 0) + nameOverlap * 100;
+    return { storm: item.storm, bundle, sourceIdentityExact, nameOverlap, cycle, cycleWithinTolerance, identityScore };
+  }).sort((left, right) => right.identityScore - left.identityScore
+    || (left.cycle?.diffMs ?? Infinity) - (right.cycle?.diffMs ?? Infinity)
+    || String(left.storm?.id || '').localeCompare(String(right.storm?.id || '')));
 
   const best = evaluated[0] || null;
   if (!best) return null;
   const generic = groupSpecificNames(group).length === 0;
-  if (generic && !best.sourceIdExact) return { ...best, accepted: false, reason: 'generic-storm-without-source-id-evidence' };
-  if (!best.sourceIdExact && best.nameOverlap === 0) return { ...best, accepted: false, reason: 'no-source-id-or-name-evidence' };
-  if (!best.cycleWithinTolerance) return { ...best, accepted: false, reason: 'no-cycle-within-tolerance' };
+  if (generic && !best.sourceIdentityExact) {
+    return { ...best, identityAccepted: false, identityReason: 'generic-storm-without-source-id-evidence' };
+  }
+  if (!best.sourceIdentityExact && best.nameOverlap === 0) {
+    return { ...best, identityAccepted: false, identityReason: 'no-source-id-or-name-evidence' };
+  }
   return {
     ...best,
-    accepted: true,
-    reason: best.sourceIdExact ? 'source-id+cycle' : 'specific-name+cycle'
+    identityAccepted: true,
+    identityReason: best.sourceIdentityExact ? 'source-id' : 'specific-name'
+  };
+}
+
+function cycleState(match) {
+  if (!match?.identityAccepted) return 'not-evaluated';
+  if (!match?.cycle) return 'no-agency-advisory';
+  if (match.cycleWithinTolerance) return 'within-tolerance';
+  if (Number.isFinite(match.cycle.offsetMs) && match.cycle.offsetMs < 0) return 'archive-cycle-stale';
+  if (Number.isFinite(match.cycle.offsetMs) && match.cycle.offsetMs > 0) return 'archive-cycle-ahead';
+  return 'cycle-outside-tolerance';
+}
+
+function baseJoin(group, agency, reference, match, targets) {
+  const cycle = match?.cycle;
+  const state = cycleState(match);
+  return {
+    groupKey: group?.key ?? null,
+    displayName: group?.displayName ?? null,
+    agency,
+    sourceId: reference?.sourceId ?? null,
+    sourceIdentityTokens: sourceIdentityTokens(agency, reference?.sourceId),
+    stormId: match?.storm?.id ?? null,
+    stormIdentityJoin: Boolean(match?.identityAccepted),
+    stormIdentityReason: match?.identityReason || 'no-storm-candidate',
+    cycleState: state,
+    cycleJoin: state === 'within-tolerance',
+    cycleTimeDiffMinutes: roundMinutes(cycle?.diffMs),
+    cycleOffsetMinutes: roundMinutes(cycle?.offsetMs),
+    archiveLagMinutes: Number.isFinite(cycle?.offsetMs) && cycle.offsetMs < 0 ? roundMinutes(-cycle.offsetMs) : null,
+    matchedReferenceTime: Number.isFinite(cycle?.matchedReferenceTime) ? new Date(cycle.matchedReferenceTime).toISOString() : null,
+    nearestAdvisoryId: cycle?.advisory?.id ?? null,
+    nearestAdvisoryIssuedAt: cycle?.advisory?.issued_at ?? null,
+    targetCount: targets.length
   };
 }
 
@@ -248,7 +335,7 @@ export async function auditReadiness(ctRecord, options = {}) {
 
   for (const group of ctRecord.groups || []) {
     for (const [agency, reference] of Object.entries(group?.sourceReferences || {})) {
-      const shortlist = shortlistStorms(storms, group, reference);
+      const shortlist = shortlistStorms(storms, group, reference, agency);
       for (const item of shortlist) {
         const stormId = clean(item?.storm?.id);
         if (!stormId || bundleCache.has(stormId)) continue;
@@ -261,20 +348,18 @@ export async function auditReadiness(ctRecord, options = {}) {
 
       const match = chooseStormMatch(shortlist, bundleCache, group, agency, reference);
       const targets = groupTargetsForAgency(group, agency);
-      if (!match?.accepted) {
+      const join = baseJoin(group, agency, reference, match, targets);
+
+      if (!match?.identityAccepted || !match.cycleWithinTolerance) {
         joins.push({
-          groupKey: group?.key ?? null,
-          displayName: group?.displayName ?? null,
-          agency,
-          sourceId: reference?.sourceId ?? null,
-          stormId: match?.storm?.id ?? null,
-          stormMatch: match?.reason || 'no-storm-candidate',
-          cycleJoin: false,
-          cycleTimeDiffMinutes: Number.isFinite(match?.cycle?.diffMs) ? Number((match.cycle.diffMs / 60000).toFixed(1)) : null,
-          advisoryId: match?.cycle?.advisory?.id ?? null,
-          targetCount: targets.length,
+          ...join,
+          advisoryId: null,
+          archivePointCount: null,
+          archiveAnalysisPointCount: null,
+          archiveForecastPointCount: null,
           reconstructableTargetCount: 0,
           validTimeCoveragePct: targets.length ? 0 : null,
+          detailError: null,
           targetStates: []
         });
         continue;
@@ -297,20 +382,11 @@ export async function auditReadiness(ctRecord, options = {}) {
       const reconstructableTargetCount = targetStates.filter(item => item.reconstructable).length;
 
       joins.push({
-        groupKey: group?.key ?? null,
-        displayName: group?.displayName ?? null,
-        agency,
-        sourceId: reference?.sourceId ?? null,
-        stormId: match?.storm?.id ?? null,
-        stormMatch: match.reason,
-        cycleJoin: !detailError && Boolean(advisoryId),
-        cycleTimeDiffMinutes: Number.isFinite(match?.cycle?.diffMs) ? Number((match.cycle.diffMs / 60000).toFixed(1)) : null,
+        ...join,
         advisoryId: advisoryId || null,
-        advisoryIssuedAt: match?.cycle?.advisory?.issued_at ?? null,
         archivePointCount: points.length,
         archiveAnalysisPointCount: points.filter(point => point?.point_type === 'analysis').length,
         archiveForecastPointCount: points.filter(point => point?.point_type === 'forecast').length,
-        targetCount: targets.length,
         reconstructableTargetCount,
         validTimeCoveragePct: roundPct(reconstructableTargetCount, targets.length),
         detailError,
@@ -319,16 +395,20 @@ export async function auditReadiness(ctRecord, options = {}) {
     }
   }
 
-  const acceptedReasons = new Set(['source-id+cycle', 'specific-name+cycle']);
   const agencies = ['HKO', 'CMA', 'JMA', 'CWA'];
   const byAgency = Object.fromEntries(agencies.map(agency => {
     const items = joins.filter(item => item.agency === agency);
     const targets = items.reduce((sum, item) => sum + item.targetCount, 0);
     const reconstructable = items.reduce((sum, item) => sum + item.reconstructableTargetCount, 0);
+    const lags = items.map(item => item.archiveLagMinutes).filter(Number.isFinite);
     return [agency, {
       sourceReferenceCount: items.length,
-      stormJoinCount: items.filter(item => acceptedReasons.has(item.stormMatch)).length,
+      stormIdentityJoinCount: items.filter(item => item.stormIdentityJoin).length,
+      stormIdentityCoveragePct: roundPct(items.filter(item => item.stormIdentityJoin).length, items.length),
       cycleJoinCount: items.filter(item => item.cycleJoin).length,
+      cycleJoinCoveragePct: roundPct(items.filter(item => item.cycleJoin).length, items.length),
+      staleCycleCount: items.filter(item => item.cycleState === 'archive-cycle-stale').length,
+      medianArchiveLagMinutes: median(lags),
       targetCount: targets,
       reconstructableTargetCount: reconstructable,
       validTimeCoveragePct: roundPct(reconstructable, targets)
@@ -337,6 +417,10 @@ export async function auditReadiness(ctRecord, options = {}) {
 
   const targetCount = joins.reduce((sum, item) => sum + item.targetCount, 0);
   const reconstructableTargetCount = joins.reduce((sum, item) => sum + item.reconstructableTargetCount, 0);
+  const identityJoinCount = joins.filter(item => item.stormIdentityJoin).length;
+  const cycleJoinCount = joins.filter(item => item.cycleJoin).length;
+  const archiveLags = joins.map(item => item.archiveLagMinutes).filter(Number.isFinite);
+
   return {
     schemaVersion: AUDIT_VERSION,
     auditedAt: new Date().toISOString(),
@@ -349,13 +433,18 @@ export async function auditReadiness(ctRecord, options = {}) {
     },
     archive: {
       origin,
-      stormCount: storms.length
+      stormCount: storms.length,
+      cycleToleranceHours: CYCLE_TOLERANCE_MS / 3600000
     },
     joins,
     summary: {
       sourceReferenceCount: joins.length,
-      stormJoinCount: joins.filter(item => acceptedReasons.has(item.stormMatch)).length,
-      cycleJoinCount: joins.filter(item => item.cycleJoin).length,
+      stormIdentityJoinCount: identityJoinCount,
+      stormIdentityCoveragePct: roundPct(identityJoinCount, joins.length),
+      cycleJoinCount,
+      cycleJoinCoveragePct: roundPct(cycleJoinCount, joins.length),
+      staleCycleCount: joins.filter(item => item.cycleState === 'archive-cycle-stale').length,
+      medianArchiveLagMinutes: median(archiveLags),
       targetCount,
       reconstructableTargetCount,
       validTimeCoveragePct: roundPct(reconstructableTargetCount, targetCount),
@@ -367,7 +456,8 @@ export async function auditReadiness(ctRecord, options = {}) {
       forecastErrorsCalculated: false,
       agencyRankingProduced: false,
       consensusAlgorithmModified: false,
-      productionDatabaseWritten: false
+      productionDatabaseWritten: false,
+      staleCyclesNeverAcceptedAsSameCycle: true
     }
   };
 }
