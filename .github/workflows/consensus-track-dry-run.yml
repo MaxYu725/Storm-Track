@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
@@ -81,6 +83,7 @@ jobs:
               state,
               referenceAgency,
               referenceBaseTime,
+              referenceMethod,
               consensusCoveragePct,
               firstConsensusLeadHours,
               lastConsensusLeadHours,
