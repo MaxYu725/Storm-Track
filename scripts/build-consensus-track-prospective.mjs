@@ -9,6 +9,7 @@ if (!inputPath) throw new Error('Usage: node scripts/build-consensus-track-prosp
 const raw = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
 
 function finiteOrNull(value) {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
