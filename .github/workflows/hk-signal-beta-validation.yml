@@ -10,6 +10,7 @@ on:
       - sw.js
       - analysis/**
       - scripts/reconcile-beta-case-identities.mjs
+      - scripts/validate-consensus-track-observation-ui.mjs
       - tests/**
       - .github/workflows/hk-signal-beta-validation.yml
 
@@ -40,6 +41,7 @@ jobs:
           node --check analysis/consensus-track-observation-board.js
           node --check analysis/consensus-track-observation-ui.js
           node --check scripts/reconcile-beta-case-identities.mjs
+          node --check scripts/validate-consensus-track-observation-ui.mjs
 
       - name: Verify Beta integration surface
         run: |
@@ -103,6 +105,21 @@ jobs:
             node "$test_file"
             echo "::endgroup::"
           done
+
+      - name: Install lightweight browser driver
+        run: npm install --no-save --ignore-scripts playwright-core@1.55.0
+
+      - name: Start local observation frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 > /tmp/storm-track-observation-http.log 2>&1 &
+          echo $! > /tmp/storm-track-observation-http.pid
+          sleep 2
+          curl --fail --retry 3 -sS http://127.0.0.1:4173/observation.html >/dev/null
+
+      - name: Smoke-test Consensus Track observation UI
+        run: node scripts/validate-consensus-track-observation-ui.mjs
 
       - name: Check whitespace
         run: git diff --check origin/main...HEAD
