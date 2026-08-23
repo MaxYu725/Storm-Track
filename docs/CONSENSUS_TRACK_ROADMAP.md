@@ -39,7 +39,7 @@ Implemented:
 
 ### CT-1B — Verification-readiness audit
 
-**Status: complete as an audit; CT-2 gate is CLOSED by the current evidence.**
+**Status: complete as an audit; CT-2 gate is CLOSED by the current Archive evidence.**
 
 The read-only auditor proves that the latest CT v2 source references can identify their D1 storm records, but the existing Archive cannot reconstruct the same as-issued forecast cycles safely enough for skill verification.
 
@@ -58,6 +58,27 @@ The auditor deliberately does **not** widen the time tolerance, score forecasts,
 Detailed evidence is recorded in `docs/CONSENSUS_TRACK_VERIFICATION_READINESS.md`.
 
 **Consequence:** do not start CT-2 against the current Archive corpus. First establish a complete prospective as-issued agency-baseline evidence stream or, only after authoritative production Worker source is acquired/reconstructed, correct the Archive ingest path. Do not restore an old Worker implementation from Git history.
+
+#### Selected remediation — prospective agency baselines
+
+The safer remediation is a separate immutable prospective recorder rather than changing the unversioned production Worker.
+
+The recorder is intentionally independent of the existing CT prospective dataset. The CT dataset continues to avoid individual-agency coordinates; the new baseline evidence stream exists only to preserve the as-issued HKO / CMA / JMA / CWA track points that future homogeneous verification requires.
+
+Baseline evidence contract:
+
+- source agency + source ID;
+- bulletin/cycle timing as supplied;
+- only the latest valid analysis point, not the full historical analysis track;
+- all valid as-issued forecast points with valid time, optional base time / forecast hour, latitude and longitude;
+- exact `AGENCY:sourceId` case resolution from the existing CT `case-registry.json` when available;
+- unresolved case identity never causes forecast evidence to be discarded;
+- immutable evidence/cycle fingerprints for deduplication;
+- no intensity fields, verification truth, consensus output, forecast error, ranking or weighting.
+
+The intended data-only branch is `data/agency-baseline-prospective-observations`.
+
+This remediation removes the avoidable **future** baseline-loss problem, but it does not retroactively repair the stale D1 Archive corpus and it does not by itself open CT-2. CT-2 still requires enough completed independent cases and matching verification truth.
 
 ### CT-1C — Consensus observation UI
 
