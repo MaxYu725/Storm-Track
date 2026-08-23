@@ -1,0 +1,122 @@
+name: CT-0 visual consensus-track Beta
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - consensus.html
+      - analysis/consensus-track-overlay.js
+      - analysis/settings-panel-ui.js
+      - analysis/storm-analysis-core.js
+      - tests/consensus-track-dateline.test.cjs
+      - tests/consensus-track-overlay.test.cjs
+      - tests/settings-panel-ui.test.cjs
+      - scripts/validate-consensus-track-visual.mjs
+      - .github/workflows/consensus-track-visual-beta.yml
+
+permissions:
+  contents: read
+
+jobs:
+  visual-beta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Validate consensus visual modules
+        run: |
+          set -euo pipefail
+          node --check analysis/consensus-track-overlay.js
+          node --check analysis/settings-panel-ui.js
+          node --check scripts/validate-consensus-track-visual.mjs
+          node tests/storm-analysis-core.test.cjs
+          node tests/consensus-track-dateline.test.cjs
+          node tests/consensus-track-overlay.test.cjs
+          node tests/settings-panel-ui.test.cjs
+          grep -F 'src="./?beta=hk-signal&consensusTrack=1"' consensus.html
+          grep -F "script.src = './analysis/consensus-track-overlay.js'" consensus.html
+          grep -F "script.src = './analysis/consensus-track-overlay.js'" analysis/settings-panel-ui.js
+          grep -F "toggle-consensus-track-beta" analysis/settings-panel-ui.js
+
+      - name: Install lightweight browser driver
+        run: npm install --no-save --ignore-scripts playwright-core@1.55.0
+
+      - name: Start PR-local frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 > /tmp/storm-track-http.log 2>&1 &
+          echo $! > /tmp/storm-track-http.pid
+          sleep 2
+          curl --fail --retry 3 -sS 'http://127.0.0.1:4173/?beta=hk-signal' >/dev/null
+
+      - name: Run live settings toggle smoke check
+        shell: bash
+        env:
+          CONSENSUS_BETA_URL: http://127.0.0.1:4173/?beta=hk-signal
+          CONSENSUS_SCREENSHOT: /tmp/consensus-track-beta.png
+          CONSENSUS_MOBILE_SCREENSHOT: /tmp/consensus-track-beta-mobile.png
+        run: |
+          set -euo pipefail
+          node scripts/validate-consensus-track-visual.mjs > /tmp/consensus-track-visual.json
+          jq -e '
+            .defaultOff.toggleChecked == false and
+            .defaultOff.apiEnabled == false and
+            .defaultOff.controllerPresent == false and
+            .defaultOff.hudPresent == false and
+            .enabled.toggleChecked == true and
+            .enabled.apiEnabled == true and
+            .enabled.storedValue == "1" and
+            .enabled.state.enabled == true and
+            .enabled.state.trackCount > 0 and
+            .enabled.state.pointCount > 0 and
+            .enabled.state.segmentCount > 0 and
+            .enabled.hudVisible == true and
+            .enabled.paneInstalled == true and
+            .disabled.toggleChecked == false and
+            .disabled.apiEnabled == false and
+            .disabled.controllerPresent == false and
+            .disabled.hudPresent == false and
+            .disabled.storedValue == "0" and
+            .mobile.viewport.width == 390 and
+            .mobile.panelOpen == true and
+            .mobile.panelRect.left >= 0 and
+            .mobile.panelRect.right <= 390.5 and
+            .mobile.panelRect.width <= 360.5 and
+            .mobile.toggleVisible == true and
+            .mobile.toggleChecked == true and
+            .mobile.trackCount > 0 and
+            .mobile.pointCount > 0 and
+            .mobile.hudPresent == true and
+            .semantics.displayOnly == true and
+            .semantics.defaultOff == true and
+            .semantics.officialAgencyLayersModified == false and
+            .semantics.hkSignalInputsModified == false and
+            .semantics.probabilityCalibrated == false
+          ' /tmp/consensus-track-visual.json >/dev/null
+          cat /tmp/consensus-track-visual.json
+          test -s /tmp/consensus-track-beta.png
+          test -s /tmp/consensus-track-beta-mobile.png
+
+      - name: Upload visual smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: consensus-track-beta-visual
+          path: |
+            /tmp/consensus-track-visual.json
+            /tmp/consensus-track-beta.png
+            /tmp/consensus-track-beta-mobile.png
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Check whitespace
+        run: git diff --check origin/main...HEAD
