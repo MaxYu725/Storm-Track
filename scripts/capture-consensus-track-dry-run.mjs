@@ -127,6 +127,12 @@ try {
         }
       }
 
+      const supportedThroughHours = consensusPoints.at(-1)?.leadHours ?? null;
+      const supportedPoints = supportedThroughHours == null
+        ? []
+        : points.filter(point => point.leadHours <= supportedThroughHours);
+      const supportedConsensusPoints = supportedPoints.filter(point => point?.consensus);
+
       return {
         key: observation?.group?.key ?? null,
         displayName: observation?.group?.displayName ?? null,
@@ -136,11 +142,18 @@ try {
         state: track?.state ?? null,
         referenceAgency: track?.referenceAgency ?? null,
         referenceBaseTime: track?.referenceBaseTime ?? null,
+        referenceMethod: track?.referenceMethod ?? null,
         configuredHorizonHours: track?.endLeadHours ?? null,
         stepHours: track?.stepHours ?? null,
         totalSamplePoints: points.length,
         consensusPointCount: consensusPoints.length,
         consensusCoveragePct: points.length ? round(consensusPoints.length * 100 / points.length, 1) : 0,
+        supportedThroughHours,
+        supportedSamplePointCount: supportedPoints.length,
+        consensusPointCountWithinSupportedHorizon: supportedConsensusPoints.length,
+        coverageWithinSupportedHorizonPct: supportedPoints.length
+          ? round(supportedConsensusPoints.length * 100 / supportedPoints.length, 1)
+          : 0,
         firstConsensusLeadHours: consensusPoints[0]?.leadHours ?? null,
         lastConsensusLeadHours: consensusPoints.at(-1)?.leadHours ?? null,
         continuousConsensusThroughHours: continuousThroughHours,
