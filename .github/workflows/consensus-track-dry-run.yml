@@ -69,6 +69,7 @@ jobs:
             (.semantics.forecastSkillEvaluated == false) and
             (.semantics.probabilityCalibrated == false) and
             ([.groups[].missingRawInputAgencies | length] | all(. == 0)) and
+            ([.groups[] | select(.supportedSamplePointCount > 0) | (.coverageWithinSupportedHorizonPct >= .consensusCoveragePct)] | all) and
             ([.. | objects | has("rawInput")] | any | not)
           ' /tmp/consensus-track-dry-run.json >/dev/null
 
@@ -85,6 +86,8 @@ jobs:
               referenceBaseTime,
               referenceMethod,
               consensusCoveragePct,
+              supportedThroughHours,
+              coverageWithinSupportedHorizonPct,
               firstConsensusLeadHours,
               lastConsensusLeadHours,
               continuousConsensusThroughHours,
