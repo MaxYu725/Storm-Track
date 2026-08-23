@@ -250,8 +250,10 @@
         const analysis = latestTimedPoint(source.positions || []);
         const forecast = sortTimedPoints(source.forecast || []);
         const track = [];
-        if (analysis) track.push(analysis);
-        track.push(...forecast.filter(point => !analysis || point.timeMs >= analysis.timeMs));
+        if (analysis) track.push({ ...analysis, trackOrigin: 'analysis' });
+        track.push(...forecast
+            .filter(point => !analysis || point.timeMs >= analysis.timeMs)
+            .map(point => ({ ...point, trackOrigin: 'forecast' })));
         const timed = sortTimedPoints(track);
         if (!timed.length) return null;
 
@@ -260,7 +262,7 @@
             return {
                 ...exact,
                 interpolated: false,
-                provenance: exact.kind === 'analysis' ? 'exact-analysis' : 'exact-forecast',
+                provenance: exact.trackOrigin === 'analysis' ? 'exact-analysis' : 'exact-forecast',
                 interpolation: null
             };
         }
@@ -272,8 +274,8 @@
             if (targetMs > after.timeMs) continue;
             const point = interpolateTimedPoint([before, after], targetMs);
             if (!point) return null;
-            const beforeKind = before.kind === 'analysis' ? 'analysis' : 'forecast';
-            const afterKind = after.kind === 'analysis' ? 'analysis' : 'forecast';
+            const beforeKind = before.trackOrigin === 'analysis' ? 'analysis' : 'forecast';
+            const afterKind = after.trackOrigin === 'analysis' ? 'analysis' : 'forecast';
             const provenance = beforeKind === 'analysis' && afterKind === 'forecast'
                 ? 'analysis-to-forecast-interpolation'
                 : 'forecast-to-forecast-interpolation';
