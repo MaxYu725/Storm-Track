@@ -1,0 +1,197 @@
+name: Record Consensus Track prospective snapshots
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - analysis/storm-analysis-core.js
+      - analysis/frontend-hk-threat-ui.js
+      - index.html
+      - scripts/capture-consensus-track-dry-run.mjs
+      - scripts/build-consensus-track-prospective.mjs
+      - tests/consensus-track-prospective.test.cjs
+      - .github/workflows/consensus-track-prospective-recorder.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - analysis/storm-analysis-core.js
+      - analysis/frontend-hk-threat-ui.js
+      - index.html
+      - scripts/capture-consensus-track-dry-run.mjs
+      - scripts/build-consensus-track-prospective.mjs
+      - tests/consensus-track-prospective.test.cjs
+      - .github/workflows/consensus-track-prospective-recorder.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: consensus-track-prospective-recorder
+  cancel-in-progress: false
+
+env:
+  DATA_BRANCH: data/consensus-track-prospective-observations
+  PRODUCTION_BETA_URL: https://maxyu725.github.io/Storm-Track/?beta=hk-signal
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run prospective contract regression
+        run: |
+          set -euo pipefail
+          node --check scripts/capture-consensus-track-dry-run.mjs
+          node --check scripts/build-consensus-track-prospective.mjs
+          node tests/storm-analysis-core.test.cjs
+          node tests/consensus-track-dateline.test.cjs
+          node tests/consensus-track-prospective.test.cjs
+
+      - name: Install lightweight browser driver
+        run: npm install --no-save --ignore-scripts playwright-core@1.55.0
+
+      - name: Start PR-local frontend
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 > /tmp/storm-track-http.log 2>&1 &
+          echo $! > /tmp/storm-track-http.pid
+          sleep 2
+          curl --fail --retry 3 -sS http://127.0.0.1:4173/ >/dev/null
+
+      - name: Allow Pages deployment to catch up
+        if: github.event_name == 'push'
+        run: sleep 90
+
+      - name: Capture derived consensus forecast
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+          STORM_BETA_URL: ${{ github.event_name == 'pull_request' && 'http://127.0.0.1:4173/?beta=hk-signal' || env.PRODUCTION_BETA_URL }}
+        run: |
+          set -euo pipefail
+          rm -f /tmp/consensus-track-dry-run.json /tmp/consensus-track-prospective.json
+          for attempt in 1 2 3; do
+            echo "capture attempt ${attempt}"
+            if node scripts/capture-consensus-track-dry-run.mjs > /tmp/consensus-track-dry-run.json; then
+              break
+            fi
+            rm -f /tmp/consensus-track-dry-run.json
+            if [[ "$attempt" -lt 3 ]]; then sleep 30; fi
+          done
+          test -s /tmp/consensus-track-dry-run.json
+          node scripts/build-consensus-track-prospective.mjs /tmp/consensus-track-dry-run.json > /tmp/consensus-track-prospective.json
+          test -s /tmp/consensus-track-prospective.json
+
+      - name: Validate prospective capture contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '
+            .schemaVersion == "storm-consensus-track-prospective/v1" and
+            (.captureFingerprint | test("^[0-9a-f]{64}$")) and
+            (.sourceStates | length == 4) and
+            (.visibleGroupKeys | type == "array") and
+            (.groups | type == "array") and
+            (.groupCount == (.groups | length)) and
+            ([.groups[] | .consensusPointCount == ([.samples[] | select((.consensusLat | type) == "number" and (.consensusLon | type) == "number")] | length)] | all) and
+            ([.groups[].samples[] | .agencyCount == (.agencies | length)] | all) and
+            (.semantics.rawInputsPersisted == false) and
+            (.semantics.individualAgencyCoordinatesPersisted == false) and
+            (.semantics.derivedConsensusCoordinatesPersisted == true) and
+            (.semantics.forecastSkillEvaluated == false) and
+            (.semantics.probabilityCalibrated == false) and
+            ([.. | objects | has("rawInput")] | any | not) and
+            ([.. | objects | has("entries")] | any | not)
+          ' /tmp/consensus-track-prospective.json >/dev/null
+          jq '{
+            capturedAt,
+            sourceCommit,
+            captureFingerprint,
+            sourceStates,
+            visibleGroupKeys,
+            groupCount,
+            groups: [.groups[] | {
+              key,
+              displayName,
+              referenceBaseTime,
+              referenceMethod,
+              consensusPointCount,
+              supportedThroughHours,
+              continuousConsensusThroughHours
+            }],
+            semantics
+          }' /tmp/consensus-track-prospective.json
+
+      - name: Check branch whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check origin/main...HEAD
+
+      - name: Persist prospective consensus state
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin "$DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$DATA_BRANCH"
+            git switch -C "$DATA_BRANCH" FETCH_HEAD
+          else
+            git switch --orphan "$DATA_BRANCH"
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          fingerprint="$(jq -r '.captureFingerprint' /tmp/consensus-track-prospective.json)"
+          existing="$(jq -r '.captureFingerprint // empty' latest.json 2>/dev/null || true)"
+          if [[ "$fingerprint" == "$existing" ]]; then
+            echo "CONSENSUS_PROSPECTIVE_NOOP=true"
+            echo "CONSENSUS_PROSPECTIVE_FINGERPRINT=$fingerprint"
+            exit 0
+          fi
+
+          captured_at="$(jq -r '.capturedAt' /tmp/consensus-track-prospective.json)"
+          day_path="$(date -u -d "$captured_at" +'%Y/%m/%d')"
+          stamp="$(date -u -d "$captured_at" +'%Y%m%dT%H%M%SZ')"
+          short="${fingerprint:0:12}"
+          destination="observations/${day_path}/${stamp}-${short}.json"
+          mkdir -p "$(dirname "$destination")"
+          cp /tmp/consensus-track-prospective.json "$destination"
+          cp /tmp/consensus-track-prospective.json latest.json
+          jq -c '{
+            schemaVersion,
+            capturedAt,
+            sourceCommit,
+            captureFingerprint,
+            visibleGroupKeys,
+            groupCount,
+            groups: [.groups[] | {
+              key,
+              displayName,
+              referenceBaseTime,
+              consensusPointCount,
+              supportedThroughHours,
+              continuousConsensusThroughHours
+            }]
+          }' /tmp/consensus-track-prospective.json >> index.ndjson
+
+          git add observations latest.json index.ndjson
+          git commit -m "Observe Consensus Track ${stamp} ${short}"
+          git push origin "HEAD:${DATA_BRANCH}"
+          echo "CONSENSUS_PROSPECTIVE_STORED=true"
+          echo "CONSENSUS_PROSPECTIVE_FINGERPRINT=$fingerprint"
