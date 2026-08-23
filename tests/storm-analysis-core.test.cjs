@@ -141,12 +141,15 @@ function source(agency, baseTime, points, current = null) {
     assert.equal(lead0.agencyCount, 4);
     assert.equal(lead0.consensus.agencyCount, 4);
     assert.equal(lead0.entries.every(entry => entry.kind === 'analysis'), true);
+    assert.equal(lead0.entries.every(entry => entry.provenance === 'exact-analysis'), true);
+    assert.equal(lead0.entries.every(entry => entry.interpolation === null), true);
 
     const lead24 = track.points.find(item => item.leadHours === 24);
     assert.ok(lead24);
     assert.equal(lead24.validTime, '2026-08-21T00:00:00.000Z');
     assert.equal(lead24.agencyCount, 4);
     assert.equal(lead24.consensus.method, 'unweighted-mean-v1');
+    assert.equal(lead24.entries.every(entry => entry.provenance === 'exact-forecast'), true);
     assert.ok(lead24.spread.distanceKm > 0);
 })();
 
@@ -176,9 +179,20 @@ function source(agency, baseTime, points, current = null) {
     const trackPoint = track.points[0];
     assert.equal(trackPoint.validTime, '2026-08-20T12:00:00.000Z');
     assert.equal(trackPoint.agencyCount, 2);
+    const hko = trackPoint.entries.find(entry => entry.agency === 'HKO');
     const cma = trackPoint.entries.find(entry => entry.agency === 'CMA');
+    assert.ok(hko);
     assert.ok(cma);
+    assert.equal(hko.provenance, 'exact-forecast');
+    assert.equal(hko.interpolation, null);
     assert.equal(cma.interpolated, true);
+    assert.equal(cma.provenance, 'forecast-to-forecast-interpolation');
+    assert.deepEqual(cma.interpolation, {
+        beforeTime: '2026-08-20T06:00:00.000Z',
+        afterTime: '2026-08-20T18:00:00.000Z',
+        beforeKind: 'forecast',
+        afterKind: 'forecast'
+    });
     assert.equal(cma.sourceBaseTime, '2026-08-20T06:00:00.000Z');
     assert.equal(trackPoint.consensus.agencyCount, 2);
 })();
@@ -222,8 +236,19 @@ function source(agency, baseTime, points, current = null) {
     assert.equal(track.points[0].agencyCount, 2);
     assert.equal(track.points[0].consensus.agencyCount, 2);
     const hko = track.points[0].entries.find(entry => entry.agency === 'HKO');
+    const cma = track.points[0].entries.find(entry => entry.agency === 'CMA');
     assert.ok(hko);
+    assert.ok(cma);
     assert.equal(hko.interpolated, true);
+    assert.equal(hko.provenance, 'analysis-to-forecast-interpolation');
+    assert.deepEqual(hko.interpolation, {
+        beforeTime: '2026-08-20T00:00:00.000Z',
+        afterTime: '2026-08-20T06:00:00.000Z',
+        beforeKind: 'analysis',
+        afterKind: 'forecast'
+    });
+    assert.equal(cma.provenance, 'exact-analysis');
+    assert.equal(cma.interpolation, null);
 })();
 
 (function testConsensusTrackDoesNotCallSingleAgencyAConsensus() {
