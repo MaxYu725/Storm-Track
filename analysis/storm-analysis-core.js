@@ -9,6 +9,12 @@
     const AGENCIES = Object.freeze(['HKO', 'CMA', 'JMA', 'CWA']);
     const HONG_KONG = Object.freeze({ lat: 22.3023, lon: 114.1746 });
     const EARTH_RADIUS_KM = 6371;
+    const CONSENSUS_TRACK_DEFAULTS = Object.freeze({
+        startLeadHours: 0,
+        endLeadHours: 120,
+        stepHours: 6,
+        minAgencyCount: 2
+    });
 
     function asFiniteNumber(value) {
         if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
@@ -221,6 +227,107 @@
         };
     }
 
+    function trackPointAtValidTime(source, targetMs) {
+        if (source?.state !== 'ok' || !Number.isFinite(targetMs)) return null;
+        const forecastPoint = interpolateTimedPoint(source.forecast, targetMs);
+        if (forecastPoint) return forecastPoint;
+        if (source.current?.timeMs === targetMs) return { ...source.current, interpolated: false };
+        return null;
+    }
+
+    function normalizeConsensusTrackOptions(options) {
+        const opts = options || {};
+        const start = asFiniteNumber(opts.consensusTrackStartLeadHours);
+        const end = asFiniteNumber(opts.consensusTrackEndLeadHours);
+        const step = asFiniteNumber(opts.consensusTrackStepHours);
+        const minAgencyCount = asFiniteNumber(opts.consensusTrackMinAgencyCount);
+
+        const startLeadHours = start != null && start >= 0
+            ? start
+            : CONSENSUS_TRACK_DEFAULTS.startLeadHours;
+        const endLeadHours = end != null && end >= startLeadHours
+            ? end
+            : CONSENSUS_TRACK_DEFAULTS.endLeadHours;
+        const stepHours = step != null && step > 0
+            ? step
+            : CONSENSUS_TRACK_DEFAULTS.stepHours;
+        const normalizedMinAgencyCount = minAgencyCount == null
+            ? CONSENSUS_TRACK_DEFAULTS.minAgencyCount
+            : Math.max(2, Math.min(AGENCIES.length, Math.trunc(minAgencyCount)));
+
+        return {
+            startLeadHours,
+            endLeadHours,
+            stepHours,
+            minAgencyCount: normalizedMinAgencyCount
+        };
+    }
+
+    function buildConsensusTrack(sources, comparisonReference, referencePoint, options) {
+        const config = normalizeConsensusTrackOptions(options);
+        const referenceBaseTimeMs = comparisonReference?.baseTimeMs ?? null;
+        const points = [];
+
+        if (!Number.isFinite(referenceBaseTimeMs)) {
+            return {
+                state: 'unavailable',
+                method: 'valid-time-aligned-unweighted-mean-v1',
+                referenceAgency: null,
+                referenceBaseTime: null,
+                ...config,
+                points
+            };
+        }
+
+        const sampleCount = Math.floor((config.endLeadHours - config.startLeadHours) / config.stepHours) + 1;
+        for (let index = 0; index < sampleCount; index += 1) {
+            const leadHours = config.startLeadHours + index * config.stepHours;
+            const targetValidMs = referenceBaseTimeMs + leadHours * 60 * 60 * 1000;
+            const entries = [];
+
+            AGENCIES.forEach(agency => {
+                const source = sources[agency];
+                const point = trackPointAtValidTime(source, targetValidMs);
+                if (!point) return;
+                entries.push({
+                    agency,
+                    lat: point.lat,
+                    lon: point.lon,
+                    time: point.time,
+                    kind: point.kind || null,
+                    interpolated: Boolean(point.interpolated),
+                    sourceBaseTime: source.baseTime
+                });
+            });
+
+            const hasConsensus = entries.length >= config.minAgencyCount;
+            const consensus = hasConsensus ? buildConsensus(entries, referencePoint) : null;
+            const spread = hasConsensus ? maxPairwiseDistance(entries) : null;
+
+            points.push({
+                leadHours,
+                validTime: toIso(targetValidMs),
+                agencyCount: entries.length,
+                agencies: entries.map(entry => entry.agency),
+                entries,
+                consensus,
+                spread: spread ? {
+                    distanceKm: spread.distanceKm,
+                    agencies: spread.agencies
+                } : null
+            });
+        }
+
+        return {
+            state: points.some(point => point.consensus) ? 'ok' : 'insufficient-coverage',
+            method: 'valid-time-aligned-unweighted-mean-v1',
+            referenceAgency: comparisonReference.agency,
+            referenceBaseTime: toIso(referenceBaseTimeMs),
+            ...config,
+            points
+        };
+    }
+
     function buildStormAnalysisSnapshot(group, options) {
         const opts = options || {};
         const referencePoint = {
@@ -263,6 +370,7 @@
         const usableAgencies = AGENCIES.filter(agency => sources[agency].state === 'ok');
         const consensus = buildConsensus(comparisonEntries, referencePoint);
         const spread = maxPairwiseDistance(comparisonEntries);
+        const consensusTrack = buildConsensusTrack(sources, comparisonReference, referencePoint, opts);
 
         return {
             schemaVersion: SNAPSHOT_VERSION,
@@ -285,6 +393,7 @@
                 usableAgencyCount: usableAgencies.length
             },
             sources,
+            consensusTrack,
             comparison: {
                 leadHours: compareLeadHours,
                 referenceAgency: comparisonReference?.agency ?? null,
@@ -309,6 +418,7 @@
         SNAPSHOT_VERSION,
         AGENCIES,
         HONG_KONG,
+        CONSENSUS_TRACK_DEFAULTS,
         haversineKm,
         interpolateTimedPoint,
         buildStormAnalysisSnapshot
