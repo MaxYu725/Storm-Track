@@ -27,49 +27,41 @@ CT-1 is intentionally split into small correctness / observability tasks.
 
 ### CT-1A — Stable case identity and source references
 
-**Status: current implementation work.**
+**Status: complete / production active.**
 
-Goals:
+Implemented:
 
-- reuse `storm-case-identity/v1` instead of creating a second identity engine;
-- keep the same case through generic-name → named-storm transitions;
-- persist non-coordinate agency references needed to join back to as-issued guidance;
-- preserve the rule that individual-agency point coordinates are not duplicated into the CT prospective dataset.
-
-Persistent source references may include:
-
-- agency;
-- source ID;
-- bulletin time;
-- current analysis time;
-- forecast base time;
-- first / last forecast valid time;
-- analysis / forecast point counts.
-
-Case resolution is stored separately in `case-registry.json` and `case-index.ndjson`. Historical prospective snapshot files remain immutable.
+- reuse `storm-case-identity/v1` through a CT adapter instead of creating a second identity engine;
+- preserve case continuity through generic-name → named-storm transitions;
+- persist non-coordinate agency references needed for archive joins;
+- keep individual-agency point coordinates out of the CT prospective dataset;
+- store derived case resolution separately in `case-registry.json` and `case-index.ndjson` while historical prospective snapshots remain immutable.
 
 ### CT-1B — Verification-readiness audit
 
-**Status: pending CT-1A.**
+**Status: complete as an audit; CT-2 gate is CLOSED by the current evidence.**
 
-Before building a skill evaluator, prove that a CT prospective record can reliably join to each agency's **as-issued** forecast in the existing archive / D1 data.
+The read-only auditor proves that the latest CT v2 source references can identify their D1 storm records, but the existing Archive cannot reconstruct the same as-issued forecast cycles safely enough for skill verification.
 
-For representative samples, verify:
+Latest production audit on the CT v2 snapshot captured `2026-08-23T07:46:08.509Z`:
 
-```text
-CT case + source reference
-  → agency advisory / forecast cycle
-  → same valid time
-  → as-issued agency forecast point
-```
+- 13 source references audited;
+- 13/13 storm identities joined through explicit same-agency `aliases[].agency_storm_id` evidence;
+- 0/13 source references had a same-cycle advisory within the fixed 3h tolerance;
+- 10/13 had an explicitly stale Archive cycle;
+- 3/13 JMA references had an ambiguous advisory stream because one D1 storm record contains multiple JMA EventIDs while advisories store WMO product codes rather than EventID;
+- median observed Archive lag among available nearest cycles: 675 minutes;
+- 167 valid-time contribution targets were eligible for checking, but 0 were accepted as safely reconstructable from the same as-issued cycle.
 
-Measure join coverage separately for HKO, CMA, JMA and CWA. Missing guidance remains missing; no silent substitution.
+The auditor deliberately does **not** widen the time tolerance, score forecasts, rank agencies or treat a stale/ambiguous advisory as the source cycle.
 
-If archive reconstruction is insufficient, fix the evidence contract before CT-2. Do not fabricate historical agency points from later data.
+Detailed evidence is recorded in `docs/CONSENSUS_TRACK_VERIFICATION_READINESS.md`.
+
+**Consequence:** do not start CT-2 against the current Archive corpus. First establish a complete prospective as-issued agency-baseline evidence stream or, only after authoritative production Worker source is acquired/reconstructed, correct the Archive ingest path. Do not restore an old Worker implementation from Git history.
 
 ### CT-1C — Consensus observation UI
 
-**Status: optional after CT-1A / CT-1B.**
+**Status: optional; can proceed independently of the CT-2 data blocker.**
 
 Prefer extending the existing observation surface rather than creating another dashboard.
 
@@ -88,9 +80,14 @@ Do not label these as accuracy, probability or calibrated confidence before CT-2
 
 ## CT-2 — Homogeneous forecast-skill verification
 
-**Status: blocked until enough completed prospective cases and CT-1B join coverage.**
+**Status: BLOCKED.**
 
-Evaluate great-circle track error at:
+Opening conditions now require both:
+
+1. enough completed independent prospective storm cases; and
+2. reliable same-cycle as-issued baseline reconstruction for the compared agencies.
+
+When those conditions are met, evaluate great-circle track error at:
 
 - +24h
 - +48h
@@ -113,7 +110,7 @@ CT-2 is verification only. It does not automatically change CT-0 weights.
 
 ## CT-3 — Lead-specific agency weighting
 
-**Status: conditional research stage.**
+**Status: conditional research stage; blocked behind CT-2 evidence.**
 
 Only open CT-3 if multiple independent cases show stable, repeatable lead-specific skill differences.
 

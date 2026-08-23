@@ -86,6 +86,20 @@ Consensus Track 另有獨立 prospective recorder。新 capture 使用 `storm-co
 
 Consensus Track stable case identity 重用 `storm-case-identity/v1`，透過 CT adapter 由完整 prospective corpus 產生 derived `case-registry.json` / `case-index.ndjson`。Generic TD 可先用已保存的 consensus lead-0 位置維持 physical continuity；一旦新 v2 capture 有 source ID，後續 generic → named transition 以 source overlap 鎖定同一 case。Snapshot 本身保持 immutable。
 
+### Consensus Track verification readiness
+
+CT-1B read-only audit 已完成。最新 production CT v2 snapshot 的 13/13 source references 都能透過 D1 同機構 `aliases[].agency_storm_id` 找回 storm identity，但**現有 Archive 尚不足以支援 CT-2 homogeneous skill verification**：
+
+- same-cycle join within 3h：0/13
+- 明確 stale Archive cycles：10/13
+- JMA advisory stream ambiguous：3/13（同一 D1 storm row 可有多個 JMA EventID，但 advisory 只保存 WMO product code）
+- nearest-cycle median Archive lag：675 分鐘
+- 167 個 valid-time contribution targets 中，0 個可在同一 as-issued cycle 下安全重建
+
+因此 CT-2 gate 現時 **CLOSED**。不會擴大時間 tolerance、用較舊公報替代、或把 0% reconstruction 解讀成 CT forecast skill。這是 Archive/evidence completeness blocker，不是 equal-weight CT-0 算法結論。
+
+詳細 audit contract / evidence：`docs/CONSENSUS_TRACK_VERIFICATION_READINESS.md`。
+
 相關 data-only branches：
 
 - `data/beta-prospective-observations`
@@ -117,12 +131,14 @@ index.html                 主 PWA / live storm UI
 consensus.html             Consensus Track isolated visual Beta entry
 observation.html           HK Signal observation-only board
 analysis/                  現行 deterministic analysis modules
-scripts/                   recorder / evaluator / historical replay scripts
+scripts/                   recorder / evaluator / historical replay / read-only audit scripts
 historical/cases/          historical case manifests
 tests/                     deterministic regression tests
 .github/workflows/         active deployment / recording / evaluation CI
 docs/CONSENSUS_TRACK_ROADMAP.md
                            CT-0 → CT-X evidence-gated roadmap
+docs/CONSENSUS_TRACK_VERIFICATION_READINESS.md
+                           CT-1B Archive join audit / CT-2 gate evidence
 docs/HK_SIGNAL_POST_CASE_REVIEW.md
                            HK Signal 結案備查與統一 review checklist
 docs/WEATHER_APP_INTEGRATION.md
@@ -140,6 +156,7 @@ docs/WEATHER_APP_INTEGRATION.md
 - HK Signal evaluator / closeout
 - Consensus Track live dry-run / visual regression
 - Consensus Track prospective recorder + stable case reconciliation
+- CT-1B read-only verification-readiness audit
 - historical case replay inputs
 
 已完成使命的一次性 feasibility / probe workflow 不應重新加入 main。
@@ -174,9 +191,10 @@ PR #35 已正式 withdrawn，不應合併。
 
 - 持續收集 HK Signal live prospective evidence
 - 持續收集 Consensus Track v2 derived prospective forecasts與 stable case identity
-- Consensus Track 下一 evidence gate 是 **CT-1B verification-readiness audit**：證明每個 agency source reference 能否可靠 join 回當時 as-issued forecast；這一步只量 join coverage，不評分
-- CT-1B 足夠後可做 **CT-1C read-only observation UI**；優先擴充現有 Observation surface，不另建平行 dashboard
-- 只有累積多個完成 case，而且 CT forecast / agency as-issued forecast / verification truth 能 homogeneous pairing，才進入 **CT-2 +24/+48/+72/+96/+120h skill verification**
+- **CT-2 暫停**：目前 D1 Archive 無法重建與 CT v2 同一 as-issued agency cycles；禁止以 10–18 小時較舊公報代替
+- CT baseline evidence blocker 的安全解法只有兩類：取得／重建 authoritative production Worker source 後修正 Archive ingest，或建立獨立 immutable prospective agency-baseline recorder；未取得 authoritative Worker source 前不可從舊 Git history 還原 production Worker
+- **CT-1C read-only observation UI 可獨立繼續**，因為它只展示 prospective diagnostics，不依賴 skill scoring
+- 只有累積多個完成 case，而且 CT forecast / agency as-issued forecast / verification truth 能 homogeneous pairing，才重開 **CT-2 +24/+48/+72/+96/+120h skill verification**
 - weighting 屬 CT-3 conditional research；沒有跨案例穩定 skill difference 就不做
 - ECMWF IFS/AIFS 屬 CT-4 separate model-family research，不作第五個 agency vote
 - ML / probability / own-model work 留在 CT-X backlog，非 active roadmap
