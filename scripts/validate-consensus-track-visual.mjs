@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright-core';
 
-const targetUrl = process.env.CONSENSUS_BETA_URL || 'http://127.0.0.1:4173/consensus.html';
+const targetUrl = process.env.CONSENSUS_BETA_URL || 'http://127.0.0.1:4173/?beta=hk-signal';
 const timeoutMs = Number(process.env.SETTLE_TIMEOUT_MS || 90000);
 const screenshotPath = process.env.CONSENSUS_SCREENSHOT || '/tmp/consensus-track-beta.png';
+const storageKey = 'storm-track-consensus-track-beta-enabled-v1';
 
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
@@ -29,29 +30,53 @@ try {
     if (message.type() === 'error') console.error(`PAGE_CONSOLE_ERROR ${message.text()}`);
   });
 
+  await page.addInitScript(key => {
+    try { localStorage.removeItem(key); } catch {}
+  }, storageKey);
+
   await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+
   await page.waitForFunction(() => {
-    const frame = document.getElementById('storm-consensus-frame');
-    return Boolean(frame?.contentWindow?.document?.getElementById('storm-map'));
+    const toggle = document.getElementById('toggle-consensus-track-beta');
+    return Boolean(toggle && globalThis.StormConsensusTrackOverlay?.setEnabled && globalThis.StormTrackRuntime?.map);
   }, null, { timeout: timeoutMs });
 
-  const child = page.frames().find(frame => frame.url().includes('beta=hk-signal') && frame.url().includes('consensusTrack=1'));
-  if (!child) throw new Error('Storm Track Beta iframe not found');
+  const defaultOff = await page.evaluate(key => {
+    const toggle = document.getElementById('toggle-consensus-track-beta');
+    const controller = globalThis.StormTrackRuntime?.consensusTrackController || null;
+    return {
+      toggleChecked: toggle?.checked === true,
+      apiEnabled: globalThis.StormConsensusTrackOverlay?.getEnabled?.() === true,
+      controllerPresent: Boolean(controller),
+      hudPresent: Boolean(document.querySelector('.storm-consensus-track-hud')),
+      storedValue: localStorage.getItem(key)
+    };
+  }, storageKey);
 
-  await child.waitForFunction(() => {
+  if (defaultOff.toggleChecked || defaultOff.apiEnabled || defaultOff.controllerPresent || defaultOff.hudPresent) {
+    throw new Error(`Consensus Track Beta did not default OFF: ${JSON.stringify(defaultOff)}`);
+  }
+
+  await page.waitForFunction(() => {
     const badges = ['hko', 'cma', 'jma', 'cwa'].map(code => document.getElementById(`badge-${code}`));
     const settled = badges.every(badge => badge && !badge.classList.contains('loading'));
     const progress = document.getElementById('top-progress-bar');
     return settled && (!progress || progress.classList.contains('hidden'));
   }, null, { timeout: timeoutMs });
 
-  await child.waitForFunction(() => {
+  await page.evaluate(() => {
+    const toggle = document.getElementById('toggle-consensus-track-beta');
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  await page.waitForFunction(() => {
     const controller = globalThis.StormTrackRuntime?.consensusTrackController;
     const state = controller?.getState?.();
     return state?.enabled === true && state.trackCount > 0 && state.pointCount > 0 && state.segmentCount > 0;
   }, null, { timeout: timeoutMs });
 
-  const result = await child.evaluate(() => {
+  const enabled = await page.evaluate(key => {
     const controller = globalThis.StormTrackRuntime?.consensusTrackController;
     const state = controller?.getState?.() || null;
     const hud = document.querySelector('.storm-consensus-track-hud');
@@ -64,22 +89,53 @@ try {
       };
     });
     return {
+      toggleChecked: document.getElementById('toggle-consensus-track-beta')?.checked === true,
+      apiEnabled: globalThis.StormConsensusTrackOverlay?.getEnabled?.() === true,
+      storedValue: localStorage.getItem(key),
       state,
       hudVisible: Boolean(hud && getComputedStyle(hud).display !== 'none'),
       hudText: hud?.textContent?.replace(/\s+/g, ' ').trim() || null,
       paneInstalled: Boolean(pane),
-      sourceStates,
-      semantics: {
-        displayOnly: true,
-        officialAgencyLayersModified: false,
-        hkSignalInputsModified: false,
-        probabilityCalibrated: false
-      }
+      sourceStates
     };
-  });
+  }, storageKey);
 
   await page.screenshot({ path: screenshotPath, fullPage: true });
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+
+  await page.evaluate(() => {
+    const toggle = document.getElementById('toggle-consensus-track-beta');
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  await page.waitForFunction(() => {
+    const toggle = document.getElementById('toggle-consensus-track-beta');
+    return toggle?.checked === false
+      && globalThis.StormConsensusTrackOverlay?.getEnabled?.() === false
+      && !globalThis.StormTrackRuntime?.consensusTrackController
+      && !document.querySelector('.storm-consensus-track-hud');
+  }, null, { timeout: 15000 });
+
+  const disabled = await page.evaluate(key => ({
+    toggleChecked: document.getElementById('toggle-consensus-track-beta')?.checked === true,
+    apiEnabled: globalThis.StormConsensusTrackOverlay?.getEnabled?.() === true,
+    controllerPresent: Boolean(globalThis.StormTrackRuntime?.consensusTrackController),
+    hudPresent: Boolean(document.querySelector('.storm-consensus-track-hud')),
+    storedValue: localStorage.getItem(key)
+  }), storageKey);
+
+  process.stdout.write(`${JSON.stringify({
+    defaultOff,
+    enabled,
+    disabled,
+    semantics: {
+      displayOnly: true,
+      defaultOff: true,
+      officialAgencyLayersModified: false,
+      hkSignalInputsModified: false,
+      probabilityCalibrated: false
+    }
+  }, null, 2)}\n`);
 } finally {
   await browser.close();
 }
