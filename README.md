@@ -98,6 +98,18 @@ CT-1B read-only audit 已完成。最新 production CT v2 snapshot 的 13/13 sou
 
 因此 CT-2 gate 現時 **CLOSED**。不會擴大時間 tolerance、用較舊公報替代、或把 0% reconstruction 解讀成 CT forecast skill。這是 Archive/evidence completeness blocker，不是 equal-weight CT-0 算法結論。
 
+為避免往後的 as-issued baseline 再流失，現行安全 remediation 是獨立 **Prospective Agency Baseline Recorder**，不修改未 versioned 的 production Worker / D1。Baseline schema 為 `storm-agency-baseline-prospective/v1`，只保存：
+
+- agency / source ID / source token / bulletin time
+- latest valid analysis point
+- as-issued forecast valid time、可用的 base time / forecast hour、lat/lon
+- 當 capture 時可由現有 CT `case-registry.json` 精確 source-token resolve 的 case ID
+- immutable capture / cycle fingerprints
+
+它不保存完整歷史 analysis track、intensity fields、verification truth、consensus output、forecast error、ranking 或 weighting。Case identity 暫未 resolve 時亦不會丟棄 forecast evidence。
+
+這個新 evidence stream 只解決**未來資料保存**，不會回填舊 D1 Archive，也不會自動打開 CT-2；仍需累積完成案例與 matching verification truth。
+
 詳細 audit contract / evidence：`docs/CONSENSUS_TRACK_VERIFICATION_READINESS.md`。
 
 相關 data-only branches：
@@ -106,6 +118,7 @@ CT-1B read-only audit 已完成。最新 production CT v2 snapshot 的 13/13 sou
 - `data/hko-warning-truth`
 - `data/hk-signal-evaluations`
 - `data/consensus-track-prospective-observations`
+- `data/agency-baseline-prospective-observations`
 
 ## Historical replay
 
@@ -157,6 +170,7 @@ docs/WEATHER_APP_INTEGRATION.md
 - Consensus Track live dry-run / visual regression
 - Consensus Track prospective recorder + stable case reconciliation
 - CT-1B read-only verification-readiness audit
+- Prospective agency forecast baseline recorder
 - historical case replay inputs
 
 已完成使命的一次性 feasibility / probe workflow 不應重新加入 main。
@@ -191,8 +205,10 @@ PR #35 已正式 withdrawn，不應合併。
 
 - 持續收集 HK Signal live prospective evidence
 - 持續收集 Consensus Track v2 derived prospective forecasts與 stable case identity
+- 持續收集 HKO / CMA / JMA / CWA as-issued prospective agency baselines，避免 CT-2 必需 evidence 再流失
 - **CT-2 暫停**：目前 D1 Archive 無法重建與 CT v2 同一 as-issued agency cycles；禁止以 10–18 小時較舊公報代替
-- CT baseline evidence blocker 的安全解法只有兩類：取得／重建 authoritative production Worker source 後修正 Archive ingest，或建立獨立 immutable prospective agency-baseline recorder；未取得 authoritative Worker source 前不可從舊 Git history 還原 production Worker
+- Prospective agency baseline recorder 只補未來 evidence；仍需完成案例及 verification truth 才可重新檢查 CT-2 gate
+- 未取得 authoritative production Worker source 前不可從舊 Git history 還原 production Worker；若未來要修 Archive ingest，必須先取得／重建 authoritative source
 - **CT-1C read-only observation UI 可獨立繼續**，因為它只展示 prospective diagnostics，不依賴 skill scoring
 - 只有累積多個完成 case，而且 CT forecast / agency as-issued forecast / verification truth 能 homogeneous pairing，才重開 **CT-2 +24/+48/+72/+96/+120h skill verification**
 - weighting 屬 CT-3 conditional research；沒有跨案例穩定 skill difference 就不做
