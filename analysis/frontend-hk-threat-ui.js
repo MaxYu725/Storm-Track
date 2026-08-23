@@ -1,8 +1,19 @@
 (function attachStormHkThreatUi(root, factory) {
+  installSettingsPanelUi(root);
   installOptionalWindLayer(root);
   const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.StormHkThreatUi = api;
+
+  function installSettingsPanelUi(browserRoot) {
+    if (!browserRoot?.document) return;
+    if (browserRoot.document.querySelector('script[data-storm-settings-panel]')) return;
+    const script = browserRoot.document.createElement('script');
+    script.src = './analysis/settings-panel-ui.js';
+    script.async = true;
+    script.dataset.stormSettingsPanel = 'true';
+    browserRoot.document.head.appendChild(script);
+  }
 
   function installOptionalWindLayer(browserRoot) {
     if (!browserRoot?.document || !browserRoot?.L || typeof browserRoot.L.map !== 'function') return;
