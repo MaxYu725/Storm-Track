@@ -5,6 +5,8 @@ on:
     branches:
       - main
     paths:
+      - README.md
+      - docs/CONSENSUS_TRACK_ROADMAP.md
       - index.html
       - observation.html
       - sw.js
@@ -63,6 +65,8 @@ jobs:
           grep -F "script.src = './analysis/consensus-track-observation-ui.js'" analysis/hk-signal-observation-board.js
           grep -F 'Consensus Track Beta｜Prospective Observation' analysis/consensus-track-observation-ui.js
           grep -F 'valid-time diagnostics only · 無 skill / truth / probability' analysis/consensus-track-observation-ui.js
+          grep -F 'CT-1C 已把 read-only prospective diagnostics 加入現有 Observation Board' README.md
+          grep -F '**Status: complete / read-only production observation surface.**' docs/CONSENSUS_TRACK_ROADMAP.md
 
       - name: Run HK signal regression suite
         shell: bash
