@@ -199,6 +199,22 @@
         return null;
     }
 
+    function getConsensusTrackReference(normalizedSources) {
+        const currentEntries = AGENCIES
+            .map(agency => ({ agency, timeMs: normalizedSources[agency]?.current?.timeMs }))
+            .filter(entry => Number.isFinite(entry.timeMs));
+        if (currentEntries.length) {
+            currentEntries.sort((left, right) => right.timeMs - left.timeMs);
+            return {
+                agency: currentEntries[0].agency,
+                baseTimeMs: currentEntries[0].timeMs,
+                method: 'latest-analysis-valid-time'
+            };
+        }
+        const fallback = getComparisonReference(normalizedSources);
+        return fallback ? { ...fallback, method: 'source-base-time-fallback' } : null;
+    }
+
     function maxPairwiseDistance(entries) {
         let best = null;
         for (let i = 0; i < entries.length; i += 1) {
@@ -230,10 +246,10 @@
 
     function trackPointAtValidTime(source, targetMs) {
         if (source?.state !== 'ok' || !Number.isFinite(targetMs)) return null;
-        const forecastPoint = interpolateTimedPoint(source.forecast, targetMs);
-        if (forecastPoint) return forecastPoint;
-        if (source.current?.timeMs === targetMs) return { ...source.current, interpolated: false };
-        return null;
+        const track = [];
+        if (source.current) track.push(source.current);
+        track.push(...source.forecast.filter(point => !source.current || point.timeMs >= source.current.timeMs));
+        return interpolateTimedPoint(track, targetMs);
     }
 
     function normalizeConsensusTrackOptions(options) {
@@ -264,9 +280,9 @@
         };
     }
 
-    function buildConsensusTrack(sources, comparisonReference, referencePoint, options) {
+    function buildConsensusTrack(sources, trackReference, referencePoint, options) {
         const config = normalizeConsensusTrackOptions(options);
-        const referenceBaseTimeMs = comparisonReference?.baseTimeMs ?? null;
+        const referenceBaseTimeMs = trackReference?.baseTimeMs ?? null;
         const points = [];
 
         if (!Number.isFinite(referenceBaseTimeMs)) {
@@ -275,6 +291,7 @@
                 method: 'valid-time-aligned-unweighted-mean-v1',
                 referenceAgency: null,
                 referenceBaseTime: null,
+                referenceMethod: null,
                 ...config,
                 points
             };
@@ -322,8 +339,9 @@
         return {
             state: points.some(point => point.consensus) ? 'ok' : 'insufficient-coverage',
             method: 'valid-time-aligned-unweighted-mean-v1',
-            referenceAgency: comparisonReference.agency,
+            referenceAgency: trackReference.agency,
             referenceBaseTime: toIso(referenceBaseTimeMs),
+            referenceMethod: trackReference.method || null,
             ...config,
             points
         };
@@ -343,8 +361,8 @@
             sources[agency] = normalizeSource(rawSources[agency], agency, referencePoint);
         });
 
-        const comparisonReference = getComparisonReference(sources);
-        const track = buildConsensusTrack(sources, comparisonReference, referencePoint, opts);
+        const trackReference = getConsensusTrackReference(sources);
+        const track = buildConsensusTrack(sources, trackReference, referencePoint, opts);
         const usableAgencies = AGENCIES.filter(agency => sources[agency].state === 'ok');
 
         return {
