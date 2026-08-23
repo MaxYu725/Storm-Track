@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '3.3.9';
+const VERSION = '3.3.10';
 const CACHE_PREFIX = 'storm-track-';
 const SHELL_CACHE = `${CACHE_PREFIX}shell-${VERSION}`;
 const STATIC_CACHE = `${CACHE_PREFIX}static-${VERSION}`;
@@ -11,6 +11,7 @@ const APP_SHELL = [
   './analysis/frontend-hk-threat-ui.js',
   './analysis/settings-panel-ui.js',
   './analysis/wind-field-overlay.js',
+  './analysis/consensus-track-overlay.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png'
@@ -58,7 +59,14 @@ self.addEventListener('fetch', event => {
   }
 
   if (url.origin === self.location.origin) {
-    event.respondWith(cacheFirst(request, SHELL_CACHE));
+    // App JavaScript changes frequently during Beta work. A cache-first policy can pin an
+    // old analysis/settings module indefinitely when sw.js itself did not change. Prefer
+    // current network code while retaining the previous response for offline fallback.
+    if (url.pathname.endsWith('.js')) {
+      event.respondWith(networkFirstStatic(request, SHELL_CACHE));
+    } else {
+      event.respondWith(cacheFirst(request, SHELL_CACHE));
+    }
     return;
   }
 
@@ -85,6 +93,17 @@ async function networkFirstNavigation(request) {
         status: 503,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' }
       });
+  }
+}
+
+async function networkFirstStatic(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const response = await fetch(new Request(request, { cache: 'no-store' }));
+    if (response?.ok) cache.put(request, response.clone()).catch(() => {});
+    return response;
+  } catch {
+    return (await cache.match(request)) || Response.error();
   }
 }
 
