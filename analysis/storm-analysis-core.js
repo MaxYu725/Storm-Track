@@ -6,6 +6,7 @@
     'use strict';
 
     const SNAPSHOT_VERSION = 'storm-analysis-snapshot/v1';
+    const CONSENSUS_TRACK_VERSION = 'storm-consensus-track/v0';
     const AGENCIES = Object.freeze(['HKO', 'CMA', 'JMA', 'CWA']);
     const HONG_KONG = Object.freeze({ lat: 22.3023, lon: 114.1746 });
     const EARTH_RADIUS_KM = 6371;
@@ -328,6 +329,53 @@
         };
     }
 
+    function buildConsensusTrackForGroup(group, options) {
+        const opts = options || {};
+        const referencePoint = {
+            lat: asFiniteNumber(opts.referencePoint?.lat) ?? HONG_KONG.lat,
+            lon: asFiniteNumber(opts.referencePoint?.lon) ?? HONG_KONG.lon
+        };
+        const generatedAtMs = parseTimeMs(opts.generatedAt) ?? Date.now();
+        const rawSources = group?.sources && typeof group.sources === 'object' ? group.sources : {};
+        const sources = {};
+
+        AGENCIES.forEach(agency => {
+            sources[agency] = normalizeSource(rawSources[agency], agency, referencePoint);
+        });
+
+        const comparisonReference = getComparisonReference(sources);
+        const track = buildConsensusTrack(sources, comparisonReference, referencePoint, opts);
+        const usableAgencies = AGENCIES.filter(agency => sources[agency].state === 'ok');
+
+        return {
+            schemaVersion: CONSENSUS_TRACK_VERSION,
+            generatedAt: toIso(generatedAtMs),
+            storm: {
+                key: group?.key ?? null,
+                displayName: group?.displayName ?? null,
+                nameTc: group?.nameTc ?? null,
+                nameEn: group?.nameEn ?? null
+            },
+            referencePoint: {
+                name: 'Hong Kong',
+                lat: referencePoint.lat,
+                lon: referencePoint.lon
+            },
+            coverage: {
+                expectedAgencies: AGENCIES.slice(),
+                usableAgencies,
+                usableAgencyCount: usableAgencies.length
+            },
+            ...track,
+            semantics: {
+                officialAgencyDataRemainSeparate: true,
+                consensusIsAppComputed: true,
+                aiGenerated: false,
+                probabilityCalibrated: false
+            }
+        };
+    }
+
     function buildStormAnalysisSnapshot(group, options) {
         const opts = options || {};
         const referencePoint = {
@@ -370,7 +418,6 @@
         const usableAgencies = AGENCIES.filter(agency => sources[agency].state === 'ok');
         const consensus = buildConsensus(comparisonEntries, referencePoint);
         const spread = maxPairwiseDistance(comparisonEntries);
-        const consensusTrack = buildConsensusTrack(sources, comparisonReference, referencePoint, opts);
 
         return {
             schemaVersion: SNAPSHOT_VERSION,
@@ -393,7 +440,6 @@
                 usableAgencyCount: usableAgencies.length
             },
             sources,
-            consensusTrack,
             comparison: {
                 leadHours: compareLeadHours,
                 referenceAgency: comparisonReference?.agency ?? null,
@@ -416,11 +462,13 @@
 
     return Object.freeze({
         SNAPSHOT_VERSION,
+        CONSENSUS_TRACK_VERSION,
         AGENCIES,
         HONG_KONG,
         CONSENSUS_TRACK_DEFAULTS,
         haversineKm,
         interpolateTimedPoint,
+        buildConsensusTrackForGroup,
         buildStormAnalysisSnapshot
     });
 });
