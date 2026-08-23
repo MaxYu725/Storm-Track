@@ -320,7 +320,7 @@
     const evolution = compactEvolution(threat);
     const notes = [];
     if ((finite(threat?.analyzers?.agencyDisagreement?.confidence) ?? 0) >= 0.6) notes.push('機構分歧較大');
-    if (forecast?.impact?.forecastMinimumMayBeHorizonLimited) notes.push('最低距離接近預報尾端');
+    if (forecast?.impact?.forecastMinimumMayBeHorizonLimited) notes.push('部分機構預報在最近距離附近結束');
     const strongest = threat?.summary?.strongestTimelineThreat;
     if (strongest?.label && Number.isFinite(finite(strongest?.threatIndex))) {
       notes.push(`較高威脅點 ${strongest.label}（${formatHkt(strongest.validTime)}）`);

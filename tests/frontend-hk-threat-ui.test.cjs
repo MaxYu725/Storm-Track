@@ -59,6 +59,8 @@ assert.match(html, /香港影響/);
 assert.match(html, /T1/);
 assert.match(html, /T3/);
 assert.match(html, /T8/);
+assert.match(html, /部分機構預報在最近距離附近結束/);
+assert.doesNotMatch(html, /最低距離接近預報尾端/);
 assert.match(html, /非香港天文台官方風球預測/);
 assert.doesNotMatch(html, /D1|D2|D3|D4|D5/);
 
