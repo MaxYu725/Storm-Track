@@ -205,7 +205,7 @@ function source(agency, baseTime, points, current = null) {
                 agency: 'HKO',
                 sourceId: 'HKO-live-shape',
                 bulletinTime: '2026-08-20T04:30:39Z',
-                positions: [{ kind: 'analysis', time: '2026-08-20T00:00:00Z', lat: 18, lon: 121 }],
+                positions: [{ kind: 'forecast', time: '2026-08-20T00:00:00Z', lat: 18, lon: 121 }],
                 forecast: [
                     point('2026-08-20T06:00:00Z', 18.6, 120.4),
                     point('2026-08-20T12:00:00Z', 19.2, 119.8)
@@ -215,7 +215,7 @@ function source(agency, baseTime, points, current = null) {
                 agency: 'CMA',
                 sourceId: 'CMA-live-shape',
                 bulletinTime: '2026-08-20T03:17:51Z',
-                positions: [{ kind: 'analysis', time: '2026-08-20T03:00:00Z', lat: 18.4, lon: 120.7 }],
+                positions: [{ kind: 'forecast', time: '2026-08-20T03:00:00Z', lat: 18.4, lon: 120.7 }],
                 forecast: [
                     point('2026-08-20T09:00:00Z', 19.0, 120.1),
                     point('2026-08-20T15:00:00Z', 19.6, 119.5)
@@ -247,6 +247,7 @@ function source(agency, baseTime, points, current = null) {
         beforeKind: 'analysis',
         afterKind: 'forecast'
     });
+    assert.equal(cma.kind, 'forecast');
     assert.equal(cma.provenance, 'exact-analysis');
     assert.equal(cma.interpolation, null);
 })();
