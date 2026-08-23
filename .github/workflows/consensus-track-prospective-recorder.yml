@@ -9,22 +9,28 @@ on:
       - main
     paths:
       - analysis/storm-analysis-core.js
+      - analysis/storm-case-identity.js
       - analysis/frontend-hk-threat-ui.js
       - index.html
       - scripts/capture-consensus-track-dry-run.mjs
       - scripts/build-consensus-track-prospective.mjs
+      - scripts/reconcile-consensus-track-case-identities.mjs
       - tests/consensus-track-prospective.test.cjs
+      - tests/consensus-track-case-identity.test.cjs
       - .github/workflows/consensus-track-prospective-recorder.yml
   pull_request:
     branches:
       - main
     paths:
       - analysis/storm-analysis-core.js
+      - analysis/storm-case-identity.js
       - analysis/frontend-hk-threat-ui.js
       - index.html
       - scripts/capture-consensus-track-dry-run.mjs
       - scripts/build-consensus-track-prospective.mjs
+      - scripts/reconcile-consensus-track-case-identities.mjs
       - tests/consensus-track-prospective.test.cjs
+      - tests/consensus-track-case-identity.test.cjs
       - .github/workflows/consensus-track-prospective-recorder.yml
 
 permissions:
@@ -54,11 +60,29 @@ jobs:
       - name: Run prospective contract regression
         run: |
           set -euo pipefail
+          node --check analysis/storm-case-identity.js
           node --check scripts/capture-consensus-track-dry-run.mjs
           node --check scripts/build-consensus-track-prospective.mjs
+          node --check scripts/reconcile-consensus-track-case-identities.mjs
           node tests/storm-analysis-core.test.cjs
           node tests/consensus-track-dateline.test.cjs
+          node tests/storm-case-identity.test.cjs
           node tests/consensus-track-prospective.test.cjs
+          node tests/consensus-track-case-identity.test.cjs
+
+      - name: Reconcile existing Consensus Track corpus
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/consensus-case-corpus
+          mkdir -p /tmp/consensus-case-corpus
+          if git show-ref --verify --quiet "refs/remotes/origin/${DATA_BRANCH}"; then
+            git archive "origin/${DATA_BRANCH}" | tar -x -C /tmp/consensus-case-corpus
+            node scripts/reconcile-consensus-track-case-identities.mjs /tmp/consensus-case-corpus > /tmp/consensus-case-reconcile.json
+            jq '{schemaVersion,identityAdapterVersion,reconciledThrough,recordCount,caseCount,cases}' /tmp/consensus-case-reconcile.json
+            jq -e '.schemaVersion == "storm-case-identity/v1" and .identityAdapterVersion == "consensus-track-case-identity-adapter/v1" and (.caseCount >= 1)' /tmp/consensus-case-reconcile.json >/dev/null
+          fi
 
       - name: Install lightweight browser driver
         run: npm install --no-save --ignore-scripts playwright-core@1.55.0
@@ -102,21 +126,27 @@ jobs:
         run: |
           set -euo pipefail
           jq -e '
-            .schemaVersion == "storm-consensus-track-prospective/v1" and
+            .schemaVersion == "storm-consensus-track-prospective/v2" and
             (.captureFingerprint | test("^[0-9a-f]{64}$")) and
             (.sourceStates | length == 4) and
             (.visibleGroupKeys | type == "array") and
             (.groups | type == "array") and
             (.groupCount == (.groups | length)) and
+            ([.groups[] | (.sourceReferences | type) == "object"] | all) and
             ([.groups[] | .consensusPointCount == ([.samples[] | select((.consensusLat | type) == "number" and (.consensusLon | type) == "number")] | length)] | all) and
             ([.groups[].samples[] | .agencyCount == (.agencies | length)] | all) and
             (.semantics.rawInputsPersisted == false) and
             (.semantics.individualAgencyCoordinatesPersisted == false) and
             (.semantics.derivedConsensusCoordinatesPersisted == true) and
+            (.semantics.sourceReferencesPersisted == true) and
+            (.semantics.sourceReferenceCoordinatesPersisted == false) and
+            (.semantics.stableCaseIdentityResolvedSeparately == true) and
             (.semantics.forecastSkillEvaluated == false) and
             (.semantics.probabilityCalibrated == false) and
             ([.. | objects | has("rawInput")] | any | not) and
-            ([.. | objects | has("entries")] | any | not)
+            ([.. | objects | has("entries")] | any | not) and
+            ([.. | objects | has("lat")] | any | not) and
+            ([.. | objects | has("lon")] | any | not)
           ' /tmp/consensus-track-prospective.json >/dev/null
           jq '{
             capturedAt,
@@ -128,6 +158,8 @@ jobs:
             groups: [.groups[] | {
               key,
               displayName,
+              nameEn,
+              sourceReferences,
               referenceBaseTime,
               referenceMethod,
               consensusPointCount,
@@ -141,13 +173,18 @@ jobs:
         if: github.event_name == 'pull_request'
         run: git diff --check origin/main...HEAD
 
-      - name: Persist prospective consensus state
+      - name: Persist prospective consensus state and reconcile cases
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          rm -rf /tmp/consensus-case-runtime
+          mkdir -p /tmp/consensus-case-runtime/analysis /tmp/consensus-case-runtime/scripts
+          cp analysis/storm-case-identity.js /tmp/consensus-case-runtime/analysis/
+          cp scripts/reconcile-consensus-track-case-identities.mjs /tmp/consensus-case-runtime/scripts/
 
           if git ls-remote --exit-code --heads origin "$DATA_BRANCH" >/dev/null 2>&1; then
             git fetch --no-tags origin "$DATA_BRANCH"
@@ -159,39 +196,55 @@ jobs:
 
           fingerprint="$(jq -r '.captureFingerprint' /tmp/consensus-track-prospective.json)"
           existing="$(jq -r '.captureFingerprint // empty' latest.json 2>/dev/null || true)"
-          if [[ "$fingerprint" == "$existing" ]]; then
+          stored=false
+          stamp="identity"
+          short="${fingerprint:0:12}"
+
+          if [[ "$fingerprint" != "$existing" ]]; then
+            captured_at="$(jq -r '.capturedAt' /tmp/consensus-track-prospective.json)"
+            day_path="$(date -u -d "$captured_at" +'%Y/%m/%d')"
+            stamp="$(date -u -d "$captured_at" +'%Y%m%dT%H%M%SZ')"
+            destination="observations/${day_path}/${stamp}-${short}.json"
+            mkdir -p "$(dirname "$destination")"
+            cp /tmp/consensus-track-prospective.json "$destination"
+            cp /tmp/consensus-track-prospective.json latest.json
+            jq -c '{
+              schemaVersion,
+              capturedAt,
+              sourceCommit,
+              captureFingerprint,
+              visibleGroupKeys,
+              groupCount,
+              groups: [.groups[] | {
+                key,
+                displayName,
+                nameTc,
+                nameEn,
+                sourceReferences,
+                referenceBaseTime,
+                consensusPointCount,
+                supportedThroughHours,
+                continuousConsensusThroughHours
+              }]
+            }' /tmp/consensus-track-prospective.json >> index.ndjson
+            stored=true
+          fi
+
+          node /tmp/consensus-case-runtime/scripts/reconcile-consensus-track-case-identities.mjs . > /tmp/consensus-case-reconcile.json
+          jq '{schemaVersion,identityAdapterVersion,reconciledThrough,recordCount,caseCount,cases}' /tmp/consensus-case-reconcile.json
+
+          git add -A observations latest.json index.ndjson case-registry.json case-index.ndjson 2>/dev/null || true
+          if git diff --cached --quiet; then
             echo "CONSENSUS_PROSPECTIVE_NOOP=true"
             echo "CONSENSUS_PROSPECTIVE_FINGERPRINT=$fingerprint"
             exit 0
           fi
 
-          captured_at="$(jq -r '.capturedAt' /tmp/consensus-track-prospective.json)"
-          day_path="$(date -u -d "$captured_at" +'%Y/%m/%d')"
-          stamp="$(date -u -d "$captured_at" +'%Y%m%dT%H%M%SZ')"
-          short="${fingerprint:0:12}"
-          destination="observations/${day_path}/${stamp}-${short}.json"
-          mkdir -p "$(dirname "$destination")"
-          cp /tmp/consensus-track-prospective.json "$destination"
-          cp /tmp/consensus-track-prospective.json latest.json
-          jq -c '{
-            schemaVersion,
-            capturedAt,
-            sourceCommit,
-            captureFingerprint,
-            visibleGroupKeys,
-            groupCount,
-            groups: [.groups[] | {
-              key,
-              displayName,
-              referenceBaseTime,
-              consensusPointCount,
-              supportedThroughHours,
-              continuousConsensusThroughHours
-            }]
-          }' /tmp/consensus-track-prospective.json >> index.ndjson
-
-          git add observations latest.json index.ndjson
-          git commit -m "Observe Consensus Track ${stamp} ${short}"
+          if [[ "$stored" == "true" ]]; then
+            git commit -m "Observe Consensus Track ${stamp} ${short}"
+          else
+            git commit -m "Reconcile Consensus Track storm case identities"
+          fi
           git push origin "HEAD:${DATA_BRANCH}"
-          echo "CONSENSUS_PROSPECTIVE_STORED=true"
+          echo "CONSENSUS_PROSPECTIVE_STORED=$stored"
           echo "CONSENSUS_PROSPECTIVE_FINGERPRINT=$fingerprint"

@@ -97,6 +97,22 @@ try {
         else missingRawInputAgencies.push(agency);
       }
 
+      const sourceReferences = Object.fromEntries(
+        Object.entries(observation?.sources || {})
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([agency, source]) => [agency, {
+            agency,
+            sourceId: source?.sourceId ?? null,
+            bulletinTime: source?.bulletinTime ?? null,
+            currentTime: source?.current?.time ?? null,
+            forecastBaseTime: source?.forecastStart?.baseTime ?? null,
+            forecastFirstValidTime: source?.forecastStart?.time ?? null,
+            forecastLastValidTime: source?.forecastEnd?.time ?? null,
+            positionCount: Number(source?.positionCount) || 0,
+            forecastCount: Number(source?.forecastCount) || 0
+          }])
+      );
+
       const group = {
         ...(observation?.group || {}),
         sources
@@ -174,7 +190,10 @@ try {
       return {
         key: observation?.group?.key ?? null,
         displayName: observation?.group?.displayName ?? null,
+        nameTc: observation?.group?.nameTc ?? null,
+        nameEn: observation?.group?.nameEn ?? null,
         sourceAgencies: observation?.sourceAgencies || [],
+        sourceReferences,
         missingRawInputAgencies,
         trackSchemaVersion: track?.schemaVersion ?? null,
         state: track?.state ?? null,
