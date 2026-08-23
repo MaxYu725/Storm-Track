@@ -62,6 +62,7 @@ jobs:
         env:
           CONSENSUS_BETA_URL: http://127.0.0.1:4173/?beta=hk-signal
           CONSENSUS_SCREENSHOT: /tmp/consensus-track-beta.png
+          CONSENSUS_MOBILE_SCREENSHOT: /tmp/consensus-track-beta-mobile.png
         run: |
           set -euo pipefail
           node scripts/validate-consensus-track-visual.mjs > /tmp/consensus-track-visual.json
@@ -84,6 +85,16 @@ jobs:
             .disabled.controllerPresent == false and
             .disabled.hudPresent == false and
             .disabled.storedValue == "0" and
+            .mobile.viewport.width == 390 and
+            .mobile.panelOpen == true and
+            .mobile.panelRect.left >= 0 and
+            .mobile.panelRect.right <= 390.5 and
+            .mobile.panelRect.width <= 360.5 and
+            .mobile.toggleVisible == true and
+            .mobile.toggleChecked == true and
+            .mobile.trackCount > 0 and
+            .mobile.pointCount > 0 and
+            .mobile.hudPresent == true and
             .semantics.displayOnly == true and
             .semantics.defaultOff == true and
             .semantics.officialAgencyLayersModified == false and
@@ -92,6 +103,7 @@ jobs:
           ' /tmp/consensus-track-visual.json >/dev/null
           cat /tmp/consensus-track-visual.json
           test -s /tmp/consensus-track-beta.png
+          test -s /tmp/consensus-track-beta-mobile.png
 
       - name: Upload visual smoke evidence
         uses: actions/upload-artifact@v4
@@ -100,6 +112,7 @@ jobs:
           path: |
             /tmp/consensus-track-visual.json
             /tmp/consensus-track-beta.png
+            /tmp/consensus-track-beta-mobile.png
           if-no-files-found: error
           retention-days: 7
 
