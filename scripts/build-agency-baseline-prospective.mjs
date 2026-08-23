@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 export const BASELINE_VERSION = 'storm-agency-baseline-prospective/v1';
 const CAPTURE_VERSION = 'storm-agency-baseline-capture/v0';
@@ -211,7 +212,7 @@ export function buildAgencyBaselineProspective(raw, options = {}) {
   };
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const inputPath = process.argv[2];
   const registryPath = process.argv[3] || null;
   if (!inputPath) throw new Error('Usage: node scripts/build-agency-baseline-prospective.mjs <capture.json> [case-registry.json]');
