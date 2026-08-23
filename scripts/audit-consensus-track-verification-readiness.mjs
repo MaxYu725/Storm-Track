@@ -39,13 +39,16 @@ export function objectHasExactPrimitive(value, expected) {
   return primitiveStrings(value).some(item => item === target);
 }
 
+function isGenericNameToken(token) {
+  return /^(TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴)$/.test(token);
+}
+
 function groupSpecificNames(group) {
   return [...new Set([
     group?.nameEn,
     group?.nameTc,
-    group?.displayName,
     group?.key
-  ].map(normalizeToken).filter(token => token && !/^(TROPICALDEPRESSION|TROPICALSTORM|TD|TS|熱帶低氣壓|熱帶低壓|热带低气压|热带低压|熱帶風暴|热带风暴)$/.test(token)))];
+  ].map(normalizeToken).filter(token => token && !isGenericNameToken(token)))];
 }
 
 function stormNameTokens(storm) {
@@ -316,6 +319,7 @@ export async function auditReadiness(ctRecord, options = {}) {
     }
   }
 
+  const acceptedReasons = new Set(['source-id+cycle', 'specific-name+cycle']);
   const agencies = ['HKO', 'CMA', 'JMA', 'CWA'];
   const byAgency = Object.fromEntries(agencies.map(agency => {
     const items = joins.filter(item => item.agency === agency);
@@ -323,7 +327,7 @@ export async function auditReadiness(ctRecord, options = {}) {
     const reconstructable = items.reduce((sum, item) => sum + item.reconstructableTargetCount, 0);
     return [agency, {
       sourceReferenceCount: items.length,
-      stormJoinCount: items.filter(item => !String(item.stormMatch).startsWith('no-') && item.stormMatch !== 'generic-storm-without-source-id-evidence').length,
+      stormJoinCount: items.filter(item => acceptedReasons.has(item.stormMatch)).length,
       cycleJoinCount: items.filter(item => item.cycleJoin).length,
       targetCount: targets,
       reconstructableTargetCount: reconstructable,
@@ -350,7 +354,7 @@ export async function auditReadiness(ctRecord, options = {}) {
     joins,
     summary: {
       sourceReferenceCount: joins.length,
-      stormJoinCount: joins.filter(item => !String(item.stormMatch).startsWith('no-') && item.stormMatch !== 'generic-storm-without-source-id-evidence').length,
+      stormJoinCount: joins.filter(item => acceptedReasons.has(item.stormMatch)).length,
       cycleJoinCount: joins.filter(item => item.cycleJoin).length,
       targetCount,
       reconstructableTargetCount,
