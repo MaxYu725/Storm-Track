@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
-const PROSPECTIVE_VERSION = 'storm-consensus-track-prospective/v1';
+const PROSPECTIVE_VERSION = 'storm-consensus-track-prospective/v2';
 const DEFAULT_URL = 'https://maxyu725.github.io/Storm-Track/?beta=hk-signal';
 const inputPath = process.argv[2];
 if (!inputPath) throw new Error('Usage: node scripts/build-consensus-track-prospective.mjs <dry-run.json>');
@@ -14,6 +14,12 @@ function finiteOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function stringOrNull(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
 function sortedUniqueStrings(values) {
   return [...new Set((Array.isArray(values) ? values : []).map(value => String(value)).filter(Boolean))].sort();
 }
@@ -22,6 +28,28 @@ function sortedObject(input) {
   return Object.fromEntries(Object.entries(input && typeof input === 'object' ? input : {})
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, value]) => [key, value == null ? null : String(value)]));
+}
+
+function sanitizeSourceReference(reference, fallbackAgency) {
+  return {
+    agency: stringOrNull(reference?.agency) || stringOrNull(fallbackAgency),
+    sourceId: stringOrNull(reference?.sourceId),
+    bulletinTime: stringOrNull(reference?.bulletinTime),
+    currentTime: stringOrNull(reference?.currentTime),
+    forecastBaseTime: stringOrNull(reference?.forecastBaseTime),
+    forecastFirstValidTime: stringOrNull(reference?.forecastFirstValidTime),
+    forecastLastValidTime: stringOrNull(reference?.forecastLastValidTime),
+    positionCount: Math.max(0, Number(reference?.positionCount) || 0),
+    forecastCount: Math.max(0, Number(reference?.forecastCount) || 0)
+  };
+}
+
+function sanitizeSourceReferences(input) {
+  return Object.fromEntries(
+    Object.entries(input && typeof input === 'object' ? input : {})
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([agency, reference]) => [agency, sanitizeSourceReference(reference, agency)])
+  );
 }
 
 function sanitizeSample(sample) {
@@ -46,7 +74,10 @@ function sanitizeGroup(group) {
   return {
     key: group?.key ?? null,
     displayName: group?.displayName ?? null,
+    nameTc: group?.nameTc ?? null,
+    nameEn: group?.nameEn ?? null,
     sourceAgencies: sortedUniqueStrings(group?.sourceAgencies),
+    sourceReferences: sanitizeSourceReferences(group?.sourceReferences),
     trackSchemaVersion: group?.trackSchemaVersion ?? null,
     state: group?.state ?? null,
     referenceAgency: group?.referenceAgency ?? null,
@@ -102,6 +133,9 @@ const output = {
     rawInputsPersisted: false,
     individualAgencyCoordinatesPersisted: false,
     derivedConsensusCoordinatesPersisted: true,
+    sourceReferencesPersisted: true,
+    sourceReferenceCoordinatesPersisted: false,
+    stableCaseIdentityResolvedSeparately: true,
     forecastSkillEvaluated: false,
     probabilityCalibrated: false
   }
