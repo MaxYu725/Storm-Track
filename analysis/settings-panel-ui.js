@@ -11,6 +11,10 @@
   const BACKDROP_ID = 'storm-settings-backdrop';
   const BETA_BODY_ID = 'settings-beta-body';
   const LEGACY_WIND_ANCHOR_ID = 'settings-legacy-wind-anchor';
+  const CONSENSUS_TOGGLE_ID = 'toggle-consensus-track-beta';
+  const CONSENSUS_STORAGE_KEY = 'storm-track-consensus-track-beta-enabled-v1';
+  const CONSENSUS_STATE_EVENT = 'stormtrack:consensus-track-state';
+  const CONSENSUS_TOGGLE_EVENT = 'stormtrack:consensus-track-toggle';
 
   function betaEnabled() {
     try {
@@ -18,6 +22,47 @@
     } catch {
       return false;
     }
+  }
+
+  function consensusQueryRequested(search = root?.location?.search || '') {
+    try {
+      const requested = String(new URLSearchParams(search).get('consensusTrack') || '').toLowerCase();
+      return ['1', 'true', 'on', 'yes'].includes(requested);
+    } catch {
+      return false;
+    }
+  }
+
+  function consensusStoredEnabled(storage = root?.localStorage) {
+    try {
+      return storage?.getItem?.(CONSENSUS_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function consensusToggleEnabled(search = root?.location?.search || '', storedEnabled = consensusStoredEnabled()) {
+    if (!betaEnabled()) return false;
+    return consensusQueryRequested(search) || storedEnabled === true;
+  }
+
+  function persistConsensusToggle(enabled, storage = root?.localStorage) {
+    try {
+      storage?.setItem?.(CONSENSUS_STORAGE_KEY, enabled ? '1' : '0');
+    } catch {
+      // Optional Beta preference only.
+    }
+  }
+
+  function ensureConsensusOverlayScript(document) {
+    if (!document || !betaEnabled()) return null;
+    if (document.querySelector('script[data-storm-consensus-track]')) return null;
+    const script = document.createElement('script');
+    script.src = './analysis/consensus-track-overlay.js';
+    script.async = true;
+    script.dataset.stormConsensusTrack = 'true';
+    document.head.appendChild(script);
+    return script;
   }
 
   function installStyles(document) {
@@ -62,8 +107,10 @@
       .settings-active-body .panel-storm-card:last-child{margin-bottom:0}
       .settings-beta-section>summary .settings-section-title::after{content:'BETA';display:inline-block;margin-left:7px;padding:1px 4px;border:1px solid #1ba1e2;color:#73cdf7;font-size:.53rem;font-weight:700;letter-spacing:.5px;vertical-align:1px}
       .settings-beta-placeholder{padding:9px;border:1px dashed #303030;color:#666;font-size:.7rem;line-height:1.4}
+      .settings-beta-controls{display:grid;gap:6px}
       .settings-beta-controls>.toggle-row{min-height:42px;margin:0;padding:8px;border:1px solid #292929;background:#0b0b0b;font-size:.78rem}
-      .settings-beta-controls>.storm-wind-status{margin:5px 2px 0;font-size:.66rem}
+      .settings-beta-controls>.storm-wind-status{margin:0 2px 2px;font-size:.66rem}
+      .settings-consensus-note{margin:-1px 2px 2px;color:#68767b;font-size:.64rem;line-height:1.4}
       .settings-system-body #engine-status{margin-top:0;padding-top:3px}
       .settings-system-body>.settings-version-note{margin-top:8px;color:#606060;font-size:.66rem;line-height:1.45}
       .settings-legacy-anchor{display:none!important}
@@ -214,6 +261,24 @@
     (nodes || []).filter(Boolean).forEach(node => parent.appendChild(node));
   }
 
+  function createConsensusToggle(document) {
+    const label = document.createElement('label');
+    label.className = 'toggle-row';
+    label.title = 'App 計算的 HKO / CMA / JMA / CWA valid-time 對齊共識路徑；非官方預報';
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = CONSENSUS_TOGGLE_ID;
+    input.checked = consensusToggleEnabled();
+
+    const text = document.createElement('span');
+    text.className = 'settings-label-text';
+    text.textContent = '共識路徑 Beta';
+    label.appendChild(input);
+    label.appendChild(text);
+    return { label, input };
+  }
+
   function adoptLateBetaControls(panel, betaBody, legacyAnchor) {
     if (!panel || !betaBody || !legacyAnchor) return false;
     const direct = Array.from(panel.children);
@@ -329,23 +394,24 @@
     scroll.appendChild(layers.details);
 
     let beta = null;
+    let consensusToggle = null;
     if (betaEnabled()) {
       beta = createSection(document, {
-        id: 'settings-section-beta', title: '模式風場', open: false, className: 'settings-beta-section'
+        id: 'settings-section-beta', title: '實驗圖層', open: false, className: 'settings-beta-section'
       });
       beta.body.id = BETA_BODY_ID;
-      const placeholder = document.createElement('div');
-      placeholder.className = 'settings-beta-placeholder';
-      placeholder.textContent = 'ECMWF 模式風場為可選 Beta 圖層，預設關閉。';
-      beta.body.appendChild(placeholder);
-      if (existingBetaBlock?.nodes?.length) {
-        const controls = document.createElement('div');
-        controls.className = 'settings-beta-controls';
-        appendNodes(controls, existingBetaBlock.nodes);
-        beta.body.appendChild(controls);
-        placeholder.remove();
-      }
+      const controls = document.createElement('div');
+      controls.className = 'settings-beta-controls';
+      consensusToggle = createConsensusToggle(document);
+      controls.appendChild(consensusToggle.label);
+      const note = document.createElement('div');
+      note.className = 'settings-consensus-note';
+      note.textContent = '≥2 機構 valid-time 對齊；顯示用途，不代表官方預報或校準信心。';
+      controls.appendChild(note);
+      if (existingBetaBlock?.nodes?.length) appendNodes(controls, existingBetaBlock.nodes);
+      beta.body.appendChild(controls);
       scroll.appendChild(beta.details);
+      ensureConsensusOverlayScript(document);
     }
 
     const aids = createSection(document, {
@@ -406,6 +472,29 @@
 
     [sources, layers, beta, aids].filter(Boolean).forEach(updateToggleMeta);
 
+    if (consensusToggle) {
+      consensusToggle.input.addEventListener('change', () => {
+        const enabled = consensusToggle.input.checked === true;
+        persistConsensusToggle(enabled);
+        if (typeof root?.StormConsensusTrackOverlay?.setEnabled === 'function') {
+          root.StormConsensusTrackOverlay.setEnabled(enabled);
+        } else {
+          try {
+            root?.dispatchEvent?.(new root.CustomEvent(CONSENSUS_TOGGLE_EVENT, { detail: { enabled } }));
+          } catch {
+            // The persisted preference will be applied when the overlay script finishes loading.
+          }
+        }
+        updateToggleMeta(beta);
+      });
+
+      root?.addEventListener?.(CONSENSUS_STATE_EVENT, event => {
+        if (typeof event?.detail?.enabled !== 'boolean') return;
+        consensusToggle.input.checked = event.detail.enabled;
+        updateToggleMeta(beta);
+      });
+    }
+
     const activeContainer = document.getElementById('active-storms-container');
     const updateActive = () => {
       const count = activeStormCount(activeContainer);
@@ -459,7 +548,13 @@
     VERSION,
     PANEL_ID,
     BETA_BODY_ID,
+    CONSENSUS_TOGGLE_ID,
+    CONSENSUS_STORAGE_KEY,
     betaEnabled,
+    consensusQueryRequested,
+    consensusStoredEnabled,
+    consensusToggleEnabled,
+    ensureConsensusOverlayScript,
     install,
     autoInstall
   });
