@@ -246,10 +246,49 @@
 
     function trackPointAtValidTime(source, targetMs) {
         if (source?.state !== 'ok' || !Number.isFinite(targetMs)) return null;
+
+        const analysis = latestTimedPoint(source.positions || []);
+        const forecast = sortTimedPoints(source.forecast || []);
         const track = [];
-        if (source.current) track.push(source.current);
-        track.push(...source.forecast.filter(point => !source.current || point.timeMs >= source.current.timeMs));
-        return interpolateTimedPoint(track, targetMs);
+        if (analysis) track.push(analysis);
+        track.push(...forecast.filter(point => !analysis || point.timeMs >= analysis.timeMs));
+        const timed = sortTimedPoints(track);
+        if (!timed.length) return null;
+
+        const exact = timed.find(point => point.timeMs === targetMs);
+        if (exact) {
+            return {
+                ...exact,
+                interpolated: false,
+                provenance: exact.kind === 'analysis' ? 'exact-analysis' : 'exact-forecast',
+                interpolation: null
+            };
+        }
+        if (targetMs < timed[0].timeMs || targetMs > timed[timed.length - 1].timeMs) return null;
+
+        for (let index = 1; index < timed.length; index += 1) {
+            const before = timed[index - 1];
+            const after = timed[index];
+            if (targetMs > after.timeMs) continue;
+            const point = interpolateTimedPoint([before, after], targetMs);
+            if (!point) return null;
+            const beforeKind = before.kind === 'analysis' ? 'analysis' : 'forecast';
+            const afterKind = after.kind === 'analysis' ? 'analysis' : 'forecast';
+            const provenance = beforeKind === 'analysis' && afterKind === 'forecast'
+                ? 'analysis-to-forecast-interpolation'
+                : 'forecast-to-forecast-interpolation';
+            return {
+                ...point,
+                provenance,
+                interpolation: {
+                    beforeTime: before.time,
+                    afterTime: after.time,
+                    beforeKind,
+                    afterKind
+                }
+            };
+        }
+        return null;
     }
 
     function normalizeConsensusTrackOptions(options) {
@@ -314,6 +353,8 @@
                     time: point.time,
                     kind: point.kind || null,
                     interpolated: Boolean(point.interpolated),
+                    provenance: point.provenance || null,
+                    interpolation: point.interpolation || null,
                     sourceBaseTime: source.baseTime
                 });
             });
