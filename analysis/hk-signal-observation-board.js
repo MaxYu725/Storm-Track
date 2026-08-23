@@ -1,7 +1,15 @@
 (function attachHkSignalObservationBoard(root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
-  if (root) root.HkSignalObservationBoard = api;
+  if (root) {
+    root.HkSignalObservationBoard = api;
+    if (root.document && !root.document.querySelector('script[data-ct-observation-ui]')) {
+      const script = root.document.createElement('script');
+      script.src = './analysis/consensus-track-observation-ui.js';
+      script.dataset.ctObservationUi = '1';
+      root.document.head.appendChild(script);
+    }
+  }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createHkSignalObservationBoard() {
   'use strict';
 
