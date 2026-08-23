@@ -4,6 +4,7 @@ import { chromium } from 'playwright-core';
 const targetUrl = process.env.CONSENSUS_BETA_URL || 'http://127.0.0.1:4173/?beta=hk-signal';
 const timeoutMs = Number(process.env.SETTLE_TIMEOUT_MS || 90000);
 const screenshotPath = process.env.CONSENSUS_SCREENSHOT || '/tmp/consensus-track-beta.png';
+const mobileScreenshotPath = process.env.CONSENSUS_MOBILE_SCREENSHOT || '/tmp/consensus-track-beta-mobile.png';
 const storageKey = 'storm-track-consensus-track-beta-enabled-v1';
 
 function findChrome() {
@@ -124,10 +125,46 @@ try {
     storedValue: localStorage.getItem(key)
   }), storageKey);
 
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('.metro-fab[aria-label*="設定"]').click();
+  await page.waitForFunction(() => document.getElementById('storm-panel')?.classList.contains('open') === true);
+  const betaSummary = page.locator('#settings-section-beta > summary');
+  if (!(await page.locator('#settings-section-beta').getAttribute('open'))) await betaSummary.click();
+  await page.locator('#toggle-consensus-track-beta').check({ force: true });
+
+  await page.waitForFunction(() => {
+    const state = globalThis.StormTrackRuntime?.consensusTrackController?.getState?.();
+    return state?.trackCount > 0 && state.pointCount > 0;
+  }, null, { timeout: 15000 });
+
+  const mobile = await page.evaluate(() => {
+    const panel = document.getElementById('storm-panel');
+    const toggle = document.getElementById('toggle-consensus-track-beta');
+    const panelRect = panel?.getBoundingClientRect?.();
+    const toggleRect = toggle?.getBoundingClientRect?.();
+    const state = globalThis.StormTrackRuntime?.consensusTrackController?.getState?.() || null;
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      panelOpen: panel?.classList.contains('open') === true,
+      panelRect: panelRect ? { left: panelRect.left, right: panelRect.right, width: panelRect.width } : null,
+      toggleVisible: Boolean(toggleRect && toggleRect.width > 0 && toggleRect.height > 0),
+      toggleChecked: toggle?.checked === true,
+      trackCount: state?.trackCount || 0,
+      pointCount: state?.pointCount || 0,
+      hudPresent: Boolean(document.querySelector('.storm-consensus-track-hud'))
+    };
+  });
+
+  await page.screenshot({ path: mobileScreenshotPath, fullPage: true });
+
+  await page.locator('#toggle-consensus-track-beta').uncheck({ force: true });
+  await page.waitForFunction(() => !globalThis.StormTrackRuntime?.consensusTrackController);
+
   process.stdout.write(`${JSON.stringify({
     defaultOff,
     enabled,
     disabled,
+    mobile,
     semantics: {
       displayOnly: true,
       defaultOff: true,
