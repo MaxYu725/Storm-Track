@@ -1,0 +1,95 @@
+name: CT-0.1 live consensus-track dry-run
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - analysis/storm-analysis-core.js
+      - scripts/capture-consensus-track-dry-run.mjs
+      - tests/storm-analysis-core.test.cjs
+      - .github/workflows/consensus-track-dry-run.yml
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Validate CT-0 core and dry-run syntax
+        run: |
+          set -euo pipefail
+          node --check analysis/storm-analysis-core.js
+          node --check scripts/capture-consensus-track-dry-run.mjs
+          node tests/storm-analysis-core.test.cjs
+
+      - name: Install lightweight browser driver
+        run: npm install --no-save --ignore-scripts playwright-core@1.55.0
+
+      - name: Start PR-local frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 > /tmp/storm-track-http.log 2>&1 &
+          echo $! > /tmp/storm-track-http.pid
+          sleep 2
+          curl --fail --retry 3 -sS http://127.0.0.1:4173/ >/dev/null
+
+      - name: Capture live consensus-track summary
+        shell: bash
+        env:
+          STORM_BETA_URL: http://127.0.0.1:4173/?beta=hk-signal
+        run: |
+          set -euo pipefail
+          node scripts/capture-consensus-track-dry-run.mjs > /tmp/consensus-track-dry-run.json
+          test -s /tmp/consensus-track-dry-run.json
+
+      - name: Validate summary-only contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '
+            .schemaVersion == "storm-consensus-track-dry-run/v0" and
+            (.groups | type == "array") and
+            (.groupCount == (.groups | length)) and
+            (.observationCount == .groupCount) and
+            (.semantics.rawInputsPersisted == false) and
+            (.semantics.summaryOnly == true) and
+            (.semantics.forecastSkillEvaluated == false) and
+            (.semantics.probabilityCalibrated == false) and
+            ([.groups[].missingRawInputAgencies | length] | all(. == 0)) and
+            ([.. | objects | has("rawInput")] | any | not)
+          ' /tmp/consensus-track-dry-run.json >/dev/null
+
+          jq '{
+            capturedAt,
+            sourceStates,
+            visibleGroupKeys,
+            groups: [.groups[] | {
+              key,
+              displayName,
+              sourceAgencies,
+              state,
+              referenceAgency,
+              referenceBaseTime,
+              consensusCoveragePct,
+              firstConsensusLeadHours,
+              lastConsensusLeadHours,
+              continuousConsensusThroughHours,
+              agencyCountHistogram,
+              interpolationPct,
+              spreadKm
+            }]
+          }' /tmp/consensus-track-dry-run.json
+
+      - name: Check whitespace
+        run: git diff --check origin/main...HEAD
