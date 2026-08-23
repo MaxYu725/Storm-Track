@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {
   objectHasExactPrimitive,
-  sourceIdentityTokens,
+  sourceAliasCandidates,
+  advisorySourceCodeCandidates,
+  matchExplicitAgencyAlias,
   shortlistStorms,
   selectCycleAdvisory,
   classifyValidTimeCoverage,
@@ -10,10 +12,29 @@ import {
 
 assert.equal(objectHasExactPrimitive({ aliases: ['2632'] }, '2632'), true);
 assert.equal(objectHasExactPrimitive({ aliases: ['26320'] }, '2632'), false);
-assert.deepEqual(sourceIdentityTokens('HKO', '2632'), ['2632']);
-assert.deepEqual(sourceIdentityTokens('CMA', '3304099'), ['3304099']);
-assert.deepEqual(sourceIdentityTokens('CWA', '2026-23'), ['2026-23', '23']);
-assert.deepEqual(sourceIdentityTokens('JMA', 'TC2624'), ['TC2624', 'WP-2026-24']);
+assert.deepEqual(sourceAliasCandidates('HKO', '2632'), ['2632']);
+assert.deepEqual(sourceAliasCandidates('CMA', '3304099'), ['3304099']);
+assert.deepEqual(sourceAliasCandidates('CWA', '2026-23'), ['2026-23', '2026-TD23']);
+assert.deepEqual(sourceAliasCandidates('JMA', 'TC2624'), ['TC2624']);
+assert.deepEqual(advisorySourceCodeCandidates('HKO', '2632'), ['2632']);
+assert.deepEqual(advisorySourceCodeCandidates('CWA', '2026-23'), ['23', '2026-23']);
+assert.deepEqual(advisorySourceCodeCandidates('JMA', 'TC2624'), []);
+
+const unrelatedNumericMetadata = {
+  aliases: [{ agency: 'CWA', agency_storm_id: '2026-19' }],
+  latestAdvisories: [{ agency: 'CWA', source_code: '23' }],
+  point_count: 23
+};
+assert.equal(matchExplicitAgencyAlias(unrelatedNumericMetadata, 'CWA', '2026-23'), null,
+  'short numeric metadata must never count as storm identity');
+assert.equal(
+  matchExplicitAgencyAlias({ aliases: [{ agency: 'CWA', agency_storm_id: '2026-TD23' }] }, 'CWA', '2026-23')?.agency_storm_id,
+  '2026-TD23'
+);
+assert.equal(
+  matchExplicitAgencyAlias({ aliases: [{ agency: 'JMA', agency_storm_id: 'TC2624' }] }, 'JMA', 'TC2624')?.agency_storm_id,
+  'TC2624'
+);
 
 const storms = [
   {
@@ -41,18 +62,34 @@ const namedShortlist = shortlistStorms(storms, {
 });
 assert.equal(namedShortlist[0].storm.id, 'storm-named');
 
-const cycle = selectCycleAdvisory([
-  { id: 'a-old', agency: 'HKO', issued_at: '2026-08-23T03:00:00Z' },
-  { id: 'a-target', agency: 'HKO', issued_at: '2026-08-23T06:30:00Z', source_id: 'H-1' },
-  { id: 'a-other', agency: 'CMA', issued_at: '2026-08-23T06:00:00Z' }
+const cycleSelection = selectCycleAdvisory([
+  { id: 'a-old', agency: 'HKO', issued_at: '2026-08-23T03:00:00Z', source_code: 'H-1' },
+  { id: 'a-target', agency: 'HKO', issued_at: '2026-08-23T06:30:00Z', source_code: 'H-1' },
+  { id: 'a-other', agency: 'CMA', issued_at: '2026-08-23T06:00:00Z', source_code: 'C-1' }
 ], 'HKO', {
   sourceId: 'H-1',
   bulletinTime: '2026-08-23T06:30:00Z'
+}, {
+  aliases: [{ agency: 'HKO', agency_storm_id: 'H-1' }]
 });
-assert.equal(cycle.advisory.id, 'a-target');
-assert.equal(cycle.diffMs, 0);
-assert.equal(cycle.offsetMs, 0);
-assert.equal(cycle.sourceIdentityExact, true);
+assert.equal(cycleSelection.state, 'source-code-matched');
+assert.equal(cycleSelection.cycle.advisory.id, 'a-target');
+assert.equal(cycleSelection.cycle.diffMs, 0);
+assert.equal(cycleSelection.cycle.offsetMs, 0);
+
+const ambiguousJma = selectCycleAdvisory([
+  { id: 'jma-a', agency: 'JMA', issued_at: '2026-08-23T06:00:00Z', source_code: 'VPTW61' }
+], 'JMA', {
+  sourceId: 'TC2622',
+  currentTime: '2026-08-23T06:00:00Z'
+}, {
+  aliases: [
+    { agency: 'JMA', agency_storm_id: 'TC2622' },
+    { agency: 'JMA', agency_storm_id: 'TC2623' }
+  ]
+});
+assert.equal(ambiguousJma.state, 'ambiguous-jma-advisory-stream');
+assert.equal(ambiguousJma.cycle.advisory.id, 'jma-a');
 
 const points = [
   { point_type: 'analysis', valid_at: '2026-08-23T06:00:00Z' },
@@ -154,12 +191,18 @@ const ctRecord = {
 
 const fixtures = new Map([
   ['/storms?limit=100', { storms }],
-  ['/storms/storm-named', { storm: { id: 'storm-named' }, aliases: [{ agency: 'HKO', source_id: 'H-1' }] }],
+  ['/storms/storm-named', {
+    storm: { id: 'storm-named' },
+    aliases: [{ agency: 'HKO', agency_storm_id: 'H-1' }]
+  }],
   ['/storms/storm-named/advisories?limit=200', { advisories: [
-    { id: 'a-target', storm_id: 'storm-named', agency: 'HKO', issued_at: '2026-08-23T06:30:00Z', source_id: 'H-1' }
+    { id: 'a-target', storm_id: 'storm-named', agency: 'HKO', issued_at: '2026-08-23T06:30:00Z', source_code: 'H-1' }
   ] }],
   ['/advisories/a-target', { advisory: { id: 'a-target', agency: 'HKO' }, points }],
-  ['/storms/storm-generic', { storm: { id: 'storm-generic' }, aliases: [{ agency: 'CWA', source_code: '23' }] }],
+  ['/storms/storm-generic', {
+    storm: { id: 'storm-generic' },
+    aliases: [{ agency: 'CWA', agency_storm_id: '2026-TD23' }]
+  }],
   ['/storms/storm-generic/advisories?limit=200', { advisories: [
     { id: 'cwa-target', storm_id: 'storm-generic', agency: 'CWA', issued_at: '2026-08-23T06:00:00Z', source_code: '23' }
   ] }],
@@ -193,6 +236,7 @@ assert.equal(audit.schemaVersion, 'consensus-track-verification-readiness/v1');
 assert.equal(audit.summary.sourceReferenceCount, 2);
 assert.equal(audit.summary.stormIdentityJoinCount, 2);
 assert.equal(audit.summary.stormIdentityCoveragePct, 100);
+assert.equal(audit.summary.ambiguousAdvisoryStreamCount, 0);
 assert.equal(audit.summary.cycleJoinCount, 2);
 assert.equal(audit.summary.cycleJoinCoveragePct, 100);
 assert.equal(audit.summary.staleCycleCount, 0);
@@ -201,17 +245,20 @@ assert.equal(audit.summary.reconstructableTargetCount, 3);
 assert.equal(audit.summary.validTimeCoveragePct, 100);
 assert.equal(audit.summary.byAgency.HKO.validTimeCoveragePct, 100);
 assert.equal(audit.summary.byAgency.CWA.validTimeCoveragePct, 100);
+assert.equal(audit.semantics.explicitSameAgencyAliasRequired, true);
 assert.equal(audit.semantics.forecastSkillEvaluated, false);
 assert.equal(audit.semantics.forecastErrorsCalculated, false);
 assert.equal(audit.semantics.productionDatabaseWritten, false);
 assert.equal(audit.semantics.staleCyclesNeverAcceptedAsSameCycle, true);
+assert.equal(audit.semantics.ambiguousAdvisoryStreamsNeverAcceptedAsSameCycle, true);
 
 const genericJoin = audit.joins.find(item => item.agency === 'CWA');
 assert.equal(genericJoin.stormIdentityJoin, true);
-assert.equal(genericJoin.stormIdentityReason, 'source-id');
+assert.equal(genericJoin.stormIdentityReason, 'explicit-same-agency-source-alias');
 assert.equal(genericJoin.cycleState, 'within-tolerance');
 assert.equal(genericJoin.stormId, 'storm-generic');
 assert.equal(genericJoin.advisoryId, 'cwa-target');
-assert.deepEqual(genericJoin.sourceIdentityTokens, ['2026-23', '23']);
+assert.equal(genericJoin.matchedAgencyStormId, '2026-TD23');
+assert.deepEqual(genericJoin.sourceAliasCandidates, ['2026-23', '2026-TD23']);
 
 console.log('consensus-track verification readiness tests: OK');
