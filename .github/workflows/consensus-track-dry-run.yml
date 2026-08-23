@@ -1,4 +1,4 @@
-name: CT-0.1 live consensus-track dry-run
+name: CT-0 live consensus-track dry-run
 
 on:
   workflow_dispatch:
@@ -70,6 +70,16 @@ jobs:
             (.semantics.probabilityCalibrated == false) and
             ([.groups[].missingRawInputAgencies | length] | all(. == 0)) and
             ([.groups[] | select(.supportedSamplePointCount > 0) | (.coverageWithinSupportedHorizonPct >= .consensusCoveragePct)] | all) and
+            ([.groups[].unknownProvenanceValues | length] | all(. == 0)) and
+            ([.groups[] |
+              .consensusEntryCount == (
+                .consensusProvenanceCounts["exact-analysis"] +
+                .consensusProvenanceCounts["exact-forecast"] +
+                .consensusProvenanceCounts["analysis-to-forecast-interpolation"] +
+                .consensusProvenanceCounts["forecast-to-forecast-interpolation"]
+              )
+            ] | all) and
+            ([.groups[] | .consensusEntryCount == (.consensusExactEntryCount + .consensusInterpolatedEntryCount)] | all) and
             ([.. | objects | has("rawInput")] | any | not)
           ' /tmp/consensus-track-dry-run.json >/dev/null
 
@@ -88,11 +98,12 @@ jobs:
               consensusCoveragePct,
               supportedThroughHours,
               coverageWithinSupportedHorizonPct,
-              firstConsensusLeadHours,
-              lastConsensusLeadHours,
-              continuousConsensusThroughHours,
-              agencyCountHistogram,
-              interpolationPct,
+              consensusEntryCount,
+              consensusExactPct,
+              consensusInterpolationPct,
+              consensusProvenanceCounts,
+              consensusProvenancePct,
+              consensusAgencyProvenance,
               spreadKm
             }]
           }' /tmp/consensus-track-dry-run.json
