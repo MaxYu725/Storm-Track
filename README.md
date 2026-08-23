@@ -33,6 +33,24 @@ storm-analysis-core
 
 目前模型維持 frozen v1，以 prospective evidence 驗證為主；沒有足夠跨案例證據前，不因單一風暴結果調整 threshold / weighting。
 
+### Consensus Track Beta
+
+Consensus Track Beta 已進入 `main`，是獨立於 HK Signal v1 的 app-computed 多機構共識路徑。
+
+核心原則：
+
+- HKO / CMA / JMA / CWA 先按 valid time 對齊，再計算 equal-weight consensus
+- 預設 0–120h、6h sampling；至少 2 個機構才形成共識點
+- 官方四機構路徑保持獨立，不被共識路徑改寫
+- longitude interpolation 及 consensus mean 已處理 ±180° date line
+- spread / interpolation provenance 只屬 diagnostics，不代表 calibrated confidence / probability
+- 不使用 weighting / ML / probability cone
+- HK Signal v1 不消費 Consensus Track output
+
+在 `?beta=hk-signal` 的 **設定 → 實驗圖層 → 共識路徑 Beta** 可手動開啟；預設為 OFF。`consensus.html` 保留作 isolated force-on visual test entry。
+
+Consensus Track 現階段的主線是 prospective evidence collection，不在單一 live storm 期間調整方法或權重。
+
 ### Observation Board
 
 Observation Board 只讀 prospective recorder 原始紀錄，用於觀察模型活動，不讀 evaluator 成績、不作校準。
@@ -49,7 +67,7 @@ Observation Board 只讀 prospective recorder 原始紀錄，用於觀察模型�
 
 ### Prospective validation
 
-現行驗證流程已形成閉環：
+HK Signal 現行驗證流程已形成閉環：
 
 ```text
 live Beta forecast
@@ -62,11 +80,14 @@ live Beta forecast
 
 Raw observations 與 HKO truth 保持 immutable；evaluation / closeout 屬 derived output。
 
+Consensus Track 另有獨立 prospective recorder，只保存 derived consensus coordinates、valid time、參與機構、spread 與 provenance；不保存各機構逐點 raw coordinates，也不在 capture 階段評估 forecast skill。未來只有累積跨風暴樣本後，才做 24/48/72/96/120h homogeneous skill verification。
+
 相關 data-only branches：
 
 - `data/beta-prospective-observations`
 - `data/hko-warning-truth`
 - `data/hk-signal-evaluations`
+- `data/consensus-track-prospective-observations`
 
 ## Historical replay
 
@@ -89,6 +110,7 @@ Historical replay 目前用作 stress test / diagnosis，不作自動調參。
 
 ```text
 index.html                 主 PWA / live storm UI
+consensus.html             Consensus Track isolated visual Beta entry
 observation.html           HK Signal observation-only board
 analysis/                  現行 deterministic analysis modules
 scripts/                   recorder / evaluator / historical replay scripts
@@ -107,9 +129,11 @@ docs/WEATHER_APP_INTEGRATION.md
 
 - Pages deployment
 - HK Signal Beta regression validation
-- prospective recorder
+- HK Signal prospective recorder
 - HKO warning truth recorder
 - HK Signal evaluator / closeout
+- Consensus Track live dry-run / visual regression
+- Consensus Track prospective recorder
 - historical case replay inputs
 
 已完成使命的一次性 feasibility / probe workflow 不應重新加入 main。
@@ -120,7 +144,7 @@ docs/WEATHER_APP_INTEGRATION.md
 
 狀態規則：
 
-- **Current** — `main` 及上述 3 條 data branches
+- **Current** — `main` 及上述 data branches
 - **Experimental** — 明確標示的獨立研究 branch，例如 wind-field work
 - **Archived** — `archive/legacy-ai-xx-20260822`，只供需要追查舊實驗時參考
 - **Withdrawn / write-off** — 舊 `ai*`、`*-probe`、重複 identity fix、已合併 feature/fix branch；不要從中恢復程式到 production
@@ -142,9 +166,11 @@ PR #35 已正式 withdrawn，不應合併。
 
 目前主線不是增加新模型功能，而是：
 
-- 持續收集 live prospective evidence
-- 使用 Observation Board 觀察不同風暴的模型活動
-- 在出現正式 HKO outcome / closeout 後產生 v1 diagnosis
+- 持續收集 HK Signal live prospective evidence
+- 持續收集 Consensus Track derived prospective forecasts
+- 使用 Observation Board 觀察不同風暴的 HK Signal 模型活動
+- 在出現正式 HKO outcome / closeout 後產生 HK Signal v1 diagnosis
+- Consensus Track 累積跨風暴樣本後才比較 24/48/72/96/120h forecast skill；沒有足夠樣本前不引入 weighting / ML
 - 結案時統一按 `docs/HK_SIGNAL_POST_CASE_REVIEW.md` 檢查已記錄現象
 - 只有多個獨立案例顯示一致偏差時，才考慮 v2 candidate / shadow comparison
 
