@@ -130,6 +130,53 @@
         return null;
     }
 
+    function normalizeLongitude(value) {
+        const lon = asFiniteNumber(value);
+        if (lon == null) return null;
+        const normalized = ((lon + 180) % 360 + 360) % 360 - 180;
+        return Object.is(normalized, -0) ? 0 : normalized;
+    }
+
+    function interpolateLongitudeShortestArc(beforeLon, afterLon, ratio) {
+        const before = asFiniteNumber(beforeLon);
+        const after = asFiniteNumber(afterLon);
+        const fraction = asFiniteNumber(ratio);
+        if (before == null || after == null || fraction == null) return null;
+        let delta = after - before;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+        return normalizeLongitude(before + delta * fraction);
+    }
+
+    function interpolateConsensusTimedPoint(before, after, targetMs) {
+        const point = interpolateTimedPoint([before, after], targetMs);
+        if (!point || point.interpolated !== true) return point;
+        const span = after.timeMs - before.timeMs;
+        if (!(span > 0)) return point;
+        const ratio = (targetMs - before.timeMs) / span;
+        const lon = interpolateLongitudeShortestArc(before.lon, after.lon, ratio);
+        return lon == null ? point : { ...point, lon };
+    }
+
+    function circularMeanLongitude(entries) {
+        if (!entries.length) return null;
+        const radians = entries.map(entry => entry.lon * Math.PI / 180);
+        const sinSum = radians.reduce((sum, value) => sum + Math.sin(value), 0);
+        const cosSum = radians.reduce((sum, value) => sum + Math.cos(value), 0);
+        if (Math.hypot(sinSum, cosSum) > 1e-12) {
+            return normalizeLongitude(Math.atan2(sinSum, cosSum) * 180 / Math.PI);
+        }
+
+        const anchor = entries[0].lon;
+        const unwrapped = entries.map(entry => {
+            let delta = entry.lon - anchor;
+            if (delta > 180) delta -= 360;
+            if (delta < -180) delta += 360;
+            return anchor + delta;
+        });
+        return normalizeLongitude(unwrapped.reduce((sum, value) => sum + value, 0) / unwrapped.length);
+    }
+
     function calculateNearestApproach(positions, forecast, referencePoint) {
         const points = [];
         const latestPosition = latestTimedPoint(positions);
@@ -244,6 +291,24 @@
         };
     }
 
+    function buildConsensusTrackConsensus(entries, referencePoint) {
+        if (!entries.length) return null;
+        const lat = entries.reduce((sum, entry) => sum + entry.lat, 0) / entries.length;
+        const lon = circularMeanLongitude(entries);
+        if (lon == null) return null;
+        return {
+            method: 'unweighted-mean-v1',
+            longitudeMethod: 'circular-mean-v1',
+            dateLineSafe: true,
+            appComputed: true,
+            agencies: entries.map(entry => entry.agency),
+            agencyCount: entries.length,
+            lat,
+            lon,
+            distanceToHongKongKm: haversineKm(referencePoint.lat, referencePoint.lon, lat, lon)
+        };
+    }
+
     function trackPointAtValidTime(source, targetMs) {
         if (source?.state !== 'ok' || !Number.isFinite(targetMs)) return null;
 
@@ -272,7 +337,7 @@
             const before = timed[index - 1];
             const after = timed[index];
             if (targetMs > after.timeMs) continue;
-            const point = interpolateTimedPoint([before, after], targetMs);
+            const point = interpolateConsensusTimedPoint(before, after, targetMs);
             if (!point) return null;
             const beforeKind = before.trackOrigin === 'analysis' ? 'analysis' : 'forecast';
             const afterKind = after.trackOrigin === 'analysis' ? 'analysis' : 'forecast';
@@ -330,6 +395,8 @@
             return {
                 state: 'unavailable',
                 method: 'valid-time-aligned-unweighted-mean-v1',
+                longitudeMethod: 'circular-mean-v1',
+                dateLineSafeLongitude: true,
                 referenceAgency: null,
                 referenceBaseTime: null,
                 referenceMethod: null,
@@ -362,7 +429,7 @@
             });
 
             const hasConsensus = entries.length >= config.minAgencyCount;
-            const consensus = hasConsensus ? buildConsensus(entries, referencePoint) : null;
+            const consensus = hasConsensus ? buildConsensusTrackConsensus(entries, referencePoint) : null;
             const spread = hasConsensus ? maxPairwiseDistance(entries) : null;
 
             points.push({
@@ -382,6 +449,8 @@
         return {
             state: points.some(point => point.consensus) ? 'ok' : 'insufficient-coverage',
             method: 'valid-time-aligned-unweighted-mean-v1',
+            longitudeMethod: 'circular-mean-v1',
+            dateLineSafeLongitude: true,
             referenceAgency: trackReference.agency,
             referenceBaseTime: toIso(referenceBaseTimeMs),
             referenceMethod: trackReference.method || null,
@@ -432,7 +501,8 @@
                 officialAgencyDataRemainSeparate: true,
                 consensusIsAppComputed: true,
                 aiGenerated: false,
-                probabilityCalibrated: false
+                probabilityCalibrated: false,
+                dateLineSafeLongitude: true
             }
         };
     }
