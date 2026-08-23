@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>Storm Track 共識路徑 Beta</title>
+  <meta name="theme-color" content="#000000">
+  <style>
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#000;color:#fff;font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-serif}
+    #storm-consensus-frame{display:block;width:100%;height:100%;border:0;background:#000}
+    #consensus-loader{position:fixed;left:50%;top:50%;z-index:10;transform:translate(-50%,-50%);padding:10px 13px;border:1px solid #3d5961;background:#000;color:#bfefff;font-size:.78rem;letter-spacing:.3px;pointer-events:none}
+    #consensus-loader.error{border-color:#7b3d3d;color:#ffb0b0}
+  </style>
+</head>
+<body>
+  <div id="consensus-loader">正在載入 Storm Track 共識路徑 Beta…</div>
+  <iframe id="storm-consensus-frame" title="Storm Track 共識路徑 Beta" src="./?beta=hk-signal&consensusTrack=1"></iframe>
+  <script>
+    (() => {
+      'use strict';
+      const frame = document.getElementById('storm-consensus-frame');
+      const loader = document.getElementById('consensus-loader');
+      window.StormConsensusBetaFrame = frame;
+
+      function fail(message) {
+        loader.textContent = message;
+        loader.classList.add('error');
+      }
+
+      frame.addEventListener('load', () => {
+        try {
+          const childDocument = frame.contentDocument;
+          if (!childDocument) throw new Error('無法讀取同源 Storm Track 頁面');
+          if (!childDocument.querySelector('script[data-storm-consensus-track]')) {
+            const script = childDocument.createElement('script');
+            script.src = './analysis/consensus-track-overlay.js';
+            script.async = true;
+            script.dataset.stormConsensusTrack = 'true';
+            script.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+            script.addEventListener('error', () => fail('共識路徑 Beta 模組載入失敗'), { once: true });
+            childDocument.head.appendChild(script);
+          } else {
+            loader.style.display = 'none';
+          }
+        } catch (error) {
+          fail(`共識路徑 Beta 啟動失敗：${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
