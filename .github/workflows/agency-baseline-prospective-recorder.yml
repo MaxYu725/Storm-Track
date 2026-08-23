@@ -181,6 +181,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          record_count="$(jq -r '.recordCount' /tmp/agency-baseline-prospective.json)"
+          if [[ "$record_count" -eq 0 ]]; then
+            echo "AGENCY_BASELINE_NO_ACTIVE_RECORDS=true"
+            exit 0
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
