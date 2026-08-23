@@ -10,6 +10,7 @@ on:
       - analysis/consensus-track-overlay.js
       - analysis/settings-panel-ui.js
       - analysis/storm-analysis-core.js
+      - tests/consensus-track-dateline.test.cjs
       - tests/consensus-track-overlay.test.cjs
       - tests/settings-panel-ui.test.cjs
       - scripts/validate-consensus-track-visual.mjs
@@ -38,6 +39,7 @@ jobs:
           node --check analysis/settings-panel-ui.js
           node --check scripts/validate-consensus-track-visual.mjs
           node tests/storm-analysis-core.test.cjs
+          node tests/consensus-track-dateline.test.cjs
           node tests/consensus-track-overlay.test.cjs
           node tests/settings-panel-ui.test.cjs
           grep -F 'src="./?beta=hk-signal&consensusTrack=1"' consensus.html
