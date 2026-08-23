@@ -103,4 +103,105 @@ function source(agency, baseTime, points, current = null) {
     assert.ok(nearest.distanceKm < 20);
 })();
 
+(function testConsensusTrackBuildsValidTimeAlignedSeries() {
+    const base = '2026-08-20T00:00:00Z';
+    const makePoints = (latOffset, lonOffset) => [
+        point('2026-08-20T12:00:00Z', 18 + latOffset, 120 + lonOffset),
+        point('2026-08-21T00:00:00Z', 19 + latOffset, 119 + lonOffset),
+        point('2026-08-21T12:00:00Z', 20 + latOffset, 118 + lonOffset),
+        point('2026-08-22T00:00:00Z', 21 + latOffset, 117 + lonOffset)
+    ];
+    const group = {
+        key: 'track-series',
+        sources: {
+            HKO: source('HKO', base, makePoints(0.0, 0.0), { time: base, lat: 17.0, lon: 121.0 }),
+            CMA: source('CMA', base, makePoints(0.2, 0.2), { time: base, lat: 17.2, lon: 121.2 }),
+            JMA: source('JMA', base, makePoints(-0.2, -0.2), { time: base, lat: 16.8, lon: 120.8 }),
+            CWA: source('CWA', base, makePoints(0.1, -0.1), { time: base, lat: 17.1, lon: 120.9 })
+        }
+    };
+
+    const snapshot = core.buildStormAnalysisSnapshot(group, {
+        generatedAt: base,
+        consensusTrackStartLeadHours: 0,
+        consensusTrackEndLeadHours: 48,
+        consensusTrackStepHours: 12
+    });
+
+    assert.equal(snapshot.consensusTrack.state, 'ok');
+    assert.equal(snapshot.consensusTrack.method, 'valid-time-aligned-unweighted-mean-v1');
+    assert.equal(snapshot.consensusTrack.referenceAgency, 'HKO');
+    assert.equal(snapshot.consensusTrack.referenceBaseTime, '2026-08-20T00:00:00.000Z');
+    assert.equal(snapshot.consensusTrack.points.length, 5);
+
+    const lead0 = snapshot.consensusTrack.points[0];
+    assert.equal(lead0.leadHours, 0);
+    assert.equal(lead0.agencyCount, 4);
+    assert.equal(lead0.consensus.agencyCount, 4);
+    assert.equal(lead0.entries.every(entry => entry.kind === 'analysis'), true);
+
+    const lead24 = snapshot.consensusTrack.points.find(item => item.leadHours === 24);
+    assert.ok(lead24);
+    assert.equal(lead24.validTime, '2026-08-21T00:00:00.000Z');
+    assert.equal(lead24.agencyCount, 4);
+    assert.equal(lead24.consensus.method, 'unweighted-mean-v1');
+    assert.ok(lead24.spread.distanceKm > 0);
+})();
+
+(function testConsensusTrackInterpolatesAtCommonValidTimeAcrossDifferentBaseTimes() {
+    const hkoBase = '2026-08-20T00:00:00Z';
+    const cmaBase = '2026-08-20T06:00:00Z';
+    const snapshot = core.buildStormAnalysisSnapshot({
+        key: 'mixed-base-times',
+        sources: {
+            HKO: source('HKO', hkoBase, [
+                point('2026-08-20T12:00:00Z', 18.0, 120.0),
+                point('2026-08-21T00:00:00Z', 20.0, 118.0)
+            ]),
+            CMA: source('CMA', cmaBase, [
+                point('2026-08-20T06:00:00Z', 17.0, 121.0),
+                point('2026-08-20T18:00:00Z', 19.0, 119.0),
+                point('2026-08-21T06:00:00Z', 21.0, 117.0)
+            ])
+        }
+    }, {
+        generatedAt: '2026-08-20T07:00:00Z',
+        consensusTrackStartLeadHours: 12,
+        consensusTrackEndLeadHours: 12,
+        consensusTrackStepHours: 6
+    });
+
+    const trackPoint = snapshot.consensusTrack.points[0];
+    assert.equal(trackPoint.validTime, '2026-08-20T12:00:00.000Z');
+    assert.equal(trackPoint.agencyCount, 2);
+    const cma = trackPoint.entries.find(entry => entry.agency === 'CMA');
+    assert.ok(cma);
+    assert.equal(cma.interpolated, true);
+    assert.equal(cma.sourceBaseTime, '2026-08-20T06:00:00.000Z');
+    assert.equal(trackPoint.consensus.agencyCount, 2);
+})();
+
+(function testConsensusTrackDoesNotCallSingleAgencyAConsensus() {
+    const base = '2026-08-20T00:00:00Z';
+    const snapshot = core.buildStormAnalysisSnapshot({
+        key: 'single-agency',
+        sources: {
+            HKO: source('HKO', base, [
+                point('2026-08-21T00:00:00Z', 20.0, 118.0)
+            ])
+        }
+    }, {
+        generatedAt: base,
+        consensusTrackStartLeadHours: 24,
+        consensusTrackEndLeadHours: 24,
+        consensusTrackStepHours: 6
+    });
+
+    assert.equal(snapshot.consensusTrack.state, 'insufficient-coverage');
+    assert.equal(snapshot.consensusTrack.points.length, 1);
+    assert.equal(snapshot.consensusTrack.points[0].agencyCount, 1);
+    assert.equal(snapshot.consensusTrack.points[0].consensus, null);
+    assert.equal(snapshot.consensusTrack.points[0].spread, null);
+})();
+
 console.log('storm-analysis-core tests: OK');
