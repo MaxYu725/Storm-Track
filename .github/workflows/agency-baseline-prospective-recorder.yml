@@ -1,0 +1,240 @@
+name: Record agency forecast baselines
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - analysis/frontend-hk-threat-ui.js
+      - index.html
+      - scripts/capture-agency-baseline-input.mjs
+      - scripts/build-agency-baseline-prospective.mjs
+      - tests/agency-baseline-prospective.test.mjs
+      - .github/workflows/agency-baseline-prospective-recorder.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - analysis/frontend-hk-threat-ui.js
+      - index.html
+      - scripts/capture-agency-baseline-input.mjs
+      - scripts/build-agency-baseline-prospective.mjs
+      - tests/agency-baseline-prospective.test.mjs
+      - .github/workflows/agency-baseline-prospective-recorder.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agency-baseline-prospective-recorder
+  cancel-in-progress: false
+
+env:
+  DATA_BRANCH: data/agency-baseline-prospective-observations
+  CT_DATA_BRANCH: data/consensus-track-prospective-observations
+  PRODUCTION_BETA_URL: https://maxyu725.github.io/Storm-Track/?beta=hk-signal
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run agency baseline contract regression
+        run: |
+          set -euo pipefail
+          node --check scripts/capture-agency-baseline-input.mjs
+          node --check scripts/build-agency-baseline-prospective.mjs
+          node tests/agency-baseline-prospective.test.mjs
+
+      - name: Load Consensus Track case registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/ct-case-registry.json
+          if git ls-remote --exit-code --heads origin "$CT_DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$CT_DATA_BRANCH:refs/remotes/origin/$CT_DATA_BRANCH"
+            if git cat-file -e "refs/remotes/origin/$CT_DATA_BRANCH:case-registry.json" 2>/dev/null; then
+              git show "refs/remotes/origin/$CT_DATA_BRANCH:case-registry.json" > /tmp/ct-case-registry.json
+            fi
+          fi
+          if [[ ! -s /tmp/ct-case-registry.json ]]; then
+            printf '%s\n' '{"schemaVersion":"storm-case-identity/v1","cases":[]}' > /tmp/ct-case-registry.json
+          fi
+          jq -e '.schemaVersion == "storm-case-identity/v1" and (.cases | type == "array")' /tmp/ct-case-registry.json >/dev/null
+          jq '{schemaVersion,identityAdapterVersion,reconciledThrough,caseCount:(.cases|length)}' /tmp/ct-case-registry.json
+
+      - name: Install lightweight browser driver
+        run: npm install --no-save --ignore-scripts playwright-core@1.55.0
+
+      - name: Start PR-local frontend
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 > /tmp/storm-track-http.log 2>&1 &
+          echo $! > /tmp/storm-track-http.pid
+          sleep 2
+          curl --fail --retry 3 -sS http://127.0.0.1:4173/ >/dev/null
+
+      - name: Allow Pages deployment to catch up
+        if: github.event_name == 'push'
+        run: sleep 90
+
+      - name: Capture as-issued agency forecast baselines
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+          STORM_BETA_URL: ${{ github.event_name == 'pull_request' && 'http://127.0.0.1:4173/?beta=hk-signal' || env.PRODUCTION_BETA_URL }}
+        run: |
+          set -euo pipefail
+          rm -f /tmp/agency-baseline-capture.json /tmp/agency-baseline-prospective.json
+          for attempt in 1 2 3; do
+            echo "agency baseline capture attempt ${attempt}"
+            if node scripts/capture-agency-baseline-input.mjs > /tmp/agency-baseline-capture.json; then
+              break
+            fi
+            rm -f /tmp/agency-baseline-capture.json
+            if [[ "$attempt" -lt 3 ]]; then sleep 30; fi
+          done
+          test -s /tmp/agency-baseline-capture.json
+          node scripts/build-agency-baseline-prospective.mjs \
+            /tmp/agency-baseline-capture.json \
+            /tmp/ct-case-registry.json > /tmp/agency-baseline-prospective.json
+          test -s /tmp/agency-baseline-prospective.json
+
+      - name: Validate agency baseline evidence contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '
+            .schemaVersion == "storm-agency-baseline-prospective/v1" and
+            (.captureFingerprint | test("^[0-9a-f]{64}$")) and
+            (.sourceStates | type == "array") and
+            (.visibleGroupKeys | type == "array") and
+            (.records | type == "array") and
+            (.recordCount == (.records | length)) and
+            ([.records[] | (.agency == "HKO" or .agency == "CMA" or .agency == "JMA" or .agency == "CWA")] | all) and
+            ([.records[] | (.cycleFingerprint | test("^[0-9a-f]{64}$"))] | all) and
+            ([.records[] | (.forecastPointCount == (.forecast | length))] | all) and
+            ([.records[].forecast[] | ((.lat | type) == "number") and ((.lon | type) == "number") and ((.validTime | type) == "string")] | all) and
+            ([.records[] | (.analysis == null or (((.analysis.lat | type) == "number") and ((.analysis.lon | type) == "number") and ((.analysis.validTime | type) == "string")))] | all) and
+            (.semantics.asIssuedAgencyCoordinatesPersisted == true) and
+            (.semantics.latestAnalysisPointPersisted == true) and
+            (.semantics.forecastPointsPersisted == true) and
+            (.semantics.historicalAnalysisTrackPersisted == false) and
+            (.semantics.verificationTruthPersisted == false) and
+            (.semantics.forecastSkillEvaluated == false) and
+            (.semantics.agencyRankingProduced == false) and
+            (.semantics.consensusAlgorithmModified == false) and
+            (.semantics.hkSignalModified == false) and
+            (.semantics.productionDatabaseWritten == false) and
+            (.semantics.immutableEvidenceIntended == true) and
+            ([.. | objects | has("rawInput")] | any | not) and
+            ([.. | objects | has("maximumWind")] | any | not) and
+            ([.. | objects | has("pressure")] | any | not) and
+            ([.. | objects | has("consensusLat")] | any | not)
+          ' /tmp/agency-baseline-prospective.json >/dev/null
+
+          jq '{
+            schemaVersion,
+            capturedAt,
+            sourceCommit,
+            captureFingerprint,
+            sourceStates,
+            visibleGroupKeys,
+            caseRegistry,
+            recordCount,
+            records: [.records[] | {
+              caseIdAtCapture,
+              caseIdentityStateAtCapture,
+              groupKey,
+              agency,
+              sourceId,
+              bulletinTime,
+              analysisTime: .analysis.validTime,
+              forecastBaseTime,
+              forecastFirstValidTime,
+              forecastLastValidTime,
+              forecastPointCount,
+              cycleFingerprint
+            }],
+            semantics
+          }' /tmp/agency-baseline-prospective.json
+
+      - name: Check branch whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check origin/main...HEAD
+
+      - name: Persist immutable agency baseline evidence
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin "$DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$DATA_BRANCH"
+            git switch -C "$DATA_BRANCH" FETCH_HEAD
+          else
+            git switch --orphan "$DATA_BRANCH"
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          fingerprint="$(jq -r '.captureFingerprint' /tmp/agency-baseline-prospective.json)"
+          existing="$(jq -r '.captureFingerprint // empty' latest.json 2>/dev/null || true)"
+          short="${fingerprint:0:12}"
+
+          if [[ "$fingerprint" == "$existing" ]]; then
+            echo "AGENCY_BASELINE_NOOP=true"
+            echo "AGENCY_BASELINE_FINGERPRINT=$fingerprint"
+            exit 0
+          fi
+
+          captured_at="$(jq -r '.capturedAt' /tmp/agency-baseline-prospective.json)"
+          day_path="$(date -u -d "$captured_at" +'%Y/%m/%d')"
+          stamp="$(date -u -d "$captured_at" +'%Y%m%dT%H%M%SZ')"
+          destination="observations/${day_path}/${stamp}-${short}.json"
+          mkdir -p "$(dirname "$destination")"
+          cp /tmp/agency-baseline-prospective.json "$destination"
+          cp /tmp/agency-baseline-prospective.json latest.json
+          jq -c '{
+            schemaVersion,
+            capturedAt,
+            sourceCommit,
+            captureFingerprint,
+            caseRegistry,
+            recordCount,
+            records: [.records[] | {
+              caseIdAtCapture,
+              caseIdentityStateAtCapture,
+              groupKey,
+              agency,
+              sourceId,
+              sourceToken,
+              bulletinTime,
+              analysisTime: .analysis.validTime,
+              forecastBaseTime,
+              forecastFirstValidTime,
+              forecastLastValidTime,
+              forecastPointCount,
+              cycleFingerprint
+            }]
+          }' /tmp/agency-baseline-prospective.json >> index.ndjson
+
+          git add "$destination" latest.json index.ndjson
+          git commit -m "Observe agency baselines ${stamp} ${short}"
+          git push origin "HEAD:${DATA_BRANCH}"
+          echo "AGENCY_BASELINE_STORED=true"
+          echo "AGENCY_BASELINE_FINGERPRINT=$fingerprint"
