@@ -60,6 +60,17 @@ function build(capturedAt, sourceCommit) {
           consensusLat: 20.5,
           consensusLon: 129.5,
           spreadKm: 42.1
+        },
+        {
+          leadHours: 12,
+          validTime: '2026-08-23T12:00:00.000Z',
+          agencyCount: 1,
+          agencies: ['HKO'],
+          interpolatedAgencyCount: 0,
+          provenanceByAgency: { HKO: 'exact-forecast' },
+          consensusLat: null,
+          consensusLon: null,
+          spreadKm: null
         }
       ]
     }]
@@ -94,11 +105,14 @@ assert.equal(first.captureFingerprint.length, 64);
 assert.equal(first.captureFingerprint, second.captureFingerprint, 'capture time and source commit must not affect dedupe fingerprint');
 assert.equal(first.sourceCommit, 'commit-a');
 assert.equal(first.groupCount, 1);
-assert.equal(first.groups[0].samples.length, 2);
+assert.equal(first.groups[0].samples.length, 3);
 assert.equal(first.groups[0].samples[0].consensusLat, 20.1);
 assert.equal(first.groups[0].samples[0].consensusLon, 130.2);
 assert.deepEqual(first.groups[0].samples[0].agencies, ['CMA', 'HKO']);
 assert.equal(first.groups[0].samples[1].provenanceByAgency.HKO, 'analysis-to-forecast-interpolation');
+assert.equal(first.groups[0].samples[2].consensusLat, null);
+assert.equal(first.groups[0].samples[2].consensusLon, null);
+assert.equal(first.groups[0].samples[2].spreadKm, null);
 assert.equal(first.semantics.rawInputsPersisted, false);
 assert.equal(first.semantics.individualAgencyCoordinatesPersisted, false);
 assert.equal(first.semantics.derivedConsensusCoordinatesPersisted, true);
