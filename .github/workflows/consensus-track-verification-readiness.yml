@@ -62,6 +62,18 @@ jobs:
           done
           test -s /tmp/ct-readiness.json
 
+      - name: Print explicit storm identity fields
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -r '.joins[].stormId // empty' /tmp/ct-readiness.json | sort -u | while read -r storm_id; do
+            echo "--- storm ${storm_id} ---"
+            curl --fail --silent --show-error "${HISTORY_API_ORIGIN}/storms/${storm_id}" \
+              | jq '[paths(scalars) as $p
+                    | select(($p[-1] | tostring | test("id|code|agency|alias|name|number|source"; "i")))
+                    | {path: $p, value: getpath($p)}]'
+          done
+
       - name: Print non-coordinate archive cycle diagnostics
         shell: bash
         run: |
