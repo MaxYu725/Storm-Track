@@ -95,6 +95,8 @@ scripts/                   recorder / evaluator / historical replay scripts
 historical/cases/          historical case manifests
 tests/                     deterministic regression tests
 .github/workflows/         active deployment / recording / evaluation CI
+docs/HK_SIGNAL_POST_CASE_REVIEW.md
+                           HK Signal 結案備查與統一 review checklist
 docs/WEATHER_APP_INTEGRATION.md
                            Weather App integration contract
 ```
@@ -143,6 +145,7 @@ PR #35 已正式 withdrawn，不應合併。
 - 持續收集 live prospective evidence
 - 使用 Observation Board 觀察不同風暴的模型活動
 - 在出現正式 HKO outcome / closeout 後產生 v1 diagnosis
+- 結案時統一按 `docs/HK_SIGNAL_POST_CASE_REVIEW.md` 檢查已記錄現象
 - 只有多個獨立案例顯示一致偏差時，才考慮 v2 candidate / shadow comparison
 
 Weather App integration 與 wind-field animation 可以平行研究，但不應阻塞或改寫 HK Signal validation pipeline。
