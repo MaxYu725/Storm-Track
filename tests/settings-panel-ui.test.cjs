@@ -25,10 +25,15 @@ try {
 
   globalThis.location.search = '?beta=hk-signal';
   assert.equal(ui.betaEnabled(), true);
-  assert.equal(ui.consensusToggleEnabled('?beta=hk-signal', false), false, 'normal HK Signal Beta must default consensus off');
-  assert.equal(ui.consensusToggleEnabled('?beta=hk-signal', true), true, 'stored opt-in should enable the toggle');
-  assert.equal(ui.consensusToggleEnabled('?beta=hk-signal&consensusTrack=1', false), true, 'explicit visual entry should start enabled');
-  assert.equal(ui.consensusToggleEnabled('?consensusTrack=1', true), false, 'consensus layer must remain gated by HK Signal Beta');
+  assert.equal(ui.consensusToggleEnabled(globalThis.location.search, false), false, 'normal HK Signal Beta must default consensus off');
+  assert.equal(ui.consensusToggleEnabled(globalThis.location.search, true), true, 'stored opt-in should enable the toggle');
+
+  globalThis.location.search = '?beta=hk-signal&consensusTrack=1';
+  assert.equal(ui.consensusToggleEnabled(globalThis.location.search, false), true, 'explicit visual entry should start enabled');
+
+  globalThis.location.search = '?consensusTrack=1';
+  assert.equal(ui.betaEnabled(), false);
+  assert.equal(ui.consensusToggleEnabled(globalThis.location.search, true), false, 'consensus layer must remain gated by HK Signal Beta');
 } finally {
   if (originalDescriptor) Object.defineProperty(globalThis, 'location', originalDescriptor);
   else delete globalThis.location;
