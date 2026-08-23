@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   objectHasExactPrimitive,
+  sourceIdentityTokens,
   shortlistStorms,
   selectCycleAdvisory,
   classifyValidTimeCoverage,
@@ -9,6 +10,10 @@ import {
 
 assert.equal(objectHasExactPrimitive({ aliases: ['2632'] }, '2632'), true);
 assert.equal(objectHasExactPrimitive({ aliases: ['26320'] }, '2632'), false);
+assert.deepEqual(sourceIdentityTokens('HKO', '2632'), ['2632']);
+assert.deepEqual(sourceIdentityTokens('CMA', '3304099'), ['3304099']);
+assert.deepEqual(sourceIdentityTokens('CWA', '2026-23'), ['2026-23', '23']);
+assert.deepEqual(sourceIdentityTokens('JMA', 'TC2624'), ['TC2624', 'WP-2026-24']);
 
 const storms = [
   {
@@ -46,7 +51,8 @@ const cycle = selectCycleAdvisory([
 });
 assert.equal(cycle.advisory.id, 'a-target');
 assert.equal(cycle.diffMs, 0);
-assert.equal(cycle.sourceIdExact, true);
+assert.equal(cycle.offsetMs, 0);
+assert.equal(cycle.sourceIdentityExact, true);
 
 const points = [
   { point_type: 'analysis', valid_at: '2026-08-23T06:00:00Z' },
@@ -150,12 +156,12 @@ const fixtures = new Map([
   ['/storms?limit=100', { storms }],
   ['/storms/storm-named', { storm: { id: 'storm-named' }, aliases: [{ agency: 'HKO', source_id: 'H-1' }] }],
   ['/storms/storm-named/advisories?limit=200', { advisories: [
-    { id: 'a-target', agency: 'HKO', issued_at: '2026-08-23T06:30:00Z', source_id: 'H-1' }
+    { id: 'a-target', storm_id: 'storm-named', agency: 'HKO', issued_at: '2026-08-23T06:30:00Z', source_id: 'H-1' }
   ] }],
   ['/advisories/a-target', { advisory: { id: 'a-target', agency: 'HKO' }, points }],
-  ['/storms/storm-generic', { storm: { id: 'storm-generic' }, aliases: [{ agency: 'CWA', source_id: '2026-23' }] }],
+  ['/storms/storm-generic', { storm: { id: 'storm-generic' }, aliases: [{ agency: 'CWA', source_code: '23' }] }],
   ['/storms/storm-generic/advisories?limit=200', { advisories: [
-    { id: 'cwa-target', agency: 'CWA', issued_at: '2026-08-23T06:00:00Z', source_id: '2026-23' }
+    { id: 'cwa-target', storm_id: 'storm-generic', agency: 'CWA', issued_at: '2026-08-23T06:00:00Z', source_code: '23' }
   ] }],
   ['/advisories/cwa-target', {
     advisory: { id: 'cwa-target', agency: 'CWA' },
@@ -185,8 +191,11 @@ const audit = await auditReadiness(ctRecord, {
 
 assert.equal(audit.schemaVersion, 'consensus-track-verification-readiness/v1');
 assert.equal(audit.summary.sourceReferenceCount, 2);
-assert.equal(audit.summary.stormJoinCount, 2);
+assert.equal(audit.summary.stormIdentityJoinCount, 2);
+assert.equal(audit.summary.stormIdentityCoveragePct, 100);
 assert.equal(audit.summary.cycleJoinCount, 2);
+assert.equal(audit.summary.cycleJoinCoveragePct, 100);
+assert.equal(audit.summary.staleCycleCount, 0);
 assert.equal(audit.summary.targetCount, 3);
 assert.equal(audit.summary.reconstructableTargetCount, 3);
 assert.equal(audit.summary.validTimeCoveragePct, 100);
@@ -195,10 +204,14 @@ assert.equal(audit.summary.byAgency.CWA.validTimeCoveragePct, 100);
 assert.equal(audit.semantics.forecastSkillEvaluated, false);
 assert.equal(audit.semantics.forecastErrorsCalculated, false);
 assert.equal(audit.semantics.productionDatabaseWritten, false);
+assert.equal(audit.semantics.staleCyclesNeverAcceptedAsSameCycle, true);
 
 const genericJoin = audit.joins.find(item => item.agency === 'CWA');
-assert.equal(genericJoin.stormMatch, 'source-id+cycle');
+assert.equal(genericJoin.stormIdentityJoin, true);
+assert.equal(genericJoin.stormIdentityReason, 'source-id');
+assert.equal(genericJoin.cycleState, 'within-tolerance');
 assert.equal(genericJoin.stormId, 'storm-generic');
 assert.equal(genericJoin.advisoryId, 'cwa-target');
+assert.deepEqual(genericJoin.sourceIdentityTokens, ['2026-23', '23']);
 
 console.log('consensus-track verification readiness tests: OK');
