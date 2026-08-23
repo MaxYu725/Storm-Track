@@ -31,6 +31,7 @@ jobs:
           node --check analysis/hk-threat-assessment.js
           node --check analysis/basic-hk-signal-forecast.js
           node --check analysis/frontend-hk-threat-ui.js
+          node --check analysis/settings-panel-ui.js
           node --check analysis/wind-field-overlay.js
           node --check analysis/storm-case-identity.js
           node --check analysis/hk-signal-observation-board.js
@@ -43,7 +44,10 @@ jobs:
           grep -F 'StormHkThreatUi?.renderGroupSummary(group)' index.html
           grep -F '${hkThreatHtml}' index.html
           grep -F "get('beta') === 'hk-signal'" analysis/frontend-hk-threat-ui.js
+          grep -F "script.src = './analysis/settings-panel-ui.js'" analysis/frontend-hk-threat-ui.js
           grep -F "script.src = './analysis/wind-field-overlay.js'" analysis/frontend-hk-threat-ui.js
+          grep -F '資料來源 / 路徑圖例' analysis/settings-panel-ui.js
+          grep -F 'storm-settings-backdrop' analysis/settings-panel-ui.js
           grep -F '模式風場 Beta' analysis/wind-field-overlay.js
           grep -F '香港影響 Beta' analysis/frontend-hk-threat-ui.js
           grep -F '非香港天文台官方風球預測' analysis/frontend-hk-threat-ui.js
@@ -80,6 +84,7 @@ jobs:
             tests/frontend-hk-signal-beta-gate.test.cjs
             tests/frontend-storm-identity-grouping.test.cjs
             tests/storm-case-identity.test.cjs
+            tests/settings-panel-ui.test.cjs
             tests/wind-field-overlay.test.cjs
             tests/hk-signal-observation-board.test.cjs
           )
