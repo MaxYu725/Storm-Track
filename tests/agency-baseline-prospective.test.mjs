@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { buildAgencyBaselineProspective } from '../scripts/build-agency-baseline-prospective.mjs';
+
+const require = createRequire(import.meta.url);
+const core = require('../analysis/storm-analysis-core.js');
 
 function fixture(capturedAt = '2026-08-23T08:00:00Z', changedLon = 130.5) {
   return {
@@ -101,6 +105,40 @@ assert.equal(hko.forecast[0].lat, 21.2);
 assert.equal(hko.forecast[0].lon, 130.5);
 assert.equal(hko.forecast[0].origin, 'forecast');
 assert.equal(hko.forecast[0].forecastHour, 6);
+
+const reconstructedSources = Object.fromEntries(first.records.map(record => [record.agency, {
+  agency: record.agency,
+  sourceId: record.sourceId,
+  bulletinTime: record.bulletinTime,
+  positions: record.analysis ? [{
+    kind: record.analysis.kind,
+    time: record.analysis.validTime,
+    baseTime: record.analysis.baseTime,
+    forecastHour: record.analysis.forecastHour,
+    lat: record.analysis.lat,
+    lon: record.analysis.lon
+  }] : [],
+  forecast: record.forecast.map(point => ({
+    kind: point.kind,
+    time: point.validTime,
+    baseTime: point.baseTime,
+    forecastHour: point.forecastHour,
+    lat: point.lat,
+    lon: point.lon
+  }))
+}]));
+const reconstructedTrack = core.buildConsensusTrackForGroup({
+  key: 'TEST',
+  displayName: '測試風暴 (TEST)',
+  sources: reconstructedSources
+}, { generatedAt: '2026-08-23T08:00:00Z' });
+const lead6 = reconstructedTrack.points.find(point => point.leadHours === 6);
+assert.ok(lead6?.consensus, 'persisted baseline must be sufficient to rebuild valid-time consensus contributions');
+assert.equal(lead6.validTime, '2026-08-23T13:00:00.000Z');
+assert.deepEqual(lead6.agencies, ['HKO', 'CMA']);
+assert.deepEqual(lead6.entries.map(entry => entry.provenance), ['exact-forecast', 'exact-forecast']);
+assert.ok(Math.abs(lead6.consensus.lat - 21.1) < 1e-9);
+assert.ok(Math.abs(lead6.consensus.lon - 130.3) < 1e-9);
 
 const unresolved = buildAgencyBaselineProspective({
   ...fixture(),
