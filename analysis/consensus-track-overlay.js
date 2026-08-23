@@ -8,6 +8,9 @@
 
   const VERSION = 'consensus-track-overlay/v0';
   const MAP_READY_EVENT = 'stormtrack:map-ready';
+  const STATE_EVENT = 'stormtrack:consensus-track-state';
+  const TOGGLE_EVENT = 'stormtrack:consensus-track-toggle';
+  const STORAGE_KEY = 'storm-track-consensus-track-beta-enabled-v1';
   const PANE_NAME = 'stormConsensusTrackPane';
   const PANE_Z_INDEX = 425;
   const POLL_INTERVAL_MS = 1500;
@@ -18,15 +21,43 @@
     return Number.isFinite(number) ? number : null;
   };
 
-  function isEnabled(search) {
+  function betaEnabled(search) {
     try {
-      const params = new URLSearchParams(search || '');
-      const beta = params.get('beta');
-      const requested = String(params.get('consensusTrack') || '').toLowerCase();
-      return beta === 'hk-signal' && ['1', 'true', 'on', 'yes'].includes(requested);
+      return new URLSearchParams(search || '').get('beta') === 'hk-signal';
     } catch {
       return false;
     }
+  }
+
+  function queryRequested(search) {
+    try {
+      const requested = String(new URLSearchParams(search || '').get('consensusTrack') || '').toLowerCase();
+      return ['1', 'true', 'on', 'yes'].includes(requested);
+    } catch {
+      return false;
+    }
+  }
+
+  function readStoredEnabled(storage = root?.localStorage) {
+    try {
+      return storage?.getItem?.(STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function writeStoredEnabled(enabled, storage = root?.localStorage) {
+    try {
+      storage?.setItem?.(STORAGE_KEY, enabled ? '1' : '0');
+    } catch {
+      // Optional browser preference only.
+    }
+  }
+
+  function isEnabled(search, storedEnabled = readStoredEnabled()) {
+    if (!betaEnabled(search)) return false;
+    if (queryRequested(search)) return true;
+    return storedEnabled === true;
   }
 
   function reconstructGroup(observation) {
@@ -338,26 +369,87 @@
     });
   }
 
-  function autoInstall() {
-    if (!root?.document || !isEnabled(root.location?.search || '')) return null;
+  function dispatchState(enabled) {
+    try {
+      root?.dispatchEvent?.(new root.CustomEvent(STATE_EVENT, {
+        detail: {
+          enabled: enabled === true,
+          state: root?.StormTrackRuntime?.consensusTrackController?.getState?.() || null
+        }
+      }));
+    } catch {
+      // Optional UI synchronization only.
+    }
+  }
+
+  function installController(runtime, map) {
+    if (!runtime || !map || runtime.consensusTrackController || runtime.consensusTrackEnabled !== true) {
+      return runtime?.consensusTrackController || null;
+    }
+    runtime.consensusTrackController = createController(map);
+    dispatchState(Boolean(runtime.consensusTrackController));
+    return runtime.consensusTrackController;
+  }
+
+  function getEnabled() {
+    const runtime = root?.StormTrackRuntime;
+    if (typeof runtime?.consensusTrackEnabled === 'boolean') return runtime.consensusTrackEnabled;
+    return isEnabled(root?.location?.search || '');
+  }
+
+  function setEnabled(enabled, options = {}) {
+    if (!betaEnabled(root?.location?.search || '')) return false;
     const runtime = root.StormTrackRuntime || (root.StormTrackRuntime = {});
-    if (runtime.consensusTrackController) return runtime.consensusTrackController;
+    runtime.consensusTrackEnabled = enabled === true;
+    if (options.persist !== false) writeStoredEnabled(runtime.consensusTrackEnabled);
 
-    const installForMap = map => {
-      if (!map || runtime.consensusTrackController) return runtime.consensusTrackController || null;
-      runtime.consensusTrackController = createController(map);
-      return runtime.consensusTrackController;
-    };
+    if (runtime.consensusTrackEnabled) {
+      installController(runtime, runtime.map);
+    } else if (runtime.consensusTrackController) {
+      runtime.consensusTrackController.destroy?.();
+      runtime.consensusTrackController = null;
+    }
 
-    if (runtime.map) installForMap(runtime.map);
-    root.addEventListener?.(MAP_READY_EVENT, event => installForMap(event?.detail?.map || runtime.map), { once: true });
+    dispatchState(runtime.consensusTrackEnabled);
+    return runtime.consensusTrackEnabled;
+  }
+
+  function autoInstall() {
+    if (!root?.document || !betaEnabled(root.location?.search || '')) return null;
+    const runtime = root.StormTrackRuntime || (root.StormTrackRuntime = {});
+
+    if (typeof runtime.consensusTrackEnabled !== 'boolean') {
+      runtime.consensusTrackEnabled = isEnabled(root.location?.search || '');
+    }
+
+    if (!runtime.consensusTrackLifecycleInstalled) {
+      root.addEventListener?.(MAP_READY_EVENT, event => {
+        const map = event?.detail?.map || runtime.map;
+        if (map) runtime.map = map;
+        installController(runtime, map);
+      });
+      root.addEventListener?.(TOGGLE_EVENT, event => {
+        setEnabled(event?.detail?.enabled === true);
+      });
+      runtime.consensusTrackLifecycleInstalled = true;
+    }
+
+    installController(runtime, runtime.map);
+    dispatchState(runtime.consensusTrackEnabled);
     return runtime.consensusTrackController || null;
   }
 
   return Object.freeze({
     VERSION,
+    STORAGE_KEY,
+    STATE_EVENT,
+    TOGGLE_EVENT,
     PANE_NAME,
     PANE_Z_INDEX,
+    betaEnabled,
+    queryRequested,
+    readStoredEnabled,
+    writeStoredEnabled,
     isEnabled,
     reconstructGroup,
     splitConsensusSegments,
@@ -365,6 +457,8 @@
     buildRenderableTracks,
     observationSignature,
     createController,
+    getEnabled,
+    setEnabled,
     autoInstall
   });
 });
