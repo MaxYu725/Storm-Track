@@ -200,14 +200,14 @@
     }
 
     function getConsensusTrackReference(normalizedSources) {
-        const currentEntries = AGENCIES
-            .map(agency => ({ agency, timeMs: normalizedSources[agency]?.current?.timeMs }))
-            .filter(entry => Number.isFinite(entry.timeMs));
-        if (currentEntries.length) {
-            currentEntries.sort((left, right) => right.timeMs - left.timeMs);
+        const analysisEntries = AGENCIES
+            .map(agency => ({ agency, point: latestTimedPoint(normalizedSources[agency]?.positions || []) }))
+            .filter(entry => Number.isFinite(entry.point?.timeMs));
+        if (analysisEntries.length) {
+            analysisEntries.sort((left, right) => right.point.timeMs - left.point.timeMs);
             return {
-                agency: currentEntries[0].agency,
-                baseTimeMs: currentEntries[0].timeMs,
+                agency: analysisEntries[0].agency,
+                baseTimeMs: analysisEntries[0].point.timeMs,
                 method: 'latest-analysis-valid-time'
             };
         }
