@@ -66,7 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          jq -r '.joins[].advisoryId // empty' /tmp/ct-readiness.json | sort -u | while read -r advisory_id; do
+          jq -r '.joins[].nearestAdvisoryId // empty' /tmp/ct-readiness.json | sort -u | while read -r advisory_id; do
             echo "--- advisory ${advisory_id} ---"
             curl --fail --silent --show-error "${HISTORY_API_ORIGIN}/advisories/${advisory_id}" \
               | jq '{
@@ -91,13 +91,17 @@ jobs:
             .schemaVersion == "consensus-track-verification-readiness/v1" and
             (.joins | type == "array") and
             (.summary.sourceReferenceCount == (.joins | length)) and
+            (.summary.stormIdentityJoinCount | type == "number") and
+            (.summary.cycleJoinCount | type == "number") and
+            (.summary.staleCycleCount | type == "number") and
             (.summary.byAgency | type == "object") and
             (.semantics.readOnlyArchiveAudit == true) and
             (.semantics.forecastSkillEvaluated == false) and
             (.semantics.forecastErrorsCalculated == false) and
             (.semantics.agencyRankingProduced == false) and
             (.semantics.consensusAlgorithmModified == false) and
-            (.semantics.productionDatabaseWritten == false)
+            (.semantics.productionDatabaseWritten == false) and
+            (.semantics.staleCyclesNeverAcceptedAsSameCycle == true)
           ' /tmp/ct-readiness.json >/dev/null
           jq '{
             schemaVersion,
@@ -109,11 +113,18 @@ jobs:
               groupKey,
               agency,
               sourceId,
+              sourceIdentityTokens,
               stormId,
-              stormMatch,
+              stormIdentityJoin,
+              stormIdentityReason,
+              cycleState,
               cycleJoin,
               cycleTimeDiffMinutes,
-              advisoryId,
+              cycleOffsetMinutes,
+              archiveLagMinutes,
+              matchedReferenceTime,
+              nearestAdvisoryId,
+              nearestAdvisoryIssuedAt,
               targetCount,
               reconstructableTargetCount,
               validTimeCoveragePct,
