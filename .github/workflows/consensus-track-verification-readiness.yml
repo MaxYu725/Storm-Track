@@ -1,0 +1,114 @@
+name: CT-1B verification readiness audit
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/audit-consensus-track-verification-readiness.mjs
+      - tests/consensus-track-verification-readiness.test.mjs
+      - docs/CONSENSUS_TRACK_ROADMAP.md
+      - README.md
+      - .github/workflows/consensus-track-verification-readiness.yml
+
+permissions:
+  contents: read
+
+env:
+  DATA_BRANCH: data/consensus-track-prospective-observations
+  HISTORY_API_ORIGIN: https://storm.max-yu.workers.dev/api/history
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run CT-1B unit regression
+        run: |
+          set -euo pipefail
+          node --check scripts/audit-consensus-track-verification-readiness.mjs
+          node tests/consensus-track-verification-readiness.test.mjs
+
+      - name: Load latest production CT v2 snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${DATA_BRANCH}:refs/remotes/origin/${DATA_BRANCH}"
+          git show "refs/remotes/origin/${DATA_BRANCH}:latest.json" > /tmp/ct-latest.json
+          jq -e '.schemaVersion == "storm-consensus-track-prospective/v2" and (.groups | type == "array") and (.groups | length > 0)' /tmp/ct-latest.json >/dev/null
+          jq '{schemaVersion,capturedAt,sourceCommit,captureFingerprint,groupCount,groups:[.groups[]|{key,displayName,sourceReferences}]}' /tmp/ct-latest.json
+
+      - name: Audit production D1 archive join readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/ct-readiness.json
+          for attempt in 1 2 3; do
+            echo "CT-1B audit attempt ${attempt}"
+            if node scripts/audit-consensus-track-verification-readiness.mjs /tmp/ct-latest.json > /tmp/ct-readiness.json; then
+              break
+            fi
+            rm -f /tmp/ct-readiness.json
+            if [[ "$attempt" -lt 3 ]]; then sleep 20; fi
+          done
+          test -s /tmp/ct-readiness.json
+
+      - name: Validate read-only audit contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '
+            .schemaVersion == "consensus-track-verification-readiness/v1" and
+            (.joins | type == "array") and
+            (.summary.sourceReferenceCount == (.joins | length)) and
+            (.summary.byAgency | type == "object") and
+            (.semantics.readOnlyArchiveAudit == true) and
+            (.semantics.forecastSkillEvaluated == false) and
+            (.semantics.forecastErrorsCalculated == false) and
+            (.semantics.agencyRankingProduced == false) and
+            (.semantics.consensusAlgorithmModified == false) and
+            (.semantics.productionDatabaseWritten == false)
+          ' /tmp/ct-readiness.json >/dev/null
+          jq '{
+            schemaVersion,
+            auditedAt,
+            input,
+            archive,
+            summary,
+            joins: [.joins[] | {
+              groupKey,
+              agency,
+              sourceId,
+              stormId,
+              stormMatch,
+              cycleJoin,
+              cycleTimeDiffMinutes,
+              advisoryId,
+              targetCount,
+              reconstructableTargetCount,
+              validTimeCoveragePct,
+              detailError
+            }],
+            semantics
+          }' /tmp/ct-readiness.json
+
+      - name: Upload CT-1B audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: consensus-track-verification-readiness
+          path: /tmp/ct-readiness.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Check whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check origin/main...HEAD
