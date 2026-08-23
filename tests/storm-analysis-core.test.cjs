@@ -121,26 +121,27 @@ function source(agency, baseTime, points, current = null) {
         }
     };
 
-    const snapshot = core.buildStormAnalysisSnapshot(group, {
+    const track = core.buildConsensusTrackForGroup(group, {
         generatedAt: base,
         consensusTrackStartLeadHours: 0,
         consensusTrackEndLeadHours: 48,
         consensusTrackStepHours: 12
     });
 
-    assert.equal(snapshot.consensusTrack.state, 'ok');
-    assert.equal(snapshot.consensusTrack.method, 'valid-time-aligned-unweighted-mean-v1');
-    assert.equal(snapshot.consensusTrack.referenceAgency, 'HKO');
-    assert.equal(snapshot.consensusTrack.referenceBaseTime, '2026-08-20T00:00:00.000Z');
-    assert.equal(snapshot.consensusTrack.points.length, 5);
+    assert.equal(track.schemaVersion, 'storm-consensus-track/v0');
+    assert.equal(track.state, 'ok');
+    assert.equal(track.method, 'valid-time-aligned-unweighted-mean-v1');
+    assert.equal(track.referenceAgency, 'HKO');
+    assert.equal(track.referenceBaseTime, '2026-08-20T00:00:00.000Z');
+    assert.equal(track.points.length, 5);
 
-    const lead0 = snapshot.consensusTrack.points[0];
+    const lead0 = track.points[0];
     assert.equal(lead0.leadHours, 0);
     assert.equal(lead0.agencyCount, 4);
     assert.equal(lead0.consensus.agencyCount, 4);
     assert.equal(lead0.entries.every(entry => entry.kind === 'analysis'), true);
 
-    const lead24 = snapshot.consensusTrack.points.find(item => item.leadHours === 24);
+    const lead24 = track.points.find(item => item.leadHours === 24);
     assert.ok(lead24);
     assert.equal(lead24.validTime, '2026-08-21T00:00:00.000Z');
     assert.equal(lead24.agencyCount, 4);
@@ -151,7 +152,7 @@ function source(agency, baseTime, points, current = null) {
 (function testConsensusTrackInterpolatesAtCommonValidTimeAcrossDifferentBaseTimes() {
     const hkoBase = '2026-08-20T00:00:00Z';
     const cmaBase = '2026-08-20T06:00:00Z';
-    const snapshot = core.buildStormAnalysisSnapshot({
+    const track = core.buildConsensusTrackForGroup({
         key: 'mixed-base-times',
         sources: {
             HKO: source('HKO', hkoBase, [
@@ -171,7 +172,7 @@ function source(agency, baseTime, points, current = null) {
         consensusTrackStepHours: 6
     });
 
-    const trackPoint = snapshot.consensusTrack.points[0];
+    const trackPoint = track.points[0];
     assert.equal(trackPoint.validTime, '2026-08-20T12:00:00.000Z');
     assert.equal(trackPoint.agencyCount, 2);
     const cma = trackPoint.entries.find(entry => entry.agency === 'CMA');
@@ -183,7 +184,7 @@ function source(agency, baseTime, points, current = null) {
 
 (function testConsensusTrackDoesNotCallSingleAgencyAConsensus() {
     const base = '2026-08-20T00:00:00Z';
-    const snapshot = core.buildStormAnalysisSnapshot({
+    const track = core.buildConsensusTrackForGroup({
         key: 'single-agency',
         sources: {
             HKO: source('HKO', base, [
@@ -197,11 +198,11 @@ function source(agency, baseTime, points, current = null) {
         consensusTrackStepHours: 6
     });
 
-    assert.equal(snapshot.consensusTrack.state, 'insufficient-coverage');
-    assert.equal(snapshot.consensusTrack.points.length, 1);
-    assert.equal(snapshot.consensusTrack.points[0].agencyCount, 1);
-    assert.equal(snapshot.consensusTrack.points[0].consensus, null);
-    assert.equal(snapshot.consensusTrack.points[0].spread, null);
+    assert.equal(track.state, 'insufficient-coverage');
+    assert.equal(track.points.length, 1);
+    assert.equal(track.points[0].agencyCount, 1);
+    assert.equal(track.points[0].consensus, null);
+    assert.equal(track.points[0].spread, null);
 })();
 
 console.log('storm-analysis-core tests: OK');
