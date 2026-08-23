@@ -62,6 +62,27 @@ jobs:
           done
           test -s /tmp/ct-readiness.json
 
+      - name: Print non-coordinate archive cycle diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -r '.joins[].advisoryId // empty' /tmp/ct-readiness.json | sort -u | while read -r advisory_id; do
+            echo "--- advisory ${advisory_id} ---"
+            curl --fail --silent --show-error "${HISTORY_API_ORIGIN}/advisories/${advisory_id}" \
+              | jq '{
+                  advisory: (.advisory | with_entries(select(.key | test("id|agency|issued|source|parser|storm|time|base"; "i")))),
+                  pointSummary: {
+                    total: ((.points // []) | length),
+                    analysisCount: ([.points[]? | select(.point_type == "analysis")] | length),
+                    forecastCount: ([.points[]? | select(.point_type == "forecast")] | length),
+                    analysisFirstValidAt: ([.points[]? | select(.point_type == "analysis") | .valid_at] | min // null),
+                    analysisLastValidAt: ([.points[]? | select(.point_type == "analysis") | .valid_at] | max // null),
+                    forecastFirstValidAt: ([.points[]? | select(.point_type == "forecast") | .valid_at] | min // null),
+                    forecastLastValidAt: ([.points[]? | select(.point_type == "forecast") | .valid_at] | max // null)
+                  }
+                }'
+          done
+
       - name: Validate read-only audit contract
         shell: bash
         run: |
