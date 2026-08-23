@@ -57,6 +57,13 @@ try {
       return sorted[index];
     };
     const stateNames = ['ok', 'empty', 'error', 'stale', 'loading'];
+    const provenanceKeys = [
+      'exact-analysis',
+      'exact-forecast',
+      'analysis-to-forecast-interpolation',
+      'forecast-to-forecast-interpolation'
+    ];
+    const emptyProvenanceCounts = () => Object.fromEntries(provenanceKeys.map(key => [key, 0]));
     const sourceStates = ['HKO', 'CMA', 'JMA', 'CWA'].map(agency => {
       const badge = document.getElementById(`badge-${agency.toLowerCase()}`);
       return {
@@ -101,8 +108,17 @@ try {
       const consensusPoints = points.filter(point => point?.consensus);
       const agencyCountHistogram = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0 };
       const agencyContributions = { HKO: 0, CMA: 0, JMA: 0, CWA: 0 };
+      const consensusProvenanceCounts = emptyProvenanceCounts();
+      const consensusAgencyProvenance = {
+        HKO: emptyProvenanceCounts(),
+        CMA: emptyProvenanceCounts(),
+        JMA: emptyProvenanceCounts(),
+        CWA: emptyProvenanceCounts()
+      };
+      const unknownProvenanceValues = [];
       let totalEntries = 0;
       let interpolatedEntries = 0;
+      let consensusEntryCount = 0;
 
       for (const point of points) {
         const count = Number(point?.agencyCount) || 0;
@@ -111,8 +127,30 @@ try {
           totalEntries += 1;
           if (entry?.interpolated) interpolatedEntries += 1;
           if (Object.hasOwn(agencyContributions, entry?.agency)) agencyContributions[entry.agency] += 1;
+
+          if (point?.consensus) {
+            consensusEntryCount += 1;
+            const provenance = String(entry?.provenance || 'missing');
+            if (Object.hasOwn(consensusProvenanceCounts, provenance)) {
+              consensusProvenanceCounts[provenance] += 1;
+              if (Object.hasOwn(consensusAgencyProvenance, entry?.agency)) {
+                consensusAgencyProvenance[entry.agency][provenance] += 1;
+              }
+            } else {
+              unknownProvenanceValues.push(provenance);
+            }
+          }
         }
       }
+
+      const consensusExactEntryCount = consensusProvenanceCounts['exact-analysis']
+        + consensusProvenanceCounts['exact-forecast'];
+      const consensusInterpolatedEntryCount = consensusProvenanceCounts['analysis-to-forecast-interpolation']
+        + consensusProvenanceCounts['forecast-to-forecast-interpolation'];
+      const consensusProvenancePct = Object.fromEntries(provenanceKeys.map(key => [
+        key,
+        consensusEntryCount ? round(consensusProvenanceCounts[key] * 100 / consensusEntryCount, 1) : 0
+      ]));
 
       const spreadValues = consensusPoints
         .map(point => Number(point?.spread?.distanceKm))
@@ -163,6 +201,15 @@ try {
         totalEntries,
         interpolatedEntries,
         interpolationPct: totalEntries ? round(interpolatedEntries * 100 / totalEntries, 1) : 0,
+        consensusEntryCount,
+        consensusExactEntryCount,
+        consensusInterpolatedEntryCount,
+        consensusExactPct: consensusEntryCount ? round(consensusExactEntryCount * 100 / consensusEntryCount, 1) : 0,
+        consensusInterpolationPct: consensusEntryCount ? round(consensusInterpolatedEntryCount * 100 / consensusEntryCount, 1) : 0,
+        consensusProvenanceCounts,
+        consensusProvenancePct,
+        consensusAgencyProvenance,
+        unknownProvenanceValues: [...new Set(unknownProvenanceValues)].sort(),
         spreadKm: {
           median: round(percentile(spreadValues, 0.5), 1),
           p90: round(percentile(spreadValues, 0.9), 1),
@@ -174,6 +221,7 @@ try {
           agencyCount: point.agencyCount,
           agencies: point.agencies,
           interpolatedAgencyCount: (point.entries || []).filter(entry => entry?.interpolated).length,
+          provenanceByAgency: Object.fromEntries((point.entries || []).map(entry => [entry.agency, entry.provenance || null])),
           consensusLat: round(Number(point?.consensus?.lat), 3),
           consensusLon: round(Number(point?.consensus?.lon), 3),
           spreadKm: round(Number(point?.spread?.distanceKm), 1)
