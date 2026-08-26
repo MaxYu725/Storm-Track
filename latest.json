@@ -45,12 +45,12 @@
   },
   "prospective": {
     "caseIdentitySchemaVersion": "storm-case-identity/v1",
-    "reconciledThrough": "2026-08-26T12:18:04.223Z",
+    "reconciledThrough": "2026-08-26T13:36:32.897Z",
     "trustedRecorderSchema": "beta-prospective-recorder/v2",
-    "trustedRecordCount": 129,
+    "trustedRecordCount": 130,
     "recorderSchemaCounts": {
       "beta-prospective-recorder/v1": 1,
-      "beta-prospective-recorder/v2": 129
+      "beta-prospective-recorder/v2": 130
     },
     "excludedRecordCount": 1,
     "excludedAmbiguousCaseCaptureCount": 2,
@@ -74,7 +74,7 @@
         ]
       }
     ],
-    "caseCount": 4
+    "caseCount": 5
   },
   "hkoTruth": {
     "latestRetrievedAt": "2026-08-26T12:53:34.209Z",
@@ -121,8 +121,8 @@
     "latestPredictions": [
       {
         "caseId": "STC-2026-JMA-TC2622",
-        "capturedAt": "2026-08-26T12:18:04.223Z",
-        "captureFingerprint": "577ce623bce3d5eeac5913da3b7a9aed585ad34f664e40fb13dc003eaebe2b44",
+        "capturedAt": "2026-08-26T13:36:32.897Z",
+        "captureFingerprint": "6c378b7f8be64accd0ba747e9d4529f52031ae096e796dbcff3705ca08288fd7",
         "rawGroupKey": "NARRA",
         "displayName": "紫檀 (NARRA)",
         "likelihood": "possible",
@@ -130,29 +130,29 @@
         "signals": {
           "T1": {
             "likelihood": "possible",
-            "riskIndex": 0.4880164326463311,
-            "confidenceIndex": 0.5022579182466778,
+            "riskIndex": 0.5135806799550389,
+            "confidenceIndex": 0.5442754638155596,
             "persistenceHours": 0,
             "estimatedWindow": null
           },
           "T3": {
             "likelihood": "unlikely",
-            "riskIndex": 0.11362263676727632,
-            "confidenceIndex": 0.42691923050967606,
+            "riskIndex": 0.12437519457086685,
+            "confidenceIndex": 0.46263414424322563,
             "persistenceHours": 0,
             "estimatedWindow": null
           },
           "T8": {
             "likelihood": "unlikely",
-            "riskIndex": 0.06479523733837417,
-            "confidenceIndex": 0.406828913779809,
+            "riskIndex": 0.07642384906870162,
+            "confidenceIndex": 0.44086312569060326,
             "persistenceHours": 0,
             "estimatedWindow": null
           }
         },
         "sourceAgencies": [
           "CMA",
-          "JMA"
+          "HKO"
         ],
         "engineVersions": {
           "ui": "frontend-hk-threat-ui/v1",
@@ -165,37 +165,37 @@
       },
       {
         "caseId": "STC-2026-JMA-TC2621",
-        "capturedAt": "2026-08-26T12:18:04.223Z",
-        "captureFingerprint": "577ce623bce3d5eeac5913da3b7a9aed585ad34f664e40fb13dc003eaebe2b44",
+        "capturedAt": "2026-08-26T13:36:32.897Z",
+        "captureFingerprint": "6c378b7f8be64accd0ba747e9d4529f52031ae096e796dbcff3705ca08288fd7",
         "rawGroupKey": "SAUDEL",
         "displayName": "沙德爾 (SAUDEL)",
         "likelihood": "possible",
         "estimatedWindow": {
-          "start": "2026-08-27T15:07:10.800Z",
-          "end": "2026-08-28T06:41:35.939Z"
+          "start": "2026-08-27T14:24:21.904Z",
+          "end": "2026-08-28T06:50:20.323Z"
         },
         "signals": {
           "T1": {
             "likelihood": "possible",
-            "riskIndex": 0.550588344547166,
-            "confidenceIndex": 0.36857368473519597,
-            "persistenceHours": 60.093508201935165,
+            "riskIndex": 0.5625395300977998,
+            "confidenceIndex": 0.28975577631181315,
+            "persistenceHours": 62.37746823293894,
             "estimatedWindow": {
-              "start": "2026-08-27T15:07:10.800Z",
-              "end": "2026-08-28T06:41:35.939Z"
+              "start": "2026-08-27T14:24:21.904Z",
+              "end": "2026-08-28T06:50:20.323Z"
             }
           },
           "T3": {
             "likelihood": "unlikely",
-            "riskIndex": 0.3123132692862544,
-            "confidenceIndex": 0.33171631626167636,
+            "riskIndex": 0.2893384215058947,
+            "confidenceIndex": 0.24629240986504117,
             "persistenceHours": 0,
             "estimatedWindow": null
           },
           "T8": {
             "likelihood": "unlikely",
-            "riskIndex": 0.139332736930008,
-            "confidenceIndex": 0.3218876846687378,
+            "riskIndex": 0.12884113206257528,
+            "confidenceIndex": 0.23470217881256866,
             "persistenceHours": 0,
             "estimatedWindow": null
           }
@@ -203,6 +203,7 @@
         "sourceAgencies": [
           "CMA",
           "CWA",
+          "HKO",
           "JMA"
         ],
         "engineVersions": {
@@ -339,14 +340,114 @@
     "immutableEvidence": "Closeout is derived from trusted beta-prospective-recorder/v2 observations and HKO truth events; raw corpora are never rewritten."
   },
   "closeoutSummary": {
-    "closeoutCount": 0,
+    "closeoutCount": 3,
     "blockedCount": 0,
-    "classifications": {}
+    "classifications": {
+      "transient-false-alarm": 1,
+      "correct-negative": 2
+    }
   },
-  "closeouts": [],
+  "closeouts": [
+    {
+      "schemaVersion": "hk-signal-closeout/v1",
+      "policyVersion": "hk-signal-closeout-policy/v1",
+      "status": "not-issued",
+      "officialOutcome": "not-issued",
+      "caseId": "STC-2026-JMA-TC2623",
+      "signal": "T1",
+      "closedAt": "2026-08-26T14:07:08.628Z",
+      "evidenceAt": "2026-08-25T14:07:08.628Z",
+      "closeoutReason": "case-inactive-after-healthy-absence",
+      "graceHours": 24,
+      "forecastOutcome": "transient-false-alarm",
+      "forecastEvidence": {
+        "classification": "transient-false-alarm",
+        "snapshotCount": 102,
+        "positiveSnapshotCount": 70,
+        "firstPositiveAt": "2026-08-22T13:02:59.101Z",
+        "firstStablePositiveAt": null,
+        "maxRiskIndex": 0.6100819927730694,
+        "finalPreClose": {
+          "capturedAt": "2026-08-25T13:02:39.098Z",
+          "captureFingerprint": "a97524e447b83b9c5960f170e87099df9b66a8d0fdac266402764f6a4e4a7e8f",
+          "likelihood": "unlikely",
+          "riskIndex": 0.3496440177199197,
+          "confidenceIndex": 0.6326250000000001,
+          "persistenceHours": 0,
+          "estimatedWindow": null
+        }
+      },
+      "timingGrade": null,
+      "rubricGradeApplied": false
+    },
+    {
+      "schemaVersion": "hk-signal-closeout/v1",
+      "policyVersion": "hk-signal-closeout-policy/v1",
+      "status": "not-issued",
+      "officialOutcome": "not-issued",
+      "caseId": "STC-2026-JMA-TC2623",
+      "signal": "T3",
+      "closedAt": "2026-08-26T14:07:08.628Z",
+      "evidenceAt": "2026-08-25T14:07:08.628Z",
+      "closeoutReason": "case-inactive-after-healthy-absence",
+      "graceHours": 24,
+      "forecastOutcome": "correct-negative",
+      "forecastEvidence": {
+        "classification": "correct-negative",
+        "snapshotCount": 102,
+        "positiveSnapshotCount": 0,
+        "firstPositiveAt": null,
+        "firstStablePositiveAt": null,
+        "maxRiskIndex": 0.2377291724230166,
+        "finalPreClose": {
+          "capturedAt": "2026-08-25T13:02:39.098Z",
+          "captureFingerprint": "a97524e447b83b9c5960f170e87099df9b66a8d0fdac266402764f6a4e4a7e8f",
+          "likelihood": "unlikely",
+          "riskIndex": 0.05387645996796902,
+          "confidenceIndex": 0.44283750000000005,
+          "persistenceHours": 0,
+          "estimatedWindow": null
+        }
+      },
+      "timingGrade": null,
+      "rubricGradeApplied": false
+    },
+    {
+      "schemaVersion": "hk-signal-closeout/v1",
+      "policyVersion": "hk-signal-closeout-policy/v1",
+      "status": "not-issued",
+      "officialOutcome": "not-issued",
+      "caseId": "STC-2026-JMA-TC2623",
+      "signal": "T8",
+      "closedAt": "2026-08-26T14:07:08.628Z",
+      "evidenceAt": "2026-08-25T14:07:08.628Z",
+      "closeoutReason": "case-inactive-after-healthy-absence",
+      "graceHours": 24,
+      "forecastOutcome": "correct-negative",
+      "forecastEvidence": {
+        "classification": "correct-negative",
+        "snapshotCount": 102,
+        "positiveSnapshotCount": 0,
+        "firstPositiveAt": null,
+        "firstStablePositiveAt": null,
+        "maxRiskIndex": 0.12130317001658535,
+        "finalPreClose": {
+          "capturedAt": "2026-08-25T13:02:39.098Z",
+          "captureFingerprint": "a97524e447b83b9c5960f170e87099df9b66a8d0fdac266402764f6a4e4a7e8f",
+          "likelihood": "unlikely",
+          "riskIndex": 0.017848951405609135,
+          "confidenceIndex": 0.39222750000000006,
+          "persistenceHours": 0,
+          "estimatedWindow": null
+        }
+      },
+      "timingGrade": null,
+      "rubricGradeApplied": false
+    }
+  ],
   "closeoutBlocked": [],
-  "closeoutCheckedAt": "2026-08-26T13:28:14.332Z",
-  "generatedAt": "2026-08-26T13:28:14.337Z",
+  "closeoutCheckedAt": "2026-08-26T14:20:51.753Z",
+  "generatedAt": "2026-08-26T14:20:51.769Z",
   "sourceCommit": "b737545c842f654c8095240275cc9607d7d51ece",
-  "evaluationFingerprint": "ebc1945eca235537672fc17ccc124f8e66c8101348c4597af13993e71c0a4f23"
+  "evaluationFingerprint": "00c21d6c4f2815d9f41fe29a971ff7756633f57277a49c0a62eea5327d8c6cfd"
 }
