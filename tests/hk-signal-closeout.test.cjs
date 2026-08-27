@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
 const closeout = require('../analysis/hk-signal-closeout.js');
 
 function observation({ t1 = 'unlikely', t3 = 'unlikely', t8 = 'unlikely' } = {}) {
@@ -193,5 +194,9 @@ assert.equal(closeout.deriveCloseouts({
   evaluations: [t1Evaluation, skippedT3, t8Evaluation],
   asOf: '2026-08-22T21:00:00Z'
 }).closeouts.length, 0, 'already evaluated/skipped signals must not be duplicated at clear');
+
+execFileSync(process.execPath, [require.resolve('./hk-signal-closeout-awaiting-reconcile.test.mjs')], {
+  stdio: 'inherit'
+});
 
 console.log('hk signal closeout tests: OK');

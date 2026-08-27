@@ -21,21 +21,22 @@
 
 | ID | Case | 類型 | 現象 | 現況 / 即時處理 | 結案時要回答 | Status |
 |---|---|---|---|---|---|---|
-| `MS-01` | `STC-2026-JMA-TC2622` NARRA | Model semantics / timing confidence | 地圖已可見部分較完整預報在最近點後離港，但全局 `forecastEdge` 仍可偏高；舊 UI 容易被理解成「共識最低距離被預報尾端截斷」。 | frozen v1 不變；UI 已改為「部分機構預報在最近距離附近結束」。詳細討論見 Issue #62。 | 1. per-agency edge 與 representative/consensus edge 是否應分開？ 2. 對 confidence 的 penalty 是否合理？ 3. 是否不必要地抑制 timing fallback？ 4. 有 post-minimum departure evidence 時應如何解讀 horizon censoring？ | `OPEN — post-case review` |
+| `MS-01` | `STC-2026-JMA-TC2622` NARRA | Model semantics / timing confidence | 地圖已可見部分較完整預報在最近點後離港，但全局 `forecastEdge` 仍可偏高；舊 UI 容易被理解成「共識最低距離被預報尾端截斷」。 | frozen v1 不變；UI 已改為「部分機構預報在最近距離附近結束」。詳細討論見 Issue #62。後續 prospective evidence 顯示 HKO 已無 future forecast / 系統進入 post-lifecycle 階段時 T1 仍可維持 `possible`，所以 delayed-withdrawal hypothesis 繼續保留至正式 closeout。 | 1. per-agency edge 與 representative/consensus edge 是否應分開？ 2. 對 confidence 的 penalty 是否合理？ 3. 是否不必要地抑制 timing fallback？ 4. 有 post-minimum departure evidence 時應如何解讀 horizon censoring？ | `OPEN — post-case review` |
 | `MS-02` | `STC-2026-JMA-TC2623` GAENARI | Model semantics / timing window | T1 仍為 `possible`，risk 約 0.53、persistence 約 46h，然而 `estimatedWindow=null`。最新 timeline 可能在第一個可用 checkpoint 已高於 possible threshold，因此沒有 below→above crossing；同時 `forecastEdge>0.5` 抑制 fallback anchor。 | 不改 frozen v1；視為 timing semantics observation，不解讀為 T1 風險消失。 | 1. 「first visible already above threshold」是否應標成 left-censored timing，而不是完全無 window？ 2. 窗口由有→無是否與 risk/confidence/persistence 的演變一致？ 3. `forecastEdge` 與 missing crossing 同時出現時是否過度保守？ 4. 是否只需改善 UI 表達，而非演算法？ | `OPEN — post-case review` |
 | `MB-01` | `STC-2026-JMA-TC2623` GAENARI | Model behaviour / agency disagreement | 曾出現明顯 2-vs-2 路徑分歧：HKO/CWA 偏西北，CMA/JMA 偏西南；之後 agency membership / forecast horizon 又有變化。 | 不視為 bug；Observation Board 持續記錄 spread、closest-time span、confidence、window movement。 | 1. disagreement 增大時 confidence 是否合理下降？ 2. 路徑收斂後 risk/window 是否自然收斂？ 3. 短 forecast horizon agency 是否不成比例影響 edge/timing？ 4. source membership 改變是否造成不合理跳變？ | `OBSERVE` |
-| `MB-02` | `STC-2026-JMA-TC2621` SAUDEL | Model behaviour / long-horizon support concentration | T3 首次進入 `possible` 時，risk 約 0.453、confidence 約 0.313、persistence 約 3.3h；最強 checkpoint 約 +119h，當時主要由 CMA 單一 120h endpoint 支持，並同時有 `forecastEdge=1.000`。 | 不視為 bug，不改 frozen v1；繼續觀察其他機構是否收斂、T3 window 是否持續或很快撤回。 | 1. 後續 HKO/JMA/CWA 是否收斂到相同遠期路徑？ 2. T3 window 是 transient 還是 persistence/confidence 持續增加？ 3. 單一 agency 遠期 endpoint 是否對 `possible` 判定影響過大？ 4. `supportAgencyCount=1` 的 strongest checkpoint 是否應與多機構共同支持的 window 有不同語意？ 5. 是否在其他 case 重複出現同類行為？ | `OBSERVE` |
+| `MB-02` | `STC-2026-JMA-TC2621` SAUDEL | Model behaviour / long-horizon support concentration | T3 首次進入 `possible` 時，risk 約 0.453、confidence 約 0.313、persistence 約 3.3h；最強 checkpoint 約 +119h，當時主要由 CMA 單一 120h endpoint 支持，並同時有 `forecastEdge=1.000`。 | 不視為 bug，不改 frozen v1；後續 T3 已回到 `unlikely`，繼續觀察這次遠期 escalation 是否屬有效 early warning 或 transient long-horizon false positive。 | 1. 後續 HKO/JMA/CWA 是否收斂到相同遠期路徑？ 2. T3 window 是 transient 還是 persistence/confidence 持續增加？ 3. 單一 agency 遠期 endpoint 是否對 `possible` 判定影響過大？ 4. `supportAgencyCount=1` 的 strongest checkpoint 是否應與多機構共同支持的 window 有不同語意？ 5. 是否在其他 case 重複出現同類行為？ | `OBSERVE` |
 | `EI-01` | `STC-2026-JMA-TC2623` GAENARI | Data / identity correctness | CMA `热带低压` 在正式命名 GAENARI 後曾被 frontend 誤拆成另一 group。 | Generic-name normalization 已修；stable case identity 保持同一 case。 | 只檢查修補前後 timeline 是否連續；不得把修補前錯拆 group 當兩個獨立 storm。 | `RESOLVED — residual check` |
 | `EI-02` | `STC-2026-JMA-TC2623` GAENARI | Evaluation integrity | identity split 期間同一 `caseId + captureFingerprint` 曾有多個 final groups，會污染 state flips / latest-before-event。 | Raw evidence 保留；evaluator / closeout 已排除 ambiguous same-case same-capture。 | 確認正式成績沒有使用被排除的 capture；如報告引用 timeline，需標示 excluded capture count。 | `RESOLVED — residual check` |
+| `EI-03` | GAENARI / evaluator generic | Evaluation integrity / closeout bookkeeping | Raw evaluator 先計算 `awaiting`，之後 `apply-hk-signal-closeouts.mjs` 才產生 no-signal closeouts，曾令同一 case 已有 T1/T3/T8 closeout 卻仍留在 `activeHkoCaseIds` / `pendingSignalsByCase`。 | Correctness fix 在 closeout apply 層用 derived closeouts reconcile `awaiting`；完整 closeout case 從 active、pending、latestPredictions 移除，並加入 integration regression。Forecast model 不變。 | 1. derived `latest.json` 不得再同時把已全部 closeout 的 case 列作 active/pending；2. partial closeout / 尚有 pending signal 的 case 必須繼續保留。 | `RESOLVED — residual check` |
 | `UI-01` | NARRA / generic | UI interpretation | 「最低距離接近預報尾端」過度概括 per-agency edge evidence。 | 已改為較精確的「部分機構預報在最近距離附近結束」。 | 結案時確認新文字是否仍足以解釋 edge evidence；若模型語意未改，不再擴張 UI 規則。 | `RESOLVED — residual check` |
 
 ## GAENARI R1 preliminary review
 
 Case：`STC-2026-JMA-TC2623` GAENARI
 
-R1 status：`COMPLETE — awaiting R2 no-signal closeout`
+R1 status：`COMPLETE — R2 available below`
 
-R1 是正式 closeout 前的 read-only diagnosis。這一節只描述已保存的 prospective evidence，不修改 frozen v1 threshold、weighting、signal semantics 或 raw corpus；正式 outcome / classification 仍由 evaluator 的 no-signal closeout policy 決定。
+R1 是正式 closeout 前的 read-only diagnosis。這一節保存當時 prospective evidence 的判讀，不修改 frozen v1 threshold、weighting、signal semantics 或 raw corpus；正式 outcome / classification 已由下方 R2 closeout 鎖定。
 
 ### R1 lifecycle anchors
 
@@ -49,13 +50,13 @@ R1 是正式 closeout 前的 read-only diagnosis。這一節只描述已保存�
 - 2026-08-25 04:56Z，GAENARI 只餘 HKO + JMA；T1 仍為 `possible`，risk 約 `0.397`、confidence 約 `0.561`，future timeline 已空，最近點已在過去，window 仍為 null。
 - 約 43 分鐘後的 2026-08-25 05:39Z，JMA 亦退出，只餘 HKO。模型立即轉為 T1 `unlikely`，risk 約 `0.350`；資料 uncertainty 已是 `insufficient`，但 numeric confidence 反而升至約 `0.633`。
 - 因此 GAENARI 的最終 `possible → unlikely` 不應描述成「四機構收斂後模型成功撤回」。現有 evidence 更準確的描述是：source membership / usable forecast horizon 收縮與狀態撤回高度同步。這確認 MB-01 的 source-membership sensitivity 值得跨案例繼續觀察。
-- 最後仍包含 GAENARI 的 healthy capture 是 2026-08-25 13:02Z；第一個四來源皆 healthy 而 GAENARI 已消失的 capture 是 2026-08-25 14:07Z。R2 必須等待 no-signal inactive grace gate，不能由 R1 提前宣告正式 negative score。
+- 最後仍包含 GAENARI 的 healthy capture 是 2026-08-25 13:02Z；第一個四來源皆 healthy 而 GAENARI 已消失的 capture 是 2026-08-25 14:07Z。24 小時 inactive grace 於 2026-08-26 14:07Z 滿足，之後產生正式 R2 closeout。
 
 ### R1 A–G preliminary findings
 
-**A. Signal outcome — PENDING R2**
+**A. Signal outcome — COMPLETED IN R2**
 
-截至 R1，prospective HKO truth 未見 GAENARI 的 eligible T1/T3/T8 issue；但正式 no-signal outcome 必須等 closeout policy 完成，R1 不提前封存成績。
+R1 當時未見 eligible HKO T1/T3/T8 issue；正式 no-signal outcome 現已由 R2 closeout 確認，見下一節。
 
 **B. Risk behaviour — PLAUSIBLE, NOT YET A SKILL CLAIM**
 
@@ -75,7 +76,7 @@ T1 positive state 可以長時間存在而 window 為 null。R1 支持把這種�
 
 **F. Data integrity — PASS WITH EXCLUSIONS**
 
-Stable identity 可連續追蹤 generic → named lifecycle；2 個已知 ambiguous captures 必須保持 excluded。R2 仍需再次核對 evaluator 正式 closeout 沒有重新納入它們。
+Stable identity 可連續追蹤 generic → named lifecycle；2 個已知 ambiguous captures 保持 excluded。R2 closeout 已成功使用 clean derived evidence，沒有重新把這兩個 ambiguous same-case same-capture 納入正式成績。
 
 **G. R1 decision — `OBSERVE MORE`**
 
@@ -86,20 +87,39 @@ GAENARI 不足以建立 v2 candidate。R1 暫不改模型；保留兩個跨案�
 
 只有 NARRA、SAUDEL 或其他獨立 prospective cases 重現同方向系統性偏差，才考慮 shadow v2。
 
+## GAENARI R2 final closeout
+
+R2 status：`COMPLETE — no-signal closeout`
+
+Closeout time：`2026-08-26T14:07:08.628Z`，對應第一個 healthy absent evidence `2026-08-25T14:07:08.628Z` 加 24 小時 inactive grace。
+
+正式 derived outcome：
+
+- **T1 — `transient-false-alarm`**：102 個有效 snapshots 中 70 個為 positive；首次 positive `2026-08-22T13:02:59.101Z`；max risk `0.6100819928`。最後 pre-close 已回到 `unlikely`，risk `0.3496440177`，因此不是 stable false alarm。
+- **T3 — `correct-negative`**：102 個 snapshots、0 個 positive，max risk `0.2377291724`。
+- **T8 — `correct-negative`**：102 個 snapshots、0 個 positive，max risk `0.1213031700`。
+- 三個 signal 都是 `officialOutcome=not-issued`，negative closeout 不套用 A/B/C/D timing grade。
+
+### R2 decision — `OBSERVE MORE`
+
+GAENARI 的 no-signal outcome 已完整結案，但不把它解讀成 v1 已被證明準確：T1 lifecycle 曾長時間維持 positive，而且最後撤回與 source membership / usable horizon 收縮高度同步；timing-left-censoring 與 source-membership sensitivity 仍要由 NARRA、SAUDEL 或其他獨立 prospective cases 驗證。
+
+Evaluator 曾因 closeout 在 raw `awaiting` 之後才套用，令已完成 R2 的 GAENARI 仍顯示 active/pending。此問題屬 derived bookkeeping correctness，不影響 immutable closeout artifacts 或 forecast model；修正記錄為 `EI-03`。
+
 ## Prospective review queue
 
-以下是 R1 之後的自然 case sequence；它們是 review hypotheses，不是預先寫死的 truth labels。
+GAENARI 已完成 R2；以下案例繼續提供 cross-case comparison。它們是 review hypotheses，不是預先寫死的 truth labels。
 
 1. **NARRA — likely no-signal comparison case**
    - 重點不是單看最後有沒有 T1，而是檢查曾經的 T1 risk / window、forecast-edge、post-minimum departure evidence，以及最後撤回是否比 GAENARI 更穩健。
-   - 若最終無 signal，特別適合檢查 false-alarm persistence 及 MS-01 forecast-edge semantics。
+   - 若最終無 signal，特別適合檢查 false-alarm persistence、post-lifecycle delayed withdrawal 及 MS-01 forecast-edge semantics。
 
-2. **SAUDEL — potential signal-positive case**
+2. **SAUDEL — signal / long-horizon withdrawal comparison case**
    - 不預先假設 HKO 必定發 T1/T3；正式 label 只由 HKO truth 決定。
-   - 若出現 eligible T1 / T3，將是 frozen v1 首個高價值 sensitivity / lead-time / timing-window prospective test。
+   - 若出現 eligible T1 / T3，將是 frozen v1 高價值 sensitivity / lead-time / timing-window prospective test；若最終無 signal，則成為 MB-02 long-horizon escalation / withdrawal 的對照案例。
    - 特別追蹤 MB-02：早期 T3 `possible` 是否只是單一 CMA 120h endpoint transient，還是其後 HKO/JMA/CWA 真正收斂；每個 strongest checkpoint 必須使用實際 `supportAgencyCount / totalAgencyCount`。
 
-這三宗 case 可形成第一組互補 prospective sequence：GAENARI 測 withdrawal / source-membership sensitivity，NARRA 測 no-signal false-alarm control / forecast-edge，SAUDEL 則有機會測 signal sensitivity。即使三宗全部完成，也只足以形成初步 cross-case diagnosis，不等於完成模型 calibration。
+這三宗 case 可形成第一組互補 prospective sequence：GAENARI 已提供 transient false-alarm / source-membership evidence，NARRA 測 no-signal false-alarm control / forecast-edge，SAUDEL 則測 long-horizon escalation 最終能否被 truth 或自然 withdrawal 支持。即使三宗全部完成，也只足以形成初步 cross-case diagnosis，不等於完成模型 calibration。
 
 ## Cross-case closeout checklist
 

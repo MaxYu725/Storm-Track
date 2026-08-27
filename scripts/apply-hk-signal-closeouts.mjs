@@ -55,6 +55,39 @@ function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
+function reconcileAwaiting(awaiting, derivedCloseouts) {
+  if (!awaiting || typeof awaiting !== 'object') return awaiting;
+
+  const completedByCase = new Map();
+  for (const item of derivedCloseouts || []) {
+    if (!item?.caseId || !item?.signal) continue;
+    if (!completedByCase.has(item.caseId)) completedByCase.set(item.caseId, new Set());
+    completedByCase.get(item.caseId).add(item.signal);
+  }
+
+  const pendingSignalsByCase = {};
+  const resolvedCaseIds = new Set();
+  for (const [caseId, rawSignals] of Object.entries(awaiting.pendingSignalsByCase || {})) {
+    const signals = Array.isArray(rawSignals) ? rawSignals : [];
+    const completed = completedByCase.get(caseId) || new Set();
+    const pending = signals.filter(signal => !completed.has(signal));
+    if (pending.length) pendingSignalsByCase[caseId] = pending;
+    else resolvedCaseIds.add(caseId);
+  }
+
+  const activeHkoCaseIds = (awaiting.activeHkoCaseIds || [])
+    .filter(caseId => !resolvedCaseIds.has(caseId));
+  const latestPredictions = (awaiting.latestPredictions || [])
+    .filter(item => !resolvedCaseIds.has(item?.caseId));
+
+  return {
+    ...awaiting,
+    activeHkoCaseIds,
+    pendingSignalsByCase,
+    latestPredictions
+  };
+}
+
 const raw = readJson(rawEvaluationFile);
 const caseRegistry = readJson(path.join(prospectiveDir, 'case-registry.json'));
 const caseIndex = readNdjson(path.join(prospectiveDir, 'case-index.ndjson'));
@@ -87,6 +120,7 @@ material.closeoutSummary = {
 };
 material.closeouts = derived.closeouts;
 material.closeoutBlocked = derived.blocked;
+material.awaiting = reconcileAwaiting(material.awaiting, derived.closeouts);
 
 const evaluationFingerprint = sha256(stableJson(material));
 const output = {
