@@ -6,6 +6,7 @@
   'use strict';
 
   const VERSION = 'hk-signal-evidence-coverage/v1';
+  const EFFECTIVE_AT = '2026-08-28T09:01:55.696Z';
   const PROSPECTIVE_MAX_GAP_MINUTES = 60;
   const CHECKPOINT_MAX_AGE_MINUTES = 60;
   const TRUTH_HEALTH_MAX_GAP_MINUTES = 90;
@@ -13,12 +14,14 @@
 
   const POLICY = Object.freeze({
     version: VERSION,
+    effectiveAt: EFFECTIVE_AT,
     prospectiveMaxGapMinutes: PROSPECTIVE_MAX_GAP_MINUTES,
     checkpointMaxAgeMinutes: CHECKPOINT_MAX_AGE_MINUTES,
     truthHealthMaxGapMinutes: TRUTH_HEALTH_MAX_GAP_MINUTES,
     checkpointRule: 'A forecast checkpoint is scoreable only when its selected prospective snapshot is healthy and no older than the checkpoint freshness limit.',
     lifecycleRule: 'Stable-lead and reversal stability are scoreable only across continuous healthy prospective coverage with the case present throughout the claimed interval.',
     noSignalRule: 'A no-signal closeout requires at least 24 hours of overlapping continuous healthy prospective absence and HKO truth polling health; wall-clock time alone never advances absence coverage.',
+    historicalCloseoutRule: 'No-signal closeouts completed before policy effectiveAt remain grandfathered so the new health ledger does not retroactively invalidate already-finalized cases.',
     immutableEvidence: 'Coverage guards only qualify derived evaluation evidence; raw prospective and HKO truth corpora remain immutable.'
   });
 
@@ -400,6 +403,7 @@
 
   return Object.freeze({
     VERSION,
+    EFFECTIVE_AT,
     POLICY,
     PROSPECTIVE_MAX_GAP_MINUTES,
     CHECKPOINT_MAX_AGE_MINUTES,
