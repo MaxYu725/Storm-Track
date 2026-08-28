@@ -31,6 +31,7 @@ function indexFor(records, caseId = 'STC-2026-JMA-TC2622', key = 'NARRA') {
 }
 
 assert.equal(coverage.VERSION, 'hk-signal-evidence-coverage/v1');
+assert.equal(coverage.EFFECTIVE_AT, '2026-08-28T09:01:55.696Z');
 assert.equal(coverage.PROSPECTIVE_MAX_GAP_MINUTES, 60);
 assert.equal(coverage.CHECKPOINT_MAX_AGE_MINUTES, 60);
 assert.equal(coverage.TRUTH_HEALTH_MAX_GAP_MINUTES, 90);
@@ -90,7 +91,8 @@ assert.equal(missingCaseCoverage.complete, false);
 assert.ok(missingCaseCoverage.gaps.some(item => item.reason === 'case-not-present'));
 
 // NARRA-like absence: healthy disappearance at 14:48, recorder runs through 01:25,
-// then has a long evidence gap until 09:01. The gap must reset the absence clock.
+// then has a long evidence gap until 09:01. Every >60m gap must split the absence
+// into a new coverage segment; no segment may bridge across the missing evidence.
 const narraRecords = [
   record('2026-08-27T03:31:15Z', 'n0', { present: true }),
   record('2026-08-27T14:48:05Z', 'n1'),
@@ -110,8 +112,11 @@ const absenceSegments = coverage.continuousProspectiveAbsenceSegments({
   afterAt: '2026-08-27T03:31:15Z',
   asOf: '2026-08-29T09:15:00Z'
 });
-assert.equal(absenceSegments.length >= 2, true);
-assert.equal(absenceSegments.at(-1).startAt, '2026-08-28T09:01:55Z');
+assert.equal(absenceSegments.length >= 3, true);
+assert.ok(absenceSegments.some(item => item.startAt === '2026-08-28T09:01:55Z'), 'known recovery capture must start a fresh absence segment');
+assert.ok(absenceSegments.every(item => !(item.startAt === '2026-08-27T14:48:05Z'
+  && Date.parse(item.endAt) >= Date.parse('2026-08-28T09:01:55Z'))), 'pre-gap absence must never bridge into post-gap recovery evidence');
+assert.equal(absenceSegments.at(-1).startAt, '2026-08-29T08:45:00Z', 'later synthetic 23h gap must also reset continuity');
 
 const truthHealth = [
   { retrievedAt: '2026-08-28T09:05:00Z' },
