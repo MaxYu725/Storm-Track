@@ -2,7 +2,7 @@ name: Record HKO tropical cyclone warning truth
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '1-56/5 * * * *'
   workflow_dispatch:
   push:
     branches:
@@ -116,6 +116,7 @@ jobs:
           stamp="$(date -u -d "$retrieved_at" +'%Y%m%dT%H%M%SZ')"
           short="${fingerprint:0:12}"
           existing="$(jq -r '.captureFingerprint // empty' latest.json 2>/dev/null || true)"
+          health_row="$(jq -c '{schemaVersion:"hko-warning-truth-health/v1",retrievedAt,captureFingerprint,truthFingerprint,sourceCommit}' /tmp/hko-warning-truth.json)"
 
           if [[ "$fingerprint" == "$existing" ]]; then
             existing_retrieved_at="$(jq -r '.retrievedAt // empty' latest.json 2>/dev/null || true)"
@@ -141,10 +142,10 @@ jobs:
               exit 0
             fi
 
-            # Preserve the compact immutable history for semantic changes, but refresh
-            # latest.json periodically so retrievedAt proves that polling is healthy.
+            # Preserve semantic history while recording a compact polling-health ledger.
             cp /tmp/hko-warning-truth.json latest.json
-            git add latest.json
+            printf '%s\n' "$health_row" >> health.ndjson
+            git add latest.json health.ndjson
             if git diff --cached --quiet; then
               echo "HKO_TRUTH_NOOP=true"
               echo "HKO_TRUTH_FINGERPRINT=$fingerprint"
@@ -175,6 +176,7 @@ jobs:
           cp /tmp/hko-warning-truth.json "$destination"
           cp /tmp/hko-warning-truth.json latest.json
           jq -c '{schemaVersion,retrievedAt,captureFingerprint,truthFingerprint,contextFingerprint,sourceCommit,truth,context}' /tmp/hko-warning-truth.json >> index.ndjson
+          printf '%s\n' "$health_row" >> health.ndjson
 
           if [[ "$previous_exists" != true || "$current_state" != "$previous_state" ]]; then
             current_present="$(jq -r '.truth.present' /tmp/hko-warning-truth.json)"
@@ -219,7 +221,7 @@ jobs:
               >> truth-events.ndjson
           fi
 
-          git add "$destination" latest.json index.ndjson
+          git add "$destination" latest.json index.ndjson health.ndjson
           if [[ -f truth-events.ndjson ]]; then git add truth-events.ndjson; fi
           git commit -m "Observe HKO warning truth ${stamp} ${short}"
           git push origin "HEAD:${DATA_BRANCH}"
