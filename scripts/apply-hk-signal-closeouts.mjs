@@ -109,10 +109,25 @@ const derived = closeout.deriveCloseouts({
 const registryByCase = new Map((caseRegistry?.cases || []).map(item => [item.caseId, item]));
 const guardedCloseouts = [];
 const coverageBlocked = [];
+const effectiveMs = Date.parse(coverage.EFFECTIVE_AT);
 
 for (const item of derived.closeouts) {
   if (item.closeoutReason !== 'case-inactive-after-healthy-absence') {
     guardedCloseouts.push(item);
+    continue;
+  }
+
+  const originalClosedMs = Date.parse(item.closedAt || '');
+  if (Number.isFinite(originalClosedMs) && Number.isFinite(effectiveMs) && originalClosedMs < effectiveMs) {
+    guardedCloseouts.push({
+      ...item,
+      evidenceCoveragePolicyVersion: coverage.VERSION,
+      evidenceCoverage: {
+        policyVersion: coverage.VERSION,
+        status: 'grandfathered-pre-policy',
+        effectiveAt: coverage.EFFECTIVE_AT
+      }
+    });
     continue;
   }
 
@@ -136,6 +151,7 @@ for (const item of derived.closeouts) {
       afterAt: stormCase?.lastSeen || null,
       checkedAt: asOf,
       evidenceCoveragePolicyVersion: coverage.VERSION,
+      evidenceCoverageEffectiveAt: coverage.EFFECTIVE_AT,
       prospectiveMaxGapMinutes: coverage.PROSPECTIVE_MAX_GAP_MINUTES,
       truthHealthMaxGapMinutes: coverage.TRUTH_HEALTH_MAX_GAP_MINUTES
     });
@@ -163,6 +179,7 @@ for (const item of derived.closeouts) {
     evidenceCoveragePolicyVersion: coverage.VERSION,
     evidenceCoverage: {
       policyVersion: coverage.VERSION,
+      status: 'covered',
       coverageStartedAt: joint.coverageStartedAt,
       coverageThrough: joint.coverageThrough,
       durationHours: joint.durationHours,
