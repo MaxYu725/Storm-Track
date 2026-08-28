@@ -92,10 +92,44 @@ function reconcileAwaiting(awaiting, derivedCloseouts) {
 const raw = readJson(rawEvaluationFile);
 const caseRegistry = readJson(path.join(prospectiveDir, 'case-registry.json'));
 const caseIndex = readNdjson(path.join(prospectiveDir, 'case-index.ndjson'));
+const prospectiveHealthRecords = readNdjson(path.join(prospectiveDir, 'health.ndjson'));
 const truthEvents = readNdjson(path.join(truthDir, 'truth-events.ndjson'));
 const truthHealthRecords = readNdjson(path.join(truthDir, 'health.ndjson'));
 const records = listJsonFiles(path.join(prospectiveDir, 'observations')).map(readJson);
 const asOf = process.env.CLOSEOUT_AS_OF || new Date().toISOString();
+
+const trustedRecords = records
+  .filter(record => record?.schemaVersion === 'beta-prospective-recorder/v2')
+  .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
+const recordsByFingerprint = new Map(trustedRecords
+  .filter(record => record?.captureFingerprint)
+  .map(record => [record.captureFingerprint, record]));
+
+function buildCoverageRecords() {
+  const rows = [...trustedRecords];
+  for (const heartbeat of prospectiveHealthRecords) {
+    if (heartbeat?.schemaVersion !== 'beta-prospective-health/v1') continue;
+    const base = recordsByFingerprint.get(heartbeat.captureFingerprint) || null;
+    if (!base || !Number.isFinite(Date.parse(heartbeat?.capturedAt || ''))) continue;
+    rows.push({
+      ...base,
+      capturedAt: heartbeat.capturedAt,
+      sourceStates: Array.isArray(heartbeat.sourceStates) ? heartbeat.sourceStates : base.sourceStates,
+      visibleGroupKeys: Array.isArray(heartbeat.visibleGroupKeys) ? heartbeat.visibleGroupKeys : base.visibleGroupKeys,
+      coverageHeartbeat: true
+    });
+  }
+  const deduped = new Map();
+  for (const row of rows) {
+    const rowKey = `${row.capturedAt || ''}\u0000${row.captureFingerprint || ''}`;
+    if (!deduped.has(rowKey) || !row.coverageHeartbeat) deduped.set(rowKey, row);
+  }
+  return [...deduped.values()]
+    .filter(row => Number.isFinite(Date.parse(row?.capturedAt || '')))
+    .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
+}
+
+const coverageRecords = buildCoverageRecords();
 
 const derived = closeout.deriveCloseouts({
   caseRegistry,
@@ -134,7 +168,7 @@ for (const item of derived.closeouts) {
   const stormCase = registryByCase.get(item.caseId) || null;
   const joint = coverage.findJointNoSignalCoverage({
     caseId: item.caseId,
-    records,
+    records: coverageRecords,
     caseIndex,
     truthHealthRecords,
     afterAt: stormCase?.lastSeen || null,
@@ -152,6 +186,8 @@ for (const item of derived.closeouts) {
       checkedAt: asOf,
       evidenceCoveragePolicyVersion: coverage.VERSION,
       evidenceCoverageEffectiveAt: coverage.EFFECTIVE_AT,
+      prospectiveHealthRecordCount: prospectiveHealthRecords.length,
+      truthHealthRecordCount: truthHealthRecords.length,
       prospectiveMaxGapMinutes: coverage.PROSPECTIVE_MAX_GAP_MINUTES,
       truthHealthMaxGapMinutes: coverage.TRUTH_HEALTH_MAX_GAP_MINUTES
     });
