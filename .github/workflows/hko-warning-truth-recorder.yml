@@ -30,6 +30,7 @@ concurrency:
 
 env:
   DATA_BRANCH: data/hko-warning-truth
+  TRUTH_HEARTBEAT_MAX_AGE_SECONDS: 1800
 
 jobs:
   capture:
@@ -110,9 +111,48 @@ jobs:
           fi
 
           fingerprint="$(jq -r '.captureFingerprint' /tmp/hko-warning-truth.json)"
+          retrieved_at="$(jq -r '.retrievedAt' /tmp/hko-warning-truth.json)"
+          source_commit="$(jq -r '.sourceCommit // empty' /tmp/hko-warning-truth.json)"
+          stamp="$(date -u -d "$retrieved_at" +'%Y%m%dT%H%M%SZ')"
+          short="${fingerprint:0:12}"
           existing="$(jq -r '.captureFingerprint // empty' latest.json 2>/dev/null || true)"
+
           if [[ "$fingerprint" == "$existing" ]]; then
-            echo "HKO_TRUTH_NOOP=true"
+            existing_retrieved_at="$(jq -r '.retrievedAt // empty' latest.json 2>/dev/null || true)"
+            existing_source_commit="$(jq -r '.sourceCommit // empty' latest.json 2>/dev/null || true)"
+            refresh_due=true
+
+            if [[ -n "$existing_retrieved_at" ]]; then
+              current_epoch="$(date -u -d "$retrieved_at" +%s)"
+              existing_epoch="$(date -u -d "$existing_retrieved_at" +%s)"
+              age_seconds=$((current_epoch - existing_epoch))
+              if (( age_seconds >= 0 && age_seconds < TRUTH_HEARTBEAT_MAX_AGE_SECONDS )); then
+                refresh_due=false
+              fi
+            fi
+
+            if [[ -n "$source_commit" && "$source_commit" != "$existing_source_commit" ]]; then
+              refresh_due=true
+            fi
+
+            if [[ "$refresh_due" != true ]]; then
+              echo "HKO_TRUTH_NOOP=true"
+              echo "HKO_TRUTH_FINGERPRINT=$fingerprint"
+              exit 0
+            fi
+
+            # Preserve the compact immutable history for semantic changes, but refresh
+            # latest.json periodically so retrievedAt proves that polling is healthy.
+            cp /tmp/hko-warning-truth.json latest.json
+            git add latest.json
+            if git diff --cached --quiet; then
+              echo "HKO_TRUTH_NOOP=true"
+              echo "HKO_TRUTH_FINGERPRINT=$fingerprint"
+              exit 0
+            fi
+            git commit -m "Refresh HKO warning truth heartbeat ${stamp} ${short}"
+            git push origin "HEAD:${DATA_BRANCH}"
+            echo "HKO_TRUTH_HEARTBEAT=true"
             echo "HKO_TRUTH_FINGERPRINT=$fingerprint"
             exit 0
           fi
@@ -124,15 +164,12 @@ jobs:
             previous_truth="$(jq -c '.truth // null' latest.json)"
           fi
 
-          retrieved_at="$(jq -r '.retrievedAt' /tmp/hko-warning-truth.json)"
           truth_fingerprint="$(jq -r '.truthFingerprint' /tmp/hko-warning-truth.json)"
           current_truth="$(jq -c '.truth' /tmp/hko-warning-truth.json)"
           current_state="$(jq -c '{present:(.truth.present==true),code:(.truth.code//null),level:(.truth.level//null),actionCode:(.truth.actionCode//null),issueTime:(.truth.issueTime//null)}' /tmp/hko-warning-truth.json)"
           previous_state="$(jq -c '{present:(.present==true),code:(.code//null),level:(.level//null),actionCode:(.actionCode//null),issueTime:(.issueTime//null)}' <<<"$previous_truth")"
 
           day_path="$(date -u -d "$retrieved_at" +'%Y/%m/%d')"
-          stamp="$(date -u -d "$retrieved_at" +'%Y%m%dT%H%M%SZ')"
-          short="${fingerprint:0:12}"
           destination="observations/${day_path}/${stamp}-${short}.json"
           mkdir -p "$(dirname "$destination")"
           cp /tmp/hko-warning-truth.json "$destination"
