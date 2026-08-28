@@ -92,7 +92,7 @@ jobs:
       - name: Build deterministic evaluation state
         shell: bash
         env:
-          SOURCE_COMMIT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          SOURCE_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           node scripts/evaluate-hk-signal.mjs /tmp/hk-signal-prospective /tmp/hko-warning-truth > /tmp/hk-signal-evaluation-raw.json
