@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const evaluator = require('../analysis/hk-signal-evaluator.js');
+const coverage = require('../analysis/hk-signal-evidence-coverage.js');
 
 const prospectiveDir = path.resolve(process.argv[2] || '');
 const truthDir = path.resolve(process.argv[3] || '');
@@ -83,8 +84,10 @@ const caseRegistry = readJsonIfExists(path.join(prospectiveDir, 'case-registry.j
   cases: []
 });
 const caseIndex = readNdjson(path.join(prospectiveDir, 'case-index.ndjson'));
+const prospectiveHealthRecords = readNdjson(path.join(prospectiveDir, 'health.ndjson'));
 const truthEvents = readNdjson(path.join(truthDir, 'truth-events.ndjson'))
   .sort((a, b) => eventMs(a) - eventMs(b));
+const truthHealthRecords = readNdjson(path.join(truthDir, 'health.ndjson'));
 const latestTruth = readJsonIfExists(path.join(truthDir, 'latest.json'), null);
 
 const observationFiles = listJsonFiles(path.join(prospectiveDir, 'observations'));
@@ -97,6 +100,48 @@ for (const record of records) {
 const trustedRecords = records
   .filter(record => record?.schemaVersion === 'beta-prospective-recorder/v2')
   .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
+const recordsByFingerprint = new Map(trustedRecords
+  .filter(record => record?.captureFingerprint)
+  .map(record => [record.captureFingerprint, record]));
+
+function buildCoverageRecords() {
+  const rows = [...trustedRecords];
+  for (const heartbeat of prospectiveHealthRecords) {
+    if (heartbeat?.schemaVersion !== 'beta-prospective-health/v1') continue;
+    const base = recordsByFingerprint.get(heartbeat.captureFingerprint) || null;
+    if (!base || !Number.isFinite(Date.parse(heartbeat?.capturedAt || ''))) continue;
+    rows.push({
+      ...base,
+      capturedAt: heartbeat.capturedAt,
+      sourceStates: Array.isArray(heartbeat.sourceStates) ? heartbeat.sourceStates : base.sourceStates,
+      visibleGroupKeys: Array.isArray(heartbeat.visibleGroupKeys) ? heartbeat.visibleGroupKeys : base.visibleGroupKeys,
+      coverageHeartbeat: true
+    });
+  }
+  const deduped = new Map();
+  for (const row of rows) {
+    const rowKey = `${row.capturedAt || ''}\u0000${row.captureFingerprint || ''}`;
+    if (!deduped.has(rowKey) || !row.coverageHeartbeat) deduped.set(rowKey, row);
+  }
+  return [...deduped.values()]
+    .filter(row => Number.isFinite(Date.parse(row?.capturedAt || '')))
+    .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
+}
+
+const coverageRecords = buildCoverageRecords();
+
+function latestFingerprintConfirmation(fingerprint, targetAt) {
+  const targetMs = Date.parse(targetAt || '');
+  if (!fingerprint || !Number.isFinite(targetMs)) return null;
+  let selected = null;
+  for (const row of coverageRecords) {
+    if (row.captureFingerprint !== fingerprint) continue;
+    const rowMs = Date.parse(row.capturedAt || '');
+    if (!Number.isFinite(rowMs) || rowMs > targetMs) continue;
+    if (!selected || Date.parse(selected.capturedAt) < rowMs) selected = row;
+  }
+  return selected;
+}
 
 const trustedCaptureFingerprints = new Set(trustedRecords.map(record => record.captureFingerprint).filter(Boolean));
 const caseCaptureRows = new Map();
@@ -154,6 +199,7 @@ function unresolvedEvaluation(signal, event, attribution) {
     schemaVersion: evaluator.VERSION,
     rubricVersion: evaluator.RUBRIC_VERSION,
     eventPolicyVersion: evaluator.EVENT_POLICY_VERSION,
+    evidenceCoveragePolicyVersion: coverage.VERSION,
     status: attribution.status,
     signal,
     caseId: null,
@@ -170,7 +216,121 @@ function unresolvedEvaluation(signal, event, attribution) {
       truthFingerprint: event.truthFingerprint || null
     },
     rubric: evaluator.RUBRIC,
-    eventPolicy: evaluator.EVENT_POLICY
+    eventPolicy: evaluator.EVENT_POLICY,
+    evidenceCoveragePolicy: coverage.POLICY
+  };
+}
+
+function checkpointCoverage(checkpoint) {
+  if (!checkpoint?.snapshot) {
+    return {
+      checkpoint: {
+        ...checkpoint,
+        evidenceCoverage: {
+          complete: false,
+          reason: checkpoint?.status === 'no-snapshot' ? 'no-snapshot' : 'missing-checkpoint-snapshot',
+          semanticSnapshotAt: checkpoint?.snapshot?.capturedAt || null,
+          confirmedAt: null,
+          maxAgeMinutes: coverage.CHECKPOINT_MAX_AGE_MINUTES
+        }
+      },
+      complete: false
+    };
+  }
+  const confirmation = latestFingerprintConfirmation(checkpoint.snapshot.captureFingerprint, checkpoint.targetTime);
+  const assessment = coverage.assessCheckpoint({
+    snapshotAt: confirmation?.capturedAt || checkpoint.snapshot.capturedAt,
+    targetAt: checkpoint.targetTime,
+    healthy: coverage.recordHealthy(confirmation || recordsByFingerprint.get(checkpoint.snapshot.captureFingerprint) || null)
+  });
+  const evidenceCoverage = {
+    ...assessment,
+    semanticSnapshotAt: checkpoint.snapshot.capturedAt,
+    confirmedAt: confirmation?.capturedAt || null
+  };
+  if (assessment.complete) {
+    return {
+      checkpoint: { ...checkpoint, evidenceCoverage },
+      complete: true
+    };
+  }
+  return {
+    checkpoint: {
+      ...checkpoint,
+      status: 'evidence-gap',
+      scoring: null,
+      evidenceCoverage
+    },
+    complete: false
+  };
+}
+
+function applyEvidenceCoverage(item) {
+  if (item?.status !== 'evaluated') return item;
+
+  const checkpointResults = (item.checkpoints || []).map(checkpointCoverage);
+  const checkpoints = checkpointResults.map(result => result.checkpoint);
+  const lifecycleStart = item?.lifecycle?.firstPossibleAt || item?.evidence?.firstSnapshotAt || null;
+  const lifecycleCoverage = lifecycleStart
+    ? coverage.assessCaseInterval({
+      caseId: item.caseId,
+      records: coverageRecords,
+      caseIndex: evaluationCaseIndex,
+      startAt: lifecycleStart,
+      endAt: item.truth.eventTime,
+      requireCasePresent: true
+    })
+    : { complete: false, reason: 'no-lifecycle-start', gaps: [] };
+
+  const finalConfirmation = item?.finalPreEvent?.captureFingerprint
+    ? latestFingerprintConfirmation(item.finalPreEvent.captureFingerprint, item.truth.eventTime)
+    : null;
+  const finalCoverage = item?.finalPreEvent
+    ? {
+      ...coverage.assessCheckpoint({
+        snapshotAt: finalConfirmation?.capturedAt || item.finalPreEvent.capturedAt,
+        targetAt: item.truth.eventTime,
+        healthy: coverage.recordHealthy(finalConfirmation || recordsByFingerprint.get(item.finalPreEvent.captureFingerprint) || null)
+      }),
+      semanticSnapshotAt: item.finalPreEvent.capturedAt,
+      confirmedAt: finalConfirmation?.capturedAt || null
+    }
+    : {
+      complete: false,
+      reason: 'no-final-pre-event-snapshot',
+      snapshotAgeMinutes: null,
+      semanticSnapshotAt: null,
+      confirmedAt: null,
+      maxAgeMinutes: coverage.CHECKPOINT_MAX_AGE_MINUTES
+    };
+
+  const grades = item.grades ? { ...item.grades } : null;
+  if (grades && !lifecycleCoverage.complete) {
+    grades.stableLead = null;
+    grades.stability = null;
+  }
+  if (grades && !finalCoverage.complete) {
+    grades.finalWindowTiming = null;
+    grades.finalWindowPrecision = null;
+  }
+
+  return {
+    ...item,
+    evidenceCoveragePolicyVersion: coverage.VERSION,
+    evidence: {
+      ...(item.evidence || {}),
+      evidenceCoveragePolicyVersion: coverage.VERSION
+    },
+    checkpoints,
+    evidenceCoverage: {
+      policyVersion: coverage.VERSION,
+      checkpointCompleteCount: checkpointResults.filter(result => result.complete).length,
+      checkpointIncompleteCount: checkpointResults.filter(result => !result.complete).length,
+      lifecycle: lifecycleCoverage,
+      finalPreEvent: finalCoverage
+    },
+    grades,
+    evidenceCoveragePolicy: coverage.POLICY
   };
 }
 
@@ -182,13 +342,13 @@ for (const signal of evaluator.SIGNALS) {
       realEvaluations.push(unresolvedEvaluation(signal, event, attribution));
       continue;
     }
-    realEvaluations.push(evaluator.evaluateSignalEvent({
+    realEvaluations.push(applyEvidenceCoverage(evaluator.evaluateSignalEvent({
       signal,
       event,
       timeline: timelines.get(attribution.caseId) || [],
       caseId: attribution.caseId,
       attribution
-    }));
+    })));
   }
 }
 
@@ -210,7 +370,11 @@ for (const higher of realEvaluations.filter(item => item.status === 'evaluated')
     const skipKey = `${higher.caseId}\u0000${lower}`;
     if (skippedKeys.has(skipKey)) continue;
     skippedKeys.add(skipKey);
-    skipped.push(evaluator.skippedLowerSignal({ signal: lower, higherSignalEvaluation: higher }));
+    skipped.push({
+      ...evaluator.skippedLowerSignal({ signal: lower, higherSignalEvaluation: higher }),
+      evidenceCoveragePolicyVersion: coverage.VERSION,
+      evidenceCoveragePolicy: coverage.POLICY
+    });
   }
 }
 
@@ -280,26 +444,46 @@ const awaiting = {
 const signalEventCounts = Object.fromEntries(evaluator.SIGNALS.map(signal => [signal, signalEvents[signal].length]));
 const hasTruthEvents = Object.values(signalEventCounts).some(count => count > 0);
 const hasEvaluated = evaluations.some(item => item.status === 'evaluated');
+const prospectiveGapSummary = coverage.summarizeProspectiveGaps(coverageRecords);
+const latestProspectiveHealth = prospectiveHealthRecords
+  .filter(item => Number.isFinite(Date.parse(item?.capturedAt || '')))
+  .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt))
+  .at(-1) || null;
+const latestTruthHealth = truthHealthRecords
+  .filter(item => Number.isFinite(Date.parse(item?.retrievedAt || '')))
+  .sort((a, b) => Date.parse(a.retrievedAt) - Date.parse(b.retrievedAt))
+  .at(-1) || null;
+
 const material = {
   schemaVersion: evaluator.VERSION,
   rubricVersion: evaluator.RUBRIC_VERSION,
   eventPolicyVersion: evaluator.EVENT_POLICY_VERSION,
+  evidenceCoveragePolicyVersion: coverage.VERSION,
   rubric: evaluator.RUBRIC,
   eventPolicy: evaluator.EVENT_POLICY,
+  evidenceCoveragePolicy: coverage.POLICY,
   prospective: {
     caseIdentitySchemaVersion: caseRegistry.schemaVersion || null,
     reconciledThrough: caseRegistry.reconciledThrough || null,
     trustedRecorderSchema: 'beta-prospective-recorder/v2',
     trustedRecordCount: trustedRecords.length,
+    healthRecordCount: prospectiveHealthRecords.length,
+    latestHealthCapturedAt: latestProspectiveHealth?.capturedAt || null,
     recorderSchemaCounts,
     excludedRecordCount: records.length - trustedRecords.length,
     excludedAmbiguousCaseCaptureCount: ambiguousCaseCaptures.length,
     excludedAmbiguousCaseCaptures: ambiguousCaseCaptures.map(({ captureKey, ...item }) => item),
+    coverageRecordCount: coverageRecords.length,
+    coverageGapCount: prospectiveGapSummary.gapCount,
+    coverageGaps: prospectiveGapSummary.gaps,
+    coverageMaxGapMinutes: prospectiveGapSummary.maxGapMinutes,
     caseCount: caseRegistry.caseCount || caseRegistry.cases?.length || 0
   },
   hkoTruth: {
     latestRetrievedAt: latestTruth?.retrievedAt || null,
     latestTruthFingerprint: latestTruth?.truthFingerprint || null,
+    healthRecordCount: truthHealthRecords.length,
+    latestHealthRetrievedAt: latestTruthHealth?.retrievedAt || null,
     eventCount: truthEvents.length,
     initialTc1IssueCount: signalEvents.T1.length,
     signalEventCounts

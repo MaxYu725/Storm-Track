@@ -2,7 +2,7 @@ name: Record HK signal Beta prospective snapshots
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '7-52/15 * * * *'
   workflow_dispatch:
   push:
     branches:
@@ -37,6 +37,7 @@ concurrency:
 env:
   DATA_BRANCH: data/beta-prospective-observations
   PRODUCTION_BETA_URL: https://maxyu725.github.io/Storm-Track/?beta=hk-signal
+  PROSPECTIVE_HEARTBEAT_MAX_AGE_SECONDS: 1800
 
 jobs:
   capture:
@@ -154,13 +155,18 @@ jobs:
           fi
 
           fingerprint="$(jq -r '.captureFingerprint' /tmp/beta-prospective.json)"
+          captured_at="$(jq -r '.capturedAt' /tmp/beta-prospective.json)"
+          source_commit="$(jq -r '.sourceCommit // empty' /tmp/beta-prospective.json)"
           existing="$(jq -r '.captureFingerprint // empty' latest.json 2>/dev/null || true)"
+          existing_captured_at="$(jq -r '.capturedAt // empty' latest.json 2>/dev/null || true)"
+          existing_source_commit="$(jq -r '.sourceCommit // empty' latest.json 2>/dev/null || true)"
+          health_row="$(jq -c '{schemaVersion:"beta-prospective-health/v1",capturedAt,captureFingerprint,sourceCommit,sourceStates,visibleGroupKeys}' /tmp/beta-prospective.json)"
           stored=false
+          heartbeat=false
           stamp="identity"
           short="${fingerprint:0:12}"
 
           if [[ "$fingerprint" != "$existing" ]]; then
-            captured_at="$(jq -r '.capturedAt' /tmp/beta-prospective.json)"
             day_path="$(date -u -d "$captured_at" +'%Y/%m/%d')"
             stamp="$(date -u -d "$captured_at" +'%Y%m%dT%H%M%SZ')"
             destination="observations/${day_path}/${stamp}-${short}.json"
@@ -168,13 +174,33 @@ jobs:
             cp /tmp/beta-prospective.json "$destination"
             cp /tmp/beta-prospective.json latest.json
             jq -c '{schemaVersion,capturedAt,captureFingerprint,sourceCommit,sourceStates,visibleGroupKeys,discardedStaleObservationKeys,observationCount,groups:[.observations[]|{key:.group.key,displayName:.group.displayName,sourceAgencies:.sourceAgencies,engineVersions:.engineVersions,generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T8:.analysis.basicForecast.signals.T8.likelihood,disagreement:.analysis.threatAssessment.analyzers.agencyDisagreement.confidence}]}' /tmp/beta-prospective.json >> index.ndjson
+            printf '%s\n' "$health_row" >> health.ndjson
             stored=true
+          else
+            refresh_due=true
+            if [[ -n "$existing_captured_at" ]]; then
+              current_epoch="$(date -u -d "$captured_at" +%s)"
+              existing_epoch="$(date -u -d "$existing_captured_at" +%s)"
+              age_seconds=$((current_epoch - existing_epoch))
+              if (( age_seconds >= 0 && age_seconds < PROSPECTIVE_HEARTBEAT_MAX_AGE_SECONDS )); then
+                refresh_due=false
+              fi
+            fi
+            if [[ -n "$source_commit" && "$source_commit" != "$existing_source_commit" ]]; then
+              refresh_due=true
+            fi
+            if [[ "$refresh_due" == true ]]; then
+              cp /tmp/beta-prospective.json latest.json
+              printf '%s\n' "$health_row" >> health.ndjson
+              stamp="$(date -u -d "$captured_at" +'%Y%m%dT%H%M%SZ')"
+              heartbeat=true
+            fi
           fi
 
           node /tmp/beta-case-runtime/scripts/reconcile-beta-case-identities.mjs . > /tmp/beta-case-reconcile.json
           jq '{schemaVersion,reconciledThrough,recordCount,caseCount,cases}' /tmp/beta-case-reconcile.json
 
-          git add -A observations latest.json index.ndjson case-registry.json case-index.ndjson 2>/dev/null || true
+          git add -A observations latest.json index.ndjson health.ndjson case-registry.json case-index.ndjson 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "BETA_PROSPECTIVE_NOOP=true"
             echo "BETA_PROSPECTIVE_FINGERPRINT=$fingerprint"
@@ -183,9 +209,12 @@ jobs:
 
           if [[ "$stored" == "true" ]]; then
             git commit -m "Observe HK signal Beta ${stamp} ${short}"
+          elif [[ "$heartbeat" == "true" ]]; then
+            git commit -m "Refresh HK signal Beta heartbeat ${stamp} ${short}"
           else
             git commit -m "Reconcile HK signal Beta storm case identities"
           fi
           git push origin "HEAD:${DATA_BRANCH}"
           echo "BETA_PROSPECTIVE_STORED=$stored"
+          echo "BETA_PROSPECTIVE_HEARTBEAT=$heartbeat"
           echo "BETA_PROSPECTIVE_FINGERPRINT=$fingerprint"

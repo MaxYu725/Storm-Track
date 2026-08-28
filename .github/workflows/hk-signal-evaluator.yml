@@ -2,7 +2,7 @@ name: Evaluate HK signal Beta against HKO truth
 
 on:
   schedule:
-    - cron: '2-57/5 * * * *'
+    - cron: '4-59/5 * * * *'
   workflow_dispatch:
   workflow_run:
     workflows:
@@ -16,11 +16,14 @@ on:
     paths:
       - analysis/hk-signal-evaluator.js
       - analysis/hk-signal-closeout.js
+      - analysis/hk-signal-evidence-coverage.js
       - scripts/evaluate-hk-signal.mjs
       - scripts/apply-hk-signal-closeouts.mjs
       - tests/hk-signal-evaluator.test.cjs
       - tests/hk-signal-closeout.test.cjs
       - tests/hk-signal-ambiguous-case-capture.test.cjs
+      - tests/hk-signal-evidence-coverage.test.cjs
+      - tests/hk-signal-closeout-evidence-coverage.test.mjs
       - .github/workflows/hk-signal-evaluator.yml
   pull_request:
     branches:
@@ -28,11 +31,14 @@ on:
     paths:
       - analysis/hk-signal-evaluator.js
       - analysis/hk-signal-closeout.js
+      - analysis/hk-signal-evidence-coverage.js
       - scripts/evaluate-hk-signal.mjs
       - scripts/apply-hk-signal-closeouts.mjs
       - tests/hk-signal-evaluator.test.cjs
       - tests/hk-signal-closeout.test.cjs
       - tests/hk-signal-ambiguous-case-capture.test.cjs
+      - tests/hk-signal-evidence-coverage.test.cjs
+      - tests/hk-signal-closeout-evidence-coverage.test.mjs
       - .github/workflows/hk-signal-evaluator.yml
 
 permissions:
@@ -71,11 +77,14 @@ jobs:
           set -euo pipefail
           node --check analysis/hk-signal-evaluator.js
           node --check analysis/hk-signal-closeout.js
+          node --check analysis/hk-signal-evidence-coverage.js
           node --check scripts/evaluate-hk-signal.mjs
           node --check scripts/apply-hk-signal-closeouts.mjs
           node tests/hk-signal-evaluator.test.cjs
           node tests/hk-signal-closeout.test.cjs
           node tests/hk-signal-ambiguous-case-capture.test.cjs
+          node tests/hk-signal-evidence-coverage.test.cjs
+          node tests/hk-signal-closeout-evidence-coverage.test.mjs
 
       - name: Load immutable prospective and HKO truth corpora
         shell: bash
@@ -108,25 +117,36 @@ jobs:
             .schemaVersion == "hk-signal-evaluator/v2" and
             .rubricVersion == "hk-signal-validation-rubric/v1" and
             .eventPolicyVersion == "hk-signal-event-policy/v1" and
+            .evidenceCoveragePolicyVersion == "hk-signal-evidence-coverage/v1" and
             .closeoutPolicyVersion == "hk-signal-closeout-policy/v1" and
             (.evaluationFingerprint | test("^[0-9a-f]{64}$")) and
             (.rubric.checkpointHours == [48,24,12,6,3]) and
             (.eventPolicy.version == "hk-signal-event-policy/v1") and
+            (.evidenceCoveragePolicy.version == "hk-signal-evidence-coverage/v1") and
+            (.evidenceCoveragePolicy.effectiveAt | type == "string") and
+            (.evidenceCoveragePolicy.prospectiveMaxGapMinutes == 60) and
+            (.evidenceCoveragePolicy.checkpointMaxAgeMinutes == 60) and
+            (.evidenceCoveragePolicy.truthHealthMaxGapMinutes == 90) and
             (.closeoutPolicy.version == "hk-signal-closeout-policy/v1") and
             (.closeoutPolicy.inactiveGraceHours == 24) and
             (.status == "awaiting-tc1" or .status == "evaluated" or .status == "truth-unresolved") and
             (.prospective.trustedRecorderSchema == "beta-prospective-recorder/v2") and
+            (.prospective.coverageGapCount | type == "number") and
+            (.prospective.coverageGaps | type == "array") and
             (.prospective.excludedAmbiguousCaseCaptureCount | type == "number") and
             (.prospective.excludedAmbiguousCaseCaptures | type == "array") and
             (all(.prospective.excludedAmbiguousCaseCaptures[]; (.caseId | type == "string") and (.captureFingerprint | type == "string") and (.rawGroupKeys | type == "array"))) and
+            (.hkoTruth.healthRecordCount | type == "number") and
             (.hkoTruth.signalEventCounts | has("T1") and has("T3") and has("T8")) and
             (.evaluations | type == "array") and
             (.closeouts | type == "array") and
             (.closeoutBlocked | type == "array") and
             (all(.evaluations[]; (.signal == "T1" or .signal == "T3" or .signal == "T8"))) and
+            (all(.evaluations[] | select(.status == "evaluated"); .evidenceCoveragePolicyVersion == "hk-signal-evidence-coverage/v1" and (.evidenceCoverage | type == "object"))) and
+            (all(.evaluations[] | select(.status == "evaluated") | .checkpoints[]; (.status == "scored" or .status == "no-snapshot" or .status == "evidence-gap"))) and
             (all(.closeouts[]; .status == "not-issued" and .officialOutcome == "not-issued" and .rubricGradeApplied == false and (.timingGrade == null)))
           ' /tmp/hk-signal-evaluation.json >/dev/null
-          jq '{generatedAt,evaluationFingerprint,status,rubricVersion,eventPolicyVersion,closeoutPolicyVersion,prospective,hkoTruth,awaiting,closeoutSummary,closeouts:[.closeouts[]|{caseId,signal,closedAt,closeoutReason,forecastOutcome}],closeoutBlocked,evaluations:[.evaluations[]|{status,signal,caseId,attribution,truth,lifecycle,grades}]}' /tmp/hk-signal-evaluation.json
+          jq '{generatedAt,evaluationFingerprint,status,rubricVersion,eventPolicyVersion,evidenceCoveragePolicyVersion,closeoutPolicyVersion,prospective,hkoTruth,awaiting,closeoutSummary,closeouts:[.closeouts[]|{caseId,signal,closedAt,closeoutReason,forecastOutcome,evidenceCoverage}],closeoutBlocked,evaluations:[.evaluations[]|{status,signal,caseId,attribution,truth,lifecycle,evidenceCoverage,grades}]}' /tmp/hk-signal-evaluation.json
 
       - name: Check branch whitespace
         if: github.event_name == 'pull_request'
@@ -157,7 +177,7 @@ jobs:
           fi
 
           cp /tmp/hk-signal-evaluation.json latest.json
-          jq -c '{schemaVersion,generatedAt,evaluationFingerprint,sourceCommit,status,rubricVersion,eventPolicyVersion,closeoutPolicyVersion,prospective,hkoTruth,awaiting:{status:.awaiting.status,activeHkoCaseIds:.awaiting.activeHkoCaseIds,pendingSignalsByCase:.awaiting.pendingSignalsByCase},closeoutSummary,closeouts:[.closeouts[]|{caseId,signal,closedAt,closeoutReason,forecastOutcome}],evaluations:[.evaluations[]|{status,signal,caseId,truth,grades,lifecycle}]}' /tmp/hk-signal-evaluation.json >> index.ndjson
+          jq -c '{schemaVersion,generatedAt,evaluationFingerprint,sourceCommit,status,rubricVersion,eventPolicyVersion,evidenceCoveragePolicyVersion,closeoutPolicyVersion,prospective,hkoTruth,awaiting:{status:.awaiting.status,activeHkoCaseIds:.awaiting.activeHkoCaseIds,pendingSignalsByCase:.awaiting.pendingSignalsByCase},closeoutSummary,closeouts:[.closeouts[]|{caseId,signal,closedAt,closeoutReason,forecastOutcome,evidenceCoverage}],evaluations:[.evaluations[]|{status,signal,caseId,truth,grades,lifecycle,evidenceCoverage}]}' /tmp/hk-signal-evaluation.json >> index.ndjson
 
           while IFS= read -r evaluation; do
             case_id="$(jq -r '.caseId' <<<"$evaluation")"
