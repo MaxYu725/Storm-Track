@@ -130,6 +130,13 @@
     const specificNameConflict = features.names.length > 0 && stormCase.names.length > 0 && nameOverlap === 0;
     const continuity = continuityMetrics(features, stormCase);
 
+    // A formal cyclone name is a stronger identity boundary than a recycled or
+    // previously mis-attributed agency source ID. Generic -> named transitions
+    // remain allowed because the pre-name case has no specific names yet.
+    if (specificNameConflict) {
+      return { matched: false, reason: 'specific-name-conflict', score: -Infinity, ...continuity };
+    }
+
     if (sourceOverlap > 0) {
       return {
         matched: true,
@@ -140,7 +147,6 @@
     }
 
     if (conflict) return { matched: false, reason: 'agency-source-id-conflict', score: -Infinity, ...continuity };
-    if (specificNameConflict) return { matched: false, reason: 'specific-name-conflict', score: -Infinity, ...continuity };
 
     if (nameOverlap > 0 && continuity.gapHours <= MAX_NAME_GAP_HOURS) {
       return {
