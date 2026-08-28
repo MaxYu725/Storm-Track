@@ -139,4 +139,37 @@ const namedConflict = identity.reconcileProspectiveRecords([
 assert.equal(namedConflict.caseCount, 2, 'different formal names must remain separate despite close positions');
 assert.equal(namedConflict.index[1].resolution.reason, 'new-case');
 
+// A source ID may be stale, mis-attributed, or later reused by another storm. Once both cases
+// have conflicting formal names, the shared source token must not override that identity boundary.
+const recycledSourceId = identity.reconcileProspectiveRecords([
+  record('2026-08-27T03:31:15Z', 'narra-final', [
+    observation('NARRA', '紫檀', 'NARRA', {
+      HKO: source('HKO', '2629', '2026-08-27T03:00:00Z', 22.0, 111.0),
+      CWA: source('CWA', '2026-21', '2026-08-27T03:00:00Z', 22.1, 111.1),
+      JMA: source('JMA', 'TC2622', '2026-08-27T03:00:00Z', 22.0, 111.0)
+    }),
+    observation('TC2625', '熱帶低氣壓', 'TC2625', {
+      JMA: source('JMA', 'TC2625', '2026-08-27T03:00:00Z', 20.7, 168.1)
+    })
+  ]),
+  record('2026-08-27T14:48:05Z', 'etau-named', [
+    observation('ETAU', '艾陶', 'ETAU', {
+      CMA: source('CMA', '3319901', '2026-08-27T14:00:00Z', 21.0, 168.0),
+      CWA: source('CWA', '2026-21', '2026-08-27T14:00:00Z', 21.1, 168.1),
+      JMA: source('JMA', 'TC2625', '2026-08-27T14:00:00Z', 21.0, 168.0)
+    })
+  ])
+]);
+const recycledNarra = recycledSourceId.cases.find(item => item.caseId === 'STC-2026-JMA-TC2622');
+const recycledEtau = recycledSourceId.cases.find(item => item.caseId === 'STC-2026-JMA-TC2625');
+assert.ok(recycledNarra, 'NARRA case must remain present');
+assert.ok(recycledEtau, 'ETAU must attach to the pre-existing TC2625 case');
+assert.equal(recycledNarra.names.includes('ETAU'), false, 'recycled CWA source ID must not contaminate NARRA');
+assert.equal(recycledEtau.names.includes('ETAU'), true, 'ETAU formal name must stay with TC2625');
+assert.equal(
+  recycledSourceId.index.find(item => item.rawGroupKey === 'ETAU').caseId,
+  'STC-2026-JMA-TC2625',
+  'ETAU must resolve by TC2625 identity even if a stale CWA token overlaps NARRA'
+);
+
 console.log('storm case identity tests: OK');
