@@ -1,6 +1,12 @@
 name: Probe HKO warning history
 
 on:
+  push:
+    branches:
+      - fix/hko-truth-gap-history-audit
+    paths:
+      - scripts/probe-hko-warning-history.mjs
+      - .github/workflows/hko-warning-history-probe.yml
   pull_request:
     branches:
       - main
