@@ -16,19 +16,20 @@ const response = await fetch(url, {
 const text = await response.text();
 if (!response.ok) throw new Error(`HKO warning history HTTP ${response.status}`);
 
-const normalized = text
-  .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-  .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
-  .replace(/\s+/g, ' ');
+const scriptTags = [...text.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].map(match => {
+  const attrs = match[1] || '';
+  const src = attrs.match(/\bsrc=["']([^"']+)["']/i)?.[1] || null;
+  const inline = (match[2] || '').replace(/\s+/g, ' ').trim();
+  return { src, inline: inline.slice(0, 5000) };
+});
+const relevantHtml = [...text.matchAll(/.{0,500}(?:warningsearch|result_content|selType|startdate|enddate).{0,1500}/gis)]
+  .map(match => match[0].replace(/\s+/g, ' ').slice(0, 2500));
 
 console.log(JSON.stringify({
   requestedUrl: url.toString(),
   status: response.status,
   contentType: response.headers.get('content-type'),
   bytes: Buffer.byteLength(text),
-  has2026: /2026/.test(text),
-  hasNo1: /(?:No\.?\s*1|Signal\s*No\.?\s*1|Standby)/i.test(text),
-  tableCount: (text.match(/<table\b/gi) || []).length,
-  rowCount: (text.match(/<tr\b/gi) || []).length,
-  sample: normalized.slice(0, 18000)
+  scriptTags,
+  relevantHtml
 }, null, 2));
