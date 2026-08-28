@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const closeout = require('../analysis/hk-signal-closeout.js');
+const coverage = require('../analysis/hk-signal-evidence-coverage.js');
 
 const rawEvaluationFile = path.resolve(process.argv[2] || '');
 const prospectiveDir = path.resolve(process.argv[3] || '');
@@ -92,6 +93,7 @@ const raw = readJson(rawEvaluationFile);
 const caseRegistry = readJson(path.join(prospectiveDir, 'case-registry.json'));
 const caseIndex = readNdjson(path.join(prospectiveDir, 'case-index.ndjson'));
 const truthEvents = readNdjson(path.join(truthDir, 'truth-events.ndjson'));
+const truthHealthRecords = readNdjson(path.join(truthDir, 'health.ndjson'));
 const records = listJsonFiles(path.join(prospectiveDir, 'observations')).map(readJson);
 const asOf = process.env.CLOSEOUT_AS_OF || new Date().toISOString();
 
@@ -104,23 +106,101 @@ const derived = closeout.deriveCloseouts({
   asOf
 });
 
+const registryByCase = new Map((caseRegistry?.cases || []).map(item => [item.caseId, item]));
+const guardedCloseouts = [];
+const coverageBlocked = [];
+
+for (const item of derived.closeouts) {
+  if (item.closeoutReason !== 'case-inactive-after-healthy-absence') {
+    guardedCloseouts.push(item);
+    continue;
+  }
+
+  const stormCase = registryByCase.get(item.caseId) || null;
+  const joint = coverage.findJointNoSignalCoverage({
+    caseId: item.caseId,
+    records,
+    caseIndex,
+    truthHealthRecords,
+    afterAt: stormCase?.lastSeen || null,
+    asOf,
+    durationHours: closeout.INACTIVE_GRACE_HOURS
+  });
+
+  if (!joint.complete) {
+    coverageBlocked.push({
+      caseId: item.caseId,
+      signal: item.signal,
+      reason: 'evidence-coverage-incomplete',
+      detail: joint.reason,
+      afterAt: stormCase?.lastSeen || null,
+      checkedAt: asOf,
+      evidenceCoveragePolicyVersion: coverage.VERSION,
+      prospectiveMaxGapMinutes: coverage.PROSPECTIVE_MAX_GAP_MINUTES,
+      truthHealthMaxGapMinutes: coverage.TRUTH_HEALTH_MAX_GAP_MINUTES
+    });
+    continue;
+  }
+
+  if (Date.parse(joint.closedAt) > Date.parse(asOf)) {
+    coverageBlocked.push({
+      caseId: item.caseId,
+      signal: item.signal,
+      reason: 'evidence-coverage-grace-pending',
+      afterAt: stormCase?.lastSeen || null,
+      coverageStartedAt: joint.coverageStartedAt,
+      projectedCloseAt: joint.closedAt,
+      checkedAt: asOf,
+      evidenceCoveragePolicyVersion: coverage.VERSION
+    });
+    continue;
+  }
+
+  guardedCloseouts.push({
+    ...item,
+    closedAt: joint.closedAt,
+    evidenceAt: joint.evidenceAt,
+    evidenceCoveragePolicyVersion: coverage.VERSION,
+    evidenceCoverage: {
+      policyVersion: coverage.VERSION,
+      coverageStartedAt: joint.coverageStartedAt,
+      coverageThrough: joint.coverageThrough,
+      durationHours: joint.durationHours,
+      prospectiveMaxGapMinutes: joint.prospectiveMaxGapMinutes,
+      truthMaxGapMinutes: joint.truthMaxGapMinutes,
+      prospectiveSegment: joint.prospectiveSegment,
+      truthSegment: joint.truthSegment
+    }
+  });
+}
+
+guardedCloseouts.sort((a, b) => Date.parse(a.closedAt) - Date.parse(b.closedAt)
+  || a.caseId.localeCompare(b.caseId)
+  || a.signal.localeCompare(b.signal));
+const guardedBlocked = [...derived.blocked, ...coverageBlocked].sort((a, b) =>
+  String(a.caseId || '').localeCompare(String(b.caseId || ''))
+  || String(a.signal || '').localeCompare(String(b.signal || ''))
+  || String(a.reason || '').localeCompare(String(b.reason || '')));
+
 const material = structuredClone(raw);
 delete material.generatedAt;
 delete material.sourceCommit;
 delete material.evaluationFingerprint;
+material.evidenceCoveragePolicyVersion = coverage.VERSION;
+material.evidenceCoveragePolicy = coverage.POLICY;
 material.closeoutPolicyVersion = closeout.POLICY_VERSION;
 material.closeoutPolicy = closeout.POLICY;
 material.closeoutSummary = {
-  closeoutCount: derived.closeouts.length,
-  blockedCount: derived.blocked.length,
-  classifications: derived.closeouts.reduce((counts, item) => {
+  closeoutCount: guardedCloseouts.length,
+  blockedCount: guardedBlocked.length,
+  classifications: guardedCloseouts.reduce((counts, item) => {
     counts[item.forecastOutcome] = (counts[item.forecastOutcome] || 0) + 1;
     return counts;
   }, {})
 };
-material.closeouts = derived.closeouts;
-material.closeoutBlocked = derived.blocked;
-material.awaiting = reconcileAwaiting(material.awaiting, derived.closeouts);
+material.closeouts = guardedCloseouts;
+material.closeoutBlocked = guardedBlocked;
+material.awaiting = reconcileAwaiting(material.awaiting, guardedCloseouts);
 
 const evaluationFingerprint = sha256(stableJson(material));
 const output = {
