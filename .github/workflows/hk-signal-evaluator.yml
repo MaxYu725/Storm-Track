@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '2-57/5 * * * *'
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Record HK signal Beta prospective snapshots
+      - Record HKO tropical cyclone warning truth
+    types:
+      - completed
   push:
     branches:
       - main
@@ -43,6 +49,12 @@ env:
 
 jobs:
   evaluate:
+    if: >-
+      ${{
+        github.event_name != 'workflow_run' ||
+        (github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.head_branch == 'main')
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -80,7 +92,7 @@ jobs:
       - name: Build deterministic evaluation state
         shell: bash
         env:
-          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_COMMIT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
           node scripts/evaluate-hk-signal.mjs /tmp/hk-signal-prospective /tmp/hko-warning-truth > /tmp/hk-signal-evaluation-raw.json
