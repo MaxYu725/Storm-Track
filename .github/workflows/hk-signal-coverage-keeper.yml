@@ -21,10 +21,6 @@ permissions:
   contents: read
   actions: write
 
-concurrency:
-  group: hk-signal-coverage-keeper
-  cancel-in-progress: true
-
 jobs:
   validate:
     if: github.event_name == 'pull_request'
@@ -44,12 +40,14 @@ jobs:
             COVERAGE_KEEPER_ONCE=true \
             COVERAGE_KEEPER_INTERVAL_SECONDS=300 \
             COVERAGE_KEEPER_SESSION_SECONDS=300 \
+            COVERAGE_KEEPER_EVALUATOR_DELAY_SECONDS=90 \
             COVERAGE_KEEPER_REF=main \
             bash scripts/hk-signal-coverage-keeper.sh
           )"
           printf '%s\n' "$output"
           grep -F 'hko-warning-truth-recorder.yml' <<<"$output" >/dev/null
           grep -F 'beta-prospective-recorder.yml' <<<"$output" >/dev/null
+          grep -F 'hk-signal-evaluator.yml' <<<"$output" >/dev/null
           grep -F 'coverage keeper one-shot complete' <<<"$output" >/dev/null
           git diff --check origin/main...HEAD
 
@@ -57,13 +55,17 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 320
+    concurrency:
+      group: hk-signal-coverage-keeper-production
+      cancel-in-progress: true
     env:
       GH_TOKEN: ${{ github.token }}
       COVERAGE_KEEPER_REF: main
       COVERAGE_KEEPER_INTERVAL_SECONDS: 300
       COVERAGE_KEEPER_SESSION_SECONDS: 18000
+      COVERAGE_KEEPER_EVALUATOR_DELAY_SECONDS: 90
     steps:
       - uses: actions/checkout@v6
-      - name: Maintain truth and prospective recorder coverage
+      - name: Maintain truth, prospective, and evaluator coverage
         shell: bash
         run: bash scripts/hk-signal-coverage-keeper.sh
