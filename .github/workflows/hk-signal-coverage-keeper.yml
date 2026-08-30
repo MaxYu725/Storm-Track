@@ -1,0 +1,67 @@
+name: Keep HK signal validation coverage healthy
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - scripts/hk-signal-coverage-keeper.sh
+      - .github/workflows/hk-signal-coverage-keeper.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/hk-signal-coverage-keeper.sh
+      - .github/workflows/hk-signal-coverage-keeper.yml
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: hk-signal-coverage-keeper
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate coverage keeper dispatcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/hk-signal-coverage-keeper.sh
+          output="$(
+            COVERAGE_KEEPER_DRY_RUN=true \
+            COVERAGE_KEEPER_ONCE=true \
+            COVERAGE_KEEPER_INTERVAL_SECONDS=300 \
+            COVERAGE_KEEPER_SESSION_SECONDS=300 \
+            COVERAGE_KEEPER_REF=main \
+            bash scripts/hk-signal-coverage-keeper.sh
+          )"
+          printf '%s\n' "$output"
+          grep -F 'hko-warning-truth-recorder.yml' <<<"$output" >/dev/null
+          grep -F 'beta-prospective-recorder.yml' <<<"$output" >/dev/null
+          grep -F 'coverage keeper one-shot complete' <<<"$output" >/dev/null
+          git diff --check origin/main...HEAD
+
+  keep-coverage:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 320
+    env:
+      GH_TOKEN: ${{ github.token }}
+      COVERAGE_KEEPER_REF: main
+      COVERAGE_KEEPER_INTERVAL_SECONDS: 300
+      COVERAGE_KEEPER_SESSION_SECONDS: 18000
+    steps:
+      - uses: actions/checkout@v6
+      - name: Maintain truth and prospective recorder coverage
+        shell: bash
+        run: bash scripts/hk-signal-coverage-keeper.sh
