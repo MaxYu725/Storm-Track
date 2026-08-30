@@ -4,6 +4,7 @@ set -euo pipefail
 INTERVAL_SECONDS="${COVERAGE_KEEPER_INTERVAL_SECONDS:-300}"
 SESSION_SECONDS="${COVERAGE_KEEPER_SESSION_SECONDS:-18000}"
 DRY_RUN="${COVERAGE_KEEPER_DRY_RUN:-false}"
+ONCE="${COVERAGE_KEEPER_ONCE:-false}"
 REPO="${GITHUB_REPOSITORY:-MaxYu725/Storm-Track}"
 REF="${COVERAGE_KEEPER_REF:-main}"
 API_URL="${GITHUB_API_URL:-https://api.github.com}"
@@ -72,6 +73,11 @@ while true; do
   # Beta prospective is intentionally lower-frequency: every third 5-minute tick.
   if (( iteration % 3 == 0 )); then
     workflow_dispatch 'beta-prospective-recorder.yml' 'Beta prospective recorder'
+  fi
+
+  if [[ "$ONCE" == "true" ]]; then
+    echo "coverage keeper one-shot complete"
+    break
   fi
 
   iteration=$((iteration + 1))
