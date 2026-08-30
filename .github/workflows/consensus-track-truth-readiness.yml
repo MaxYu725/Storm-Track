@@ -1,0 +1,139 @@
+name: Consensus Track truth readiness audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/audit-consensus-track-truth-readiness.mjs
+      - tests/consensus-track-truth-readiness.test.mjs
+      - docs/CONSENSUS_TRACK_TRUTH_READINESS.md
+      - README.md
+      - .github/workflows/consensus-track-truth-readiness.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout implementation
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run deterministic regression
+        run: |
+          set -euo pipefail
+          node --check scripts/audit-consensus-track-truth-readiness.mjs
+          node tests/consensus-track-truth-readiness.test.mjs
+
+      - name: Checkout CT prospective evidence
+        uses: actions/checkout@v6
+        with:
+          ref: data/consensus-track-prospective-observations
+          path: _ct_data
+          fetch-depth: 1
+
+      - name: Checkout agency baseline evidence
+        uses: actions/checkout@v6
+        with:
+          ref: data/agency-baseline-prospective-observations
+          path: _baseline_data
+          fetch-depth: 1
+
+      - name: Fetch official JMA final position tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/jma-final
+          mapfile -t years < <(jq -r '.cases[]?.firstSeen // empty | .[0:4]' _ct_data/case-registry.json | grep -E '^[0-9]{4}$' | sort -u)
+          test "${#years[@]}" -gt 0
+          for year in "${years[@]}"; do
+            url="https://www.data.jma.go.jp/typhoon/position_table/table${year}.csv"
+            echo "Fetching ${url}"
+            curl --fail --location --silent --show-error --retry 3 --retry-all-errors \
+              "$url" -o "/tmp/jma-final/table${year}.csv"
+            test -s "/tmp/jma-final/table${year}.csv"
+          done
+
+      - name: Audit completed-case truth readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/audit-consensus-track-truth-readiness.mjs \
+            --ct-root _ct_data \
+            --baseline-root _baseline_data \
+            --jma-final-dir /tmp/jma-final \
+            > /tmp/ct-truth-readiness.json
+          test -s /tmp/ct-truth-readiness.json
+
+      - name: Validate read-only truth audit contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '
+            .schemaVersion == "consensus-track-truth-readiness/v1" and
+            (.cases | type == "array") and
+            (.summary.completedMultiAgencyCaseCandidateCount | type == "number") and
+            (.summary.completedWithFinalTruthCount | type == "number") and
+            (.summary.completedWithHomogeneousReadyCount | type == "number") and
+            (.summary.homogeneousReadyAgencyPairCount | type == "number") and
+            (.semantics.readOnlyTruthAudit == true) and
+            (.semantics.officialPostAnalysisFinalTruthRequired == true) and
+            (.semantics.preliminaryOperationalAnalysisAcceptedAsFinalTruth == false) and
+            (.semantics.forecastMustPrecedeTargetValidTime == true) and
+            (.semantics.sameCycleProspectiveAgencyBaselineRequiredForAgencyComparison == true) and
+            (.semantics.forecastSkillEvaluated == false) and
+            (.semantics.forecastErrorsCalculated == false) and
+            (.semantics.agencyRankingProduced == false) and
+            (.semantics.consensusAlgorithmModified == false) and
+            (.semantics.productionDatabaseWritten == false) and
+            (.semantics.skillGateDecisionProduced == false) and
+            (.summary | has("skillGateReady") | not)
+          ' /tmp/ct-truth-readiness.json >/dev/null
+
+          jq '{
+            schemaVersion,
+            auditedAt,
+            truthSource,
+            input,
+            summary,
+            cases: [.cases[] | {
+              caseId,
+              state,
+              groupKeys,
+              names,
+              jmaFinalNameCandidates,
+              jmaFinalTruth,
+              baselineEvidence,
+              multiAgencyTargetCount,
+              forecastCyclesByLead,
+              prospectiveCyclesByLead,
+              truthReadyCyclesByLead,
+              baselinePairableByAgencyLead,
+              homogeneousReadyByAgencyLead
+            }],
+            semantics
+          }' /tmp/ct-truth-readiness.json
+
+      - name: Upload truth-readiness artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: consensus-track-truth-readiness
+          path: /tmp/ct-truth-readiness.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Check whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check origin/main...HEAD
