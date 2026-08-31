@@ -125,10 +125,10 @@
       return `${targetSignal || '較高信號'}${timeText ? `：${timeText}` : ''}改發`;
     }
     if (kind === 'change_window') {
-      return `${targetSignal || '較高信號'}考慮改發時段${timeText ? `：${timeText}` : ''}`;
+      return `${targetSignal || '較高信號'}改發時段${timeText ? `：${timeText}` : ''}`;
     }
     if (kind === 'change_deadline') {
-      return `${targetSignal || '較高信號'}${timeText ? `：${timeText}` : ''}或之前發出`;
+      return `${targetSignal || '較高信號'}${timeText ? `：${timeText}` : ''}發出`;
     }
     if (kind === 'assessment') {
       return `${targetSignal || '較高信號'}：天文台將視情況評估是否需要改發`;
