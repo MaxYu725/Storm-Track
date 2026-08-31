@@ -11,6 +11,7 @@ on:
       - analysis/**
       - index.html
       - scripts/capture-beta-prospective.mjs
+      - scripts/build-beta-case-watch.mjs
       - scripts/reconcile-beta-case-identities.mjs
       - .github/workflows/beta-prospective-recorder.yml
       - tests/frontend-beta-prospective-observation.test.cjs
@@ -22,6 +23,7 @@ on:
       - analysis/**
       - index.html
       - scripts/capture-beta-prospective.mjs
+      - scripts/build-beta-case-watch.mjs
       - scripts/reconcile-beta-case-identities.mjs
       - .github/workflows/beta-prospective-recorder.yml
       - tests/frontend-beta-prospective-observation.test.cjs
@@ -38,6 +40,10 @@ env:
   DATA_BRANCH: data/beta-prospective-observations
   PRODUCTION_BETA_URL: https://maxyu725.github.io/Storm-Track/?beta=hk-signal
   PROSPECTIVE_HEARTBEAT_MAX_AGE_SECONDS: 1800
+  CASE_WATCH_ACTIVE: 'true'
+  CASE_WATCH_ID: '2026-saudel'
+  CASE_WATCH_CANONICAL_NAME: 'SAUDEL'
+  CASE_WATCH_ALIASES: 'SAUDEL,TC2621'
 
 jobs:
   capture:
@@ -57,6 +63,7 @@ jobs:
           node --check analysis/frontend-hk-threat-ui.js
           node --check analysis/storm-case-identity.js
           node --check scripts/capture-beta-prospective.mjs
+          node --check scripts/build-beta-case-watch.mjs
           node --check scripts/reconcile-beta-case-identities.mjs
           node tests/frontend-beta-prospective-observation.test.cjs
           node tests/frontend-hk-threat-ui.test.cjs
@@ -129,6 +136,24 @@ jobs:
           ' /tmp/beta-prospective.json >/dev/null
           jq '{capturedAt,captureFingerprint,sourceCommit,sourceStates,visibleGroupKeys,discardedStaleObservationKeys,observationCount,groups:[.observations[]|{key:.group.key,name:.group.displayName,sources:.sourceAgencies,engineVersions:.engineVersions,generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T8:.analysis.basicForecast.signals.T8.likelihood,disagreement:.analysis.threatAssessment.analyzers.agencyDisagreement.confidence}]}' /tmp/beta-prospective.json
 
+      - name: Build watched-case snapshot
+        if: env.CASE_WATCH_ACTIVE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-beta-case-watch.mjs /tmp/beta-prospective.json > /tmp/beta-case-watch.json
+          jq -e '
+            .schemaVersion == "beta-prospective-case-watch/v1" and
+            .watchId == env.CASE_WATCH_ID and
+            .canonicalNameEn == env.CASE_WATCH_CANONICAL_NAME and
+            (.sourceStates | length == 4) and
+            (.visibleGroupKeys | type == "array") and
+            (.observations | type == "array") and
+            (.matchedObservationCount == (.observations | length)) and
+            ([.. | objects | has("rawInput")] | any | not)
+          ' /tmp/beta-case-watch.json >/dev/null
+          jq '{watchId,capturedAt,captureFingerprint,sourceStates,visibleGroupKeys,matchedObservationCount,matchedGroupKeys,matchedSourceAgencies,groups:[.observations[]|{key:.group.key,name:.group.displayName,sources:.sourceAgencies,bulletins:(.sources|to_entries|map({agency:.key,sourceId:.value.sourceId,bulletinTime:.value.bulletinTime,forecastEnd:.value.forecastEnd.time})),generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Risk:.analysis.basicForecast.signals.T1.riskIndex,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T3Risk:.analysis.basicForecast.signals.T3.riskIndex,T8:.analysis.basicForecast.signals.T8.likelihood,T8Risk:.analysis.basicForecast.signals.T8.riskIndex}]}' /tmp/beta-case-watch.json
+
       - name: Check branch whitespace
         if: github.event_name == 'pull_request'
         run: git diff --check origin/main...HEAD
@@ -163,8 +188,21 @@ jobs:
           health_row="$(jq -c '{schemaVersion:"beta-prospective-health/v1",capturedAt,captureFingerprint,sourceCommit,sourceStates,visibleGroupKeys}' /tmp/beta-prospective.json)"
           stored=false
           heartbeat=false
+          watch_stored=false
+          watch_stamp=""
           stamp="identity"
           short="${fingerprint:0:12}"
+
+          if [[ "$CASE_WATCH_ACTIVE" == "true" ]]; then
+            test -s /tmp/beta-case-watch.json
+            watch_day_path="$(date -u -d "$captured_at" +'%Y/%m/%d')"
+            watch_stamp="$(date -u -d "$captured_at" +'%Y%m%dT%H%M%S%3NZ')"
+            watch_destination="case-watch/${CASE_WATCH_ID}/snapshots/${watch_day_path}/${watch_stamp}-${short}.json"
+            mkdir -p "$(dirname "$watch_destination")" "case-watch/${CASE_WATCH_ID}"
+            cp /tmp/beta-case-watch.json "$watch_destination"
+            jq -c '{schemaVersion,watchId,canonicalNameEn,aliases,capturedAt,captureFingerprint,sourceCommit,sourceStates,visibleGroupKeys,discardedStaleObservationKeys,matchedObservationCount,matchedGroupKeys,matchedSourceAgencies,groups:[.observations[]|{key:.group.key,displayName:.group.displayName,sourceAgencies:.sourceAgencies,sources:(.sources|to_entries|map({agency:.key,sourceId:.value.sourceId,bulletinTime:.value.bulletinTime,currentTime:.value.current.time,forecastCount:.value.forecastCount,forecastStartTime:.value.forecastStart.time,forecastEndTime:.value.forecastEnd.time})),generatedAt:.analysis.generatedAt,T1:.analysis.basicForecast.signals.T1.likelihood,T1Risk:.analysis.basicForecast.signals.T1.riskIndex,T1Window:.analysis.basicForecast.signals.T1.estimatedWindow,T3:.analysis.basicForecast.signals.T3.likelihood,T3Risk:.analysis.basicForecast.signals.T3.riskIndex,T3Window:.analysis.basicForecast.signals.T3.estimatedWindow,T8:.analysis.basicForecast.signals.T8.likelihood,T8Risk:.analysis.basicForecast.signals.T8.riskIndex,T8Window:.analysis.basicForecast.signals.T8.estimatedWindow}]}' /tmp/beta-case-watch.json >> "case-watch/${CASE_WATCH_ID}/timeline.ndjson"
+            watch_stored=true
+          fi
 
           if [[ "$fingerprint" != "$existing" ]]; then
             day_path="$(date -u -d "$captured_at" +'%Y/%m/%d')"
@@ -200,7 +238,7 @@ jobs:
           node /tmp/beta-case-runtime/scripts/reconcile-beta-case-identities.mjs . > /tmp/beta-case-reconcile.json
           jq '{schemaVersion,reconciledThrough,recordCount,caseCount,cases}' /tmp/beta-case-reconcile.json
 
-          git add -A observations latest.json index.ndjson health.ndjson case-registry.json case-index.ndjson 2>/dev/null || true
+          git add -A observations latest.json index.ndjson health.ndjson case-registry.json case-index.ndjson case-watch 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "BETA_PROSPECTIVE_NOOP=true"
             echo "BETA_PROSPECTIVE_FINGERPRINT=$fingerprint"
@@ -211,10 +249,13 @@ jobs:
             git commit -m "Observe HK signal Beta ${stamp} ${short}"
           elif [[ "$heartbeat" == "true" ]]; then
             git commit -m "Refresh HK signal Beta heartbeat ${stamp} ${short}"
+          elif [[ "$watch_stored" == "true" ]]; then
+            git commit -m "Watch ${CASE_WATCH_ID} Beta ${watch_stamp} ${short}"
           else
             git commit -m "Reconcile HK signal Beta storm case identities"
           fi
           git push origin "HEAD:${DATA_BRANCH}"
           echo "BETA_PROSPECTIVE_STORED=$stored"
           echo "BETA_PROSPECTIVE_HEARTBEAT=$heartbeat"
+          echo "BETA_PROSPECTIVE_CASE_WATCH_STORED=$watch_stored"
           echo "BETA_PROSPECTIVE_FINGERPRINT=$fingerprint"
