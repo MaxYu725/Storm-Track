@@ -36,6 +36,7 @@ jobs:
           node --check analysis/hk-threat-assessment.js
           node --check analysis/basic-hk-signal-forecast.js
           node --check analysis/frontend-hk-threat-ui.js
+          node --check analysis/hko-signal-statement.js
           node --check analysis/settings-panel-ui.js
           node --check analysis/wind-field-overlay.js
           node --check analysis/storm-case-identity.js
@@ -53,7 +54,10 @@ jobs:
           grep -F '${hkThreatHtml}' index.html
           grep -F "get('beta') === 'hk-signal'" analysis/frontend-hk-threat-ui.js
           grep -F "script.src = './analysis/settings-panel-ui.js'" analysis/frontend-hk-threat-ui.js
+          grep -F "script.src = './analysis/hko-signal-statement.js'" analysis/frontend-hk-threat-ui.js
           grep -F "script.src = './analysis/wind-field-overlay.js'" analysis/frontend-hk-threat-ui.js
+          grep -F 'HKO 官方信號資訊' analysis/hko-signal-statement.js
+          grep -F '官方原意優先，模糊時間不轉為精確時刻' analysis/hko-signal-statement.js
           grep -F '資料來源 / 路徑圖例' analysis/settings-panel-ui.js
           grep -F 'storm-settings-backdrop' analysis/settings-panel-ui.js
           grep -F '模式風場 Beta' analysis/wind-field-overlay.js
@@ -78,6 +82,7 @@ jobs:
             tests/consensus-track-dateline.test.cjs
             tests/hk-impact-engine.test.cjs
             tests/hko-signal-risk-inputs.test.cjs
+            tests/hko-signal-statement.test.cjs
             tests/hk-threat-assessment.test.cjs
             tests/hk-threat-rule-scenarios.test.cjs
             tests/hk-missing-numeric-semantics.test.cjs

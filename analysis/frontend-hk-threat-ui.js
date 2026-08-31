@@ -1,5 +1,6 @@
 (function attachStormHkThreatUi(root, factory) {
   installSettingsPanelUi(root);
+  installHkoSignalStatementUi(root);
   installOptionalWindLayer(root);
   const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -12,6 +13,16 @@
     script.src = './analysis/settings-panel-ui.js';
     script.async = true;
     script.dataset.stormSettingsPanel = 'true';
+    browserRoot.document.head.appendChild(script);
+  }
+
+  function installHkoSignalStatementUi(browserRoot) {
+    if (!browserRoot?.document) return;
+    if (browserRoot.document.querySelector('script[data-hko-signal-statement]')) return;
+    const script = browserRoot.document.createElement('script');
+    script.src = './analysis/hko-signal-statement.js';
+    script.async = true;
+    script.dataset.hkoSignalStatement = 'true';
     browserRoot.document.head.appendChild(script);
   }
 

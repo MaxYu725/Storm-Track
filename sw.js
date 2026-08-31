@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '3.3.10';
+const VERSION = '3.3.11';
 const CACHE_PREFIX = 'storm-track-';
 const SHELL_CACHE = `${CACHE_PREFIX}shell-${VERSION}`;
 const STATIC_CACHE = `${CACHE_PREFIX}static-${VERSION}`;
@@ -9,6 +9,7 @@ const APP_SHELL = [
   './index.html',
   './manifest.webmanifest',
   './analysis/frontend-hk-threat-ui.js',
+  './analysis/hko-signal-statement.js',
   './analysis/settings-panel-ui.js',
   './analysis/wind-field-overlay.js',
   './analysis/consensus-track-overlay.js',
