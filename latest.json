@@ -416,27 +416,26 @@
     "caseCount": 7
   },
   "hkoTruth": {
-    "latestRetrievedAt": "2026-08-31T09:47:23.192Z",
-    "latestTruthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
-    "healthRecordCount": 69,
-    "latestHealthRetrievedAt": "2026-08-31T09:47:23.192Z",
-    "eventCount": 1,
-    "initialTc1IssueCount": 0,
+    "latestRetrievedAt": "2026-08-31T10:12:24.349Z",
+    "latestTruthFingerprint": "fe0e341241be0a1c2182fdf21c993d8224a833db03a6334eb6251455f09092ca",
+    "healthRecordCount": 70,
+    "latestHealthRetrievedAt": "2026-08-31T10:12:24.349Z",
+    "eventCount": 2,
+    "initialTc1IssueCount": 1,
     "signalEventCounts": {
-      "T1": 0,
+      "T1": 1,
       "T3": 0,
       "T8": 0
     }
   },
-  "status": "awaiting-tc1",
+  "status": "evaluated",
   "awaiting": {
-    "status": "awaiting-tc1",
+    "status": "monitoring-higher-signals",
     "activeHkoCaseIds": [
       "STC-2026-JMA-TC2621"
     ],
     "pendingSignalsByCase": {
       "STC-2026-JMA-TC2621": [
-        "T1",
         "T3",
         "T8"
       ]
@@ -498,32 +497,720 @@
       }
     ],
     "latestHkoTruth": {
-      "retrievedAt": "2026-08-31T09:47:23.192Z",
-      "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
+      "retrievedAt": "2026-08-31T10:12:24.349Z",
+      "truthFingerprint": "fe0e341241be0a1c2182fdf21c993d8224a833db03a6334eb6251455f09092ca",
       "truth": {
         "warningStatementCode": "WTCSGNL",
-        "present": false,
-        "code": null,
-        "level": null,
-        "type": null,
-        "actionCode": null,
-        "issueTime": null,
-        "updateTime": null,
+        "present": true,
+        "code": "TC1",
+        "level": 1,
+        "type": "一號戒備信號",
+        "actionCode": "ISSUE",
+        "issueTime": "2026-08-31T18:10:00+08:00",
+        "updateTime": "2026-08-31T18:10:00+08:00",
         "expireTime": null,
-        "details": []
+        "details": [
+          {
+            "warningStatementCode": "WTCSGNL",
+            "subtype": "TC1",
+            "updateTime": "2026-08-31T18:10:00+08:00",
+            "contents": [
+              "一號戒備信號在下午6時10分發出。\n\n表示有一熱帶氣旋，在香港約800公里內，可能影響本港。\n\n請在計劃活動時考慮天氣的轉變，並注意離岸海域可能有強風。"
+            ]
+          }
+        ]
       },
       "context": {
         "pre8": [],
-        "specialWeatherTips": [
-          {
-            "desc": "沙德爾的殘餘已在海南島東南沿岸海域再度增強為熱帶低氣壓。天文台會在下午6時10分發出一號戒備信號。\n預料沙德爾會在明日至星期三（9月1及2日）橫過南海北部，並逐漸靠近廣東東部沿岸。受沙德爾與東北季候風的共同影響，本港明日下午至星期三風勢較大，天文台會密切監測其動向及本港風力變化，評估屆時是否需要發出更高熱帶氣旋警告信號。\n預料明日本港部分地區雨勢較大，市民出門上學上班前請留意天文台的最新天氣消息。",
-            "updateTime": "2026-08-31T17:45:00+08:00"
-          }
-        ]
+        "specialWeatherTips": []
       }
     }
   },
-  "evaluations": [],
+  "evaluations": [
+    {
+      "schemaVersion": "hk-signal-evaluator/v2",
+      "rubricVersion": "hk-signal-validation-rubric/v1",
+      "eventPolicyVersion": "hk-signal-event-policy/v1",
+      "status": "evaluated",
+      "signal": "T1",
+      "caseId": "STC-2026-JMA-TC2621",
+      "attribution": {
+        "status": "attributed",
+        "caseId": "STC-2026-JMA-TC2621",
+        "reason": "unique-active-hko-case",
+        "candidates": [
+          "STC-2026-JMA-TC2621"
+        ]
+      },
+      "truth": {
+        "signal": "T1",
+        "eventType": "ISSUE",
+        "eventTime": "2026-08-31T18:10:00+08:00",
+        "timeSource": "HKO_OFFICIAL",
+        "code": "TC1",
+        "level": 1,
+        "issueTime": "2026-08-31T18:10:00+08:00",
+        "updateTime": "2026-08-31T18:10:00+08:00",
+        "truthFingerprint": "fe0e341241be0a1c2182fdf21c993d8224a833db03a6334eb6251455f09092ca"
+      },
+      "evidence": {
+        "trustedRecorderSchema": "beta-prospective-recorder/v2",
+        "preEventSnapshotCount": 182,
+        "firstSnapshotAt": "2026-08-22T01:37:22.817Z",
+        "lastSnapshotAt": "2026-08-31T10:02:35.978Z",
+        "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1"
+      },
+      "checkpoints": [
+        {
+          "signal": "T1",
+          "checkpointHours": 48,
+          "targetTime": "2026-08-29T10:10:00.000Z",
+          "status": "evidence-gap",
+          "snapshot": {
+            "capturedAt": "2026-08-29T03:08:25.627Z",
+            "captureFingerprint": "44345da6208c7ee5db46ffe4c987f25de8e73397f4902da4028ec72bc1f792fa",
+            "rawGroupKey": "SAUDEL",
+            "likelihood": "possible",
+            "riskIndex": 0.6374598163416011,
+            "confidenceIndex": 0.4078652317213183,
+            "persistenceHours": 18,
+            "estimatedWindow": null,
+            "disagreement": 0.7301004027137197,
+            "engineVersions": {
+              "ui": "frontend-hk-threat-ui/v1",
+              "snapshot": "storm-analysis-snapshot/v1",
+              "impact": "hk-impact/v1",
+              "signalInputs": "hko-signal-risk-inputs/v1",
+              "threatAssessment": "hk-threat-assessment/v1",
+              "basicForecast": "basic-hk-signal-forecast/v1"
+            }
+          },
+          "scoring": null,
+          "evidenceCoverage": {
+            "complete": false,
+            "reason": "stale-checkpoint-snapshot",
+            "snapshotAgeMinutes": 421.5728833333333,
+            "maxAgeMinutes": 60,
+            "semanticSnapshotAt": "2026-08-29T03:08:25.627Z",
+            "confirmedAt": "2026-08-29T03:08:25.627Z"
+          }
+        },
+        {
+          "signal": "T1",
+          "checkpointHours": 24,
+          "targetTime": "2026-08-30T10:10:00.000Z",
+          "status": "scored",
+          "snapshot": {
+            "capturedAt": "2026-08-30T09:44:51.943Z",
+            "captureFingerprint": "cc0bf14079479c432bd93f83f92895b3f74a136c43ec5554580b10cfd4a837e9",
+            "rawGroupKey": "SAUDEL",
+            "likelihood": "possible",
+            "riskIndex": 0.40144718974525523,
+            "confidenceIndex": 0.6376849074099735,
+            "persistenceHours": 7.600268960026181,
+            "estimatedWindow": null,
+            "disagreement": 0.4541499306738537,
+            "engineVersions": {
+              "ui": "frontend-hk-threat-ui/v1",
+              "snapshot": "storm-analysis-snapshot/v1",
+              "impact": "hk-impact/v1",
+              "signalInputs": "hko-signal-risk-inputs/v1",
+              "threatAssessment": "hk-threat-assessment/v1",
+              "basicForecast": "basic-hk-signal-forecast/v1"
+            }
+          },
+          "scoring": {
+            "grade": "D",
+            "hit": false,
+            "boundaryErrorHours": null,
+            "widthHours": null
+          },
+          "evidenceCoverage": {
+            "complete": true,
+            "reason": "covered",
+            "snapshotAgeMinutes": 25.134283333333332,
+            "maxAgeMinutes": 60,
+            "semanticSnapshotAt": "2026-08-30T09:44:51.943Z",
+            "confirmedAt": "2026-08-30T09:44:51.943Z"
+          }
+        },
+        {
+          "signal": "T1",
+          "checkpointHours": 12,
+          "targetTime": "2026-08-30T22:10:00.000Z",
+          "status": "evidence-gap",
+          "snapshot": {
+            "capturedAt": "2026-08-30T19:09:08.499Z",
+            "captureFingerprint": "4c2b7766aa061db09b9a539d64145f79b1dd731f5e661072b9de02d87c5e469f",
+            "rawGroupKey": "SAUDEL",
+            "likelihood": "possible",
+            "riskIndex": 0.43935207210128285,
+            "confidenceIndex": 0.6326250000000001,
+            "persistenceHours": 0,
+            "estimatedWindow": null,
+            "disagreement": 0.175,
+            "engineVersions": {
+              "ui": "frontend-hk-threat-ui/v1",
+              "snapshot": "storm-analysis-snapshot/v1",
+              "impact": "hk-impact/v1",
+              "signalInputs": "hko-signal-risk-inputs/v1",
+              "threatAssessment": "hk-threat-assessment/v1",
+              "basicForecast": "basic-hk-signal-forecast/v1"
+            }
+          },
+          "scoring": null,
+          "evidenceCoverage": {
+            "complete": false,
+            "reason": "stale-checkpoint-snapshot",
+            "snapshotAgeMinutes": 180.85835,
+            "maxAgeMinutes": 60,
+            "semanticSnapshotAt": "2026-08-30T19:09:08.499Z",
+            "confirmedAt": "2026-08-30T19:09:08.499Z"
+          }
+        },
+        {
+          "signal": "T1",
+          "checkpointHours": 6,
+          "targetTime": "2026-08-31T04:10:00.000Z",
+          "status": "scored",
+          "snapshot": {
+            "capturedAt": "2026-08-31T04:08:00.131Z",
+            "captureFingerprint": "1a542e3f91ca37d2434bc0c9b76aef3e3a56f18c05565f007c051db935b1cc69",
+            "rawGroupKey": "TC2621",
+            "likelihood": "likely",
+            "riskIndex": 0.6476827895976631,
+            "confidenceIndex": 0.6549977663118823,
+            "persistenceHours": 41.18517698015722,
+            "estimatedWindow": {
+              "start": "2026-08-31T15:28:10.864Z",
+              "end": "2026-09-01T03:28:10.864Z"
+            },
+            "disagreement": 0.3448126531063711,
+            "engineVersions": {
+              "ui": "frontend-hk-threat-ui/v1",
+              "snapshot": "storm-analysis-snapshot/v1",
+              "impact": "hk-impact/v1",
+              "signalInputs": "hko-signal-risk-inputs/v1",
+              "threatAssessment": "hk-threat-assessment/v1",
+              "basicForecast": "basic-hk-signal-forecast/v1"
+            }
+          },
+          "scoring": {
+            "grade": "C",
+            "hit": false,
+            "boundaryErrorHours": 5.303017777777778,
+            "widthHours": 12
+          },
+          "evidenceCoverage": {
+            "complete": true,
+            "reason": "covered",
+            "snapshotAgeMinutes": 1.9978166666666666,
+            "maxAgeMinutes": 60,
+            "semanticSnapshotAt": "2026-08-31T04:08:00.131Z",
+            "confirmedAt": "2026-08-31T04:08:00.131Z"
+          }
+        },
+        {
+          "signal": "T1",
+          "checkpointHours": 3,
+          "targetTime": "2026-08-31T07:10:00.000Z",
+          "status": "scored",
+          "snapshot": {
+            "capturedAt": "2026-08-31T07:02:39.851Z",
+            "captureFingerprint": "cbfc7c6f0faf353a76eb0633e6178547f83037a50fd6b7b1f79e9d0d15f40f52",
+            "rawGroupKey": "TC2621",
+            "likelihood": "possible",
+            "riskIndex": 0.6984067855221925,
+            "confidenceIndex": 0.5930308549697455,
+            "persistenceHours": 40.820492714688044,
+            "estimatedWindow": null,
+            "disagreement": 0.48112800511992404,
+            "engineVersions": {
+              "ui": "frontend-hk-threat-ui/v1",
+              "snapshot": "storm-analysis-snapshot/v1",
+              "impact": "hk-impact/v1",
+              "signalInputs": "hko-signal-risk-inputs/v1",
+              "threatAssessment": "hk-threat-assessment/v1",
+              "basicForecast": "basic-hk-signal-forecast/v1"
+            }
+          },
+          "scoring": {
+            "grade": "D",
+            "hit": false,
+            "boundaryErrorHours": null,
+            "widthHours": null
+          },
+          "evidenceCoverage": {
+            "complete": true,
+            "reason": "covered",
+            "snapshotAgeMinutes": 7.335816666666667,
+            "maxAgeMinutes": 60,
+            "semanticSnapshotAt": "2026-08-31T07:02:39.851Z",
+            "confirmedAt": "2026-08-31T07:02:39.851Z"
+          }
+        }
+      ],
+      "lifecycle": {
+        "firstPossibleAt": "2026-08-22T12:48:09.352Z",
+        "firstPossibleLeadHours": 213.36406888888888,
+        "firstStablePossibleAt": "2026-08-22T22:00:14.456Z",
+        "stableLeadHours": 204.1626511111111,
+        "reversalFlips": 2
+      },
+      "finalPreEvent": {
+        "capturedAt": "2026-08-31T10:02:35.978Z",
+        "captureFingerprint": "75afe98a5edd912b54748c384c1cc1aee9d5bd0c50a8cff9d8eb720775b6adb2",
+        "likelihood": "likely",
+        "riskIndex": 0.8182229553515077,
+        "confidenceIndex": 0.5094228599841524,
+        "persistenceHours": 42.95932942177873,
+        "estimatedWindow": {
+          "start": "2026-09-03T06:33:12.603Z",
+          "end": "2026-09-03T21:31:40.224Z"
+        },
+        "windowScoring": {
+          "grade": "D",
+          "hit": false,
+          "boundaryErrorHours": 68.38683416666667,
+          "widthHours": 14.974339166666667
+        }
+      },
+      "grades": {
+        "stableLead": null,
+        "stability": null,
+        "finalWindowTiming": "D",
+        "finalWindowPrecision": "A"
+      },
+      "rubric": {
+        "version": "hk-signal-validation-rubric/v1",
+        "checkpointHours": [
+          48,
+          24,
+          12,
+          6,
+          3
+        ],
+        "windowTiming": {
+          "A": "inside-window",
+          "B": "<=3h-from-boundary",
+          "C": "<=6h-from-boundary",
+          "D": ">6h-or-no-window"
+        },
+        "stableLead": {
+          "A": ">=12h",
+          "B": "6-<12h",
+          "C": "3-<6h",
+          "D": "<3h-or-never-stable"
+        },
+        "stability": {
+          "A": "0-reversal-flips",
+          "B": "1-reversal-flip",
+          "C": "2-reversal-flips",
+          "D": ">=3-reversal-flips"
+        },
+        "windowPrecision": {
+          "A": "<=18h",
+          "B": ">18-<=24h",
+          "C": ">24-<=36h",
+          "D": ">36h-or-no-window"
+        }
+      },
+      "eventPolicy": {
+        "version": "hk-signal-event-policy/v1",
+        "T1": "first ISSUE of TC1 only; later downgrade to TC1 is not a T1 issue event",
+        "T3": "first upward transition to TC3 from a lower signal; downgrade from TC8/9/10 is excluded",
+        "T8": "first upward transition to any TC8NE/TC8SE/TC8SW/TC8NW from below T8; direction changes and downgrades are excluded",
+        "skippedLowerSignal": "if a higher signal is issued before an eligible lower-signal event, the lower signal is recorded as not-issued/skipped and is not scored"
+      },
+      "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
+      "evidenceCoverage": {
+        "policyVersion": "hk-signal-evidence-coverage/v1",
+        "checkpointCompleteCount": 3,
+        "checkpointIncompleteCount": 2,
+        "lifecycle": {
+          "complete": false,
+          "reason": "prospective-coverage-incomplete",
+          "startAt": "2026-08-22T12:48:09.352Z",
+          "endAt": "2026-08-31T10:10:00.000Z",
+          "maxGapMinutes": 60,
+          "gaps": [
+            {
+              "from": "2026-08-22T17:39:50.111Z",
+              "to": "2026-08-22T18:45:29.929Z",
+              "gapMinutes": 65.66363333333334,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-22T20:31:45.021Z",
+              "to": "2026-08-22T21:39:05.695Z",
+              "gapMinutes": 67.34456666666667,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-22T23:38:17.335Z",
+              "to": "2026-08-23T01:56:32.536Z",
+              "gapMinutes": 138.25335,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-23T05:37:06.004Z",
+              "to": "2026-08-23T07:04:21.146Z",
+              "gapMinutes": 87.25236666666666,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-23T08:39:54.383Z",
+              "to": "2026-08-23T09:46:13.511Z",
+              "gapMinutes": 66.3188,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-23T11:38:28.571Z",
+              "to": "2026-08-23T13:04:18.443Z",
+              "gapMinutes": 85.8312,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-23T14:31:02.834Z",
+              "to": "2026-08-23T15:40:22.455Z",
+              "gapMinutes": 69.32701666666667,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-23T17:37:51.971Z",
+              "to": "2026-08-23T18:44:22.147Z",
+              "gapMinutes": 66.50293333333333,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-23T20:35:26.562Z",
+              "to": "2026-08-23T21:38:44.657Z",
+              "gapMinutes": 63.30158333333333,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-23T22:34:01.221Z",
+              "to": "2026-08-23T23:38:03.091Z",
+              "gapMinutes": 64.03116666666666,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-23T23:38:03.091Z",
+              "to": "2026-08-24T01:54:07.710Z",
+              "gapMinutes": 136.07698333333335,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-24T01:54:07.710Z",
+              "to": "2026-08-24T03:11:50.106Z",
+              "gapMinutes": 77.7066,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-24T05:56:09.632Z",
+              "to": "2026-08-24T07:14:05.414Z",
+              "gapMinutes": 77.9297,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-24T11:37:06.313Z",
+              "to": "2026-08-24T13:16:34.350Z",
+              "gapMinutes": 99.46728333333333,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-24T13:16:34.350Z",
+              "to": "2026-08-24T14:20:16.356Z",
+              "gapMinutes": 63.7001,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-24T16:50:40.384Z",
+              "to": "2026-08-24T18:15:16.256Z",
+              "gapMinutes": 84.59786666666666,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-24T20:39:33.307Z",
+              "to": "2026-08-24T21:48:34.301Z",
+              "gapMinutes": 69.01656666666666,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-24T23:40:17.601Z",
+              "to": "2026-08-25T01:55:00.885Z",
+              "gapMinutes": 134.7214,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-25T01:55:00.885Z",
+              "to": "2026-08-25T03:07:48.596Z",
+              "gapMinutes": 72.79518333333333,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-25T06:17:37.316Z",
+              "to": "2026-08-25T07:27:06.293Z",
+              "gapMinutes": 69.48295,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-25T11:48:13.304Z",
+              "to": "2026-08-25T13:02:39.098Z",
+              "gapMinutes": 74.4299,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-25T13:02:39.098Z",
+              "to": "2026-08-25T14:07:08.628Z",
+              "gapMinutes": 64.49216666666666,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-25T14:07:08.628Z",
+              "to": "2026-08-25T15:08:33.433Z",
+              "gapMinutes": 61.41341666666667,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T00:02:04.831Z",
+              "to": "2026-08-26T02:01:15.526Z",
+              "gapMinutes": 119.17825,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T02:01:15.526Z",
+              "to": "2026-08-26T03:27:22.496Z",
+              "gapMinutes": 86.11616666666667,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T05:08:09.087Z",
+              "to": "2026-08-26T07:01:18.574Z",
+              "gapMinutes": 113.15811666666667,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T07:01:18.574Z",
+              "to": "2026-08-26T08:02:24.703Z",
+              "gapMinutes": 61.10215,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T08:02:24.703Z",
+              "to": "2026-08-26T09:05:07.433Z",
+              "gapMinutes": 62.71216666666667,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T10:00:09.999Z",
+              "to": "2026-08-26T11:37:29.231Z",
+              "gapMinutes": 97.32053333333333,
+              "reason": "prospective-gap"
+            },
+            {
+              "at": "2026-08-26T12:18:04.223Z",
+              "reason": "unhealthy-prospective-capture"
+            },
+            {
+              "from": "2026-08-26T12:18:04.223Z",
+              "to": "2026-08-26T13:36:32.897Z",
+              "gapMinutes": 78.4779,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T14:29:02.376Z",
+              "to": "2026-08-26T16:04:05.520Z",
+              "gapMinutes": 95.0524,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T16:04:05.520Z",
+              "to": "2026-08-26T17:51:35.201Z",
+              "gapMinutes": 107.49468333333333,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T17:51:35.201Z",
+              "to": "2026-08-26T19:22:22.386Z",
+              "gapMinutes": 90.78641666666667,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T19:22:22.386Z",
+              "to": "2026-08-26T22:26:21.869Z",
+              "gapMinutes": 183.99138333333335,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-26T22:26:21.869Z",
+              "to": "2026-08-27T03:31:15.090Z",
+              "gapMinutes": 304.8870166666667,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-27T03:31:15.090Z",
+              "to": "2026-08-27T14:48:05.856Z",
+              "gapMinutes": 676.8461,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-27T14:48:05.856Z",
+              "to": "2026-08-28T00:21:30.742Z",
+              "gapMinutes": 573.4147666666667,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-28T00:21:30.742Z",
+              "to": "2026-08-28T01:25:27.731Z",
+              "gapMinutes": 63.94981666666666,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-28T01:25:27.731Z",
+              "to": "2026-08-28T09:01:55.696Z",
+              "gapMinutes": 456.46608333333336,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-28T09:43:59.185Z",
+              "to": "2026-08-28T21:00:03.033Z",
+              "gapMinutes": 676.0641333333333,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-28T21:00:03.033Z",
+              "to": "2026-08-29T03:08:25.627Z",
+              "gapMinutes": 368.3765666666667,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-29T03:08:25.627Z",
+              "to": "2026-08-29T10:10:46.510Z",
+              "gapMinutes": 422.34805,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-29T10:10:46.510Z",
+              "to": "2026-08-29T15:06:14.677Z",
+              "gapMinutes": 295.46945,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-29T15:06:14.677Z",
+              "to": "2026-08-29T18:23:25.412Z",
+              "gapMinutes": 197.17891666666668,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-29T18:23:25.412Z",
+              "to": "2026-08-29T21:06:53.862Z",
+              "gapMinutes": 163.47416666666666,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-29T21:06:53.862Z",
+              "to": "2026-08-29T23:15:19.052Z",
+              "gapMinutes": 128.41983333333334,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-29T23:15:19.052Z",
+              "to": "2026-08-30T01:18:12.323Z",
+              "gapMinutes": 122.88785,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-30T01:18:12.323Z",
+              "to": "2026-08-30T02:50:01.242Z",
+              "gapMinutes": 91.81531666666666,
+              "reason": "prospective-gap"
+            },
+            {
+              "from": "2026-08-30T07:38:15.653Z",
+              "to": "2026-08-30T09:14:56.914Z",
+              "gapMinutes": 96.68768333333334,
+              "reason": "prospective-gap"
+            },
+            {
+              "at": "2026-08-30T19:23:57.853Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-30T19:54:18.494Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-30T20:09:01.230Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-30T20:39:04.093Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-30T21:09:13.990Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-30T21:38:57.302Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-30T21:54:04.459Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-30T22:10:00.875Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-30T22:55:15.643Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-30T23:39:59.126Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-31T00:24:24.155Z",
+              "reason": "case-not-present"
+            },
+            {
+              "at": "2026-08-31T00:52:44.609Z",
+              "reason": "case-not-present"
+            },
+            {
+              "from": "2026-08-31T06:00:01.268Z",
+              "to": "2026-08-31T07:02:39.851Z",
+              "gapMinutes": 62.64305,
+              "reason": "prospective-gap"
+            }
+          ]
+        },
+        "finalPreEvent": {
+          "complete": true,
+          "reason": "covered",
+          "snapshotAgeMinutes": 7.400366666666667,
+          "maxAgeMinutes": 60,
+          "semanticSnapshotAt": "2026-08-31T10:02:35.978Z",
+          "confirmedAt": "2026-08-31T10:02:35.978Z"
+        }
+      },
+      "evidenceCoveragePolicy": {
+        "version": "hk-signal-evidence-coverage/v1",
+        "effectiveAt": "2026-08-28T09:01:55.696Z",
+        "prospectiveMaxGapMinutes": 60,
+        "checkpointMaxAgeMinutes": 60,
+        "truthHealthMaxGapMinutes": 90,
+        "checkpointRule": "A forecast checkpoint is scoreable only when its selected prospective snapshot is healthy and no older than the checkpoint freshness limit.",
+        "lifecycleRule": "Stable-lead and reversal stability are scoreable only across continuous healthy prospective coverage with the case present throughout the claimed interval.",
+        "noSignalRule": "A no-signal closeout requires at least 24 hours of overlapping continuous healthy prospective absence and HKO truth polling health; wall-clock time alone never advances absence coverage.",
+        "historicalCloseoutRule": "No-signal closeouts completed before policy effectiveAt remain grandfathered so the new health ledger does not retroactively invalidate already-finalized cases.",
+        "immutableEvidence": "Coverage guards only qualify derived evaluation evidence; raw prospective and HKO truth corpora remain immutable."
+      }
+    }
+  ],
   "closeoutPolicyVersion": "hk-signal-closeout-policy/v1",
   "closeoutPolicy": {
     "version": "hk-signal-closeout-policy/v1",
@@ -779,11 +1466,11 @@
       "reason": "evidence-coverage-incomplete",
       "detail": "joint-coverage-shorter-than-grace",
       "afterAt": "2026-08-27T03:31:15.090Z",
-      "checkedAt": "2026-08-31T10:08:56.394Z",
+      "checkedAt": "2026-08-31T10:13:54.132Z",
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
       "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
       "prospectiveHealthRecordCount": 73,
-      "truthHealthRecordCount": 69,
+      "truthHealthRecordCount": 70,
       "prospectiveMaxGapMinutes": 60,
       "truthHealthMaxGapMinutes": 90
     },
@@ -793,11 +1480,11 @@
       "reason": "evidence-coverage-incomplete",
       "detail": "joint-coverage-shorter-than-grace",
       "afterAt": "2026-08-27T03:31:15.090Z",
-      "checkedAt": "2026-08-31T10:08:56.394Z",
+      "checkedAt": "2026-08-31T10:13:54.132Z",
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
       "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
       "prospectiveHealthRecordCount": 73,
-      "truthHealthRecordCount": 69,
+      "truthHealthRecordCount": 70,
       "prospectiveMaxGapMinutes": 60,
       "truthHealthMaxGapMinutes": 90
     },
@@ -807,17 +1494,17 @@
       "reason": "evidence-coverage-incomplete",
       "detail": "joint-coverage-shorter-than-grace",
       "afterAt": "2026-08-27T03:31:15.090Z",
-      "checkedAt": "2026-08-31T10:08:56.394Z",
+      "checkedAt": "2026-08-31T10:13:54.132Z",
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
       "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
       "prospectiveHealthRecordCount": 73,
-      "truthHealthRecordCount": 69,
+      "truthHealthRecordCount": 70,
       "prospectiveMaxGapMinutes": 60,
       "truthHealthMaxGapMinutes": 90
     }
   ],
-  "closeoutCheckedAt": "2026-08-31T10:08:56.394Z",
-  "generatedAt": "2026-08-31T10:08:56.420Z",
+  "closeoutCheckedAt": "2026-08-31T10:13:54.132Z",
+  "generatedAt": "2026-08-31T10:13:54.157Z",
   "sourceCommit": "6df3a0614333ec8791ec0a77a7002b4b386b8fa7",
-  "evaluationFingerprint": "e6d530cb219c105cd18727b90195eff72bbee4900baf69bcacfe9b5b31c2d420"
+  "evaluationFingerprint": "c6112d34034ed2277185a7fa9d3466b5df9d4a5fd6d3d8d63d074c3fce7af617"
 }
