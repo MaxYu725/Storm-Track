@@ -38,6 +38,7 @@ assert.equal(exactChange.kind, 'change_at');
 assert.equal(exactChange.certainty, 'explicit');
 assert.equal(exactChange.targetSignal, '三號強風信號');
 assert.equal(exactChange.timeText, '今晚10時');
+assert.match(exactChange.summary, /三號強風信號：今晚10時改發/);
 
 const windowChange = parser.classifySentence('天文台預計在明日下午2時至5時之間改發八號烈風或暴風信號。', {
   currentSignal: '三號強風信號'
@@ -46,6 +47,8 @@ assert.equal(windowChange.kind, 'change_window');
 assert.equal(windowChange.certainty, 'explicit');
 assert.equal(windowChange.targetSignal, '八號烈風或暴風信號');
 assert.equal(windowChange.timeText, '明日下午2時至5時之間');
+assert.match(windowChange.summary, /八號烈風或暴風信號改發時段：明日下午2時至5時之間/);
+assert.doesNotMatch(windowChange.summary, /考慮/);
 
 const deadline = parser.classifySentence('天文台將在下午5時20分或之前發出八號東北烈風或暴風信號。', {
   currentSignal: '三號強風信號',
@@ -55,6 +58,8 @@ assert.equal(deadline.kind, 'change_deadline');
 assert.equal(deadline.certainty, 'explicit');
 assert.equal(deadline.targetSignal, '八號烈風或暴風信號');
 assert.equal(deadline.timeText, '下午5時20分或之前');
+assert.match(deadline.summary, /八號烈風或暴風信號：下午5時20分或之前發出/);
+assert.doesNotMatch(deadline.summary, /或之前或之前/);
 
 const unlikely = parser.classifySentence('預料未來數小時改發三號強風信號的機會不大。', {
   currentSignal: '一號戒備信號'
