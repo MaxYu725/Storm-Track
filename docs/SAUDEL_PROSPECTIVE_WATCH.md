@@ -1,8 +1,8 @@
 # SAUDEL prospective validation watch
 
-Status: **ACTIVE**  
-Watch ID: `2026-saudel`  
-Identity aliases: `SAUDEL`, `TC2621`
+- Status: **ACTIVE**
+- Watch ID: `2026-saudel`
+- Identity aliases: `SAUDEL`, `TC2621`
 
 ## Why this watch exists
 
