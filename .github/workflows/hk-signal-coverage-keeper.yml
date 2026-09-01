@@ -41,10 +41,13 @@ jobs:
             COVERAGE_KEEPER_INTERVAL_SECONDS=300 \
             COVERAGE_KEEPER_SESSION_SECONDS=300 \
             COVERAGE_KEEPER_EVALUATOR_DELAY_SECONDS=90 \
+            COVERAGE_KEEPER_SELF_HANDOFF=true \
             COVERAGE_KEEPER_REF=main \
             bash scripts/hk-signal-coverage-keeper.sh
           )"
           printf '%s\n' "$output"
+          grep -F 'hk-signal-coverage-keeper.yml' <<<"$output" >/dev/null
+          grep -F 'coverage keeper standby' <<<"$output" >/dev/null
           grep -F 'hko-warning-truth-recorder.yml' <<<"$output" >/dev/null
           grep -F 'beta-prospective-recorder.yml' <<<"$output" >/dev/null
           grep -F 'hk-signal-evaluator.yml' <<<"$output" >/dev/null
@@ -57,13 +60,14 @@ jobs:
     timeout-minutes: 320
     concurrency:
       group: hk-signal-coverage-keeper-production
-      cancel-in-progress: true
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
       COVERAGE_KEEPER_REF: main
       COVERAGE_KEEPER_INTERVAL_SECONDS: 300
       COVERAGE_KEEPER_SESSION_SECONDS: 18000
       COVERAGE_KEEPER_EVALUATOR_DELAY_SECONDS: 90
+      COVERAGE_KEEPER_SELF_HANDOFF: 'true'
     steps:
       - uses: actions/checkout@v6
       - name: Maintain truth, prospective, and evaluator coverage
