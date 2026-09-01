@@ -49,6 +49,7 @@ jobs:
           grep -F 'beta-prospective-recorder.yml' <<<"$output" >/dev/null
           grep -F 'hk-signal-evaluator.yml' <<<"$output" >/dev/null
           grep -F 'coverage keeper one-shot complete' <<<"$output" >/dev/null
+          grep -F "gh workflow run hk-signal-coverage-keeper.yml" .github/workflows/hk-signal-coverage-keeper.yml >/dev/null
           git diff --check origin/main...HEAD
 
   keep-coverage:
@@ -57,7 +58,7 @@ jobs:
     timeout-minutes: 320
     concurrency:
       group: hk-signal-coverage-keeper-production
-      cancel-in-progress: true
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
       COVERAGE_KEEPER_REF: main
@@ -66,6 +67,25 @@ jobs:
       COVERAGE_KEEPER_EVALUATOR_DELAY_SECONDS: 90
     steps:
       - uses: actions/checkout@v6
+
+      - name: Queue successor coverage keeper
+        shell: bash
+        run: |
+          set -u
+          queued=false
+          for attempt in 1 2 3; do
+            if gh workflow run hk-signal-coverage-keeper.yml --ref "$COVERAGE_KEEPER_REF"; then
+              echo "coverage keeper successor queued on attempt $attempt"
+              queued=true
+              break
+            fi
+            echo "WARNING: successor dispatch attempt $attempt failed" >&2
+            if [[ "$attempt" -lt 3 ]]; then sleep 5; fi
+          done
+          if [[ "$queued" != true ]]; then
+            echo "WARNING: no successor queued; hourly schedule remains as fallback" >&2
+          fi
+
       - name: Maintain truth, prospective, and evaluator coverage
         shell: bash
         run: bash scripts/hk-signal-coverage-keeper.sh
