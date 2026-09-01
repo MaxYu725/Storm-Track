@@ -91,6 +91,13 @@ while true; do
   # HKO truth is the high-frequency truth source. Dispatch every keeper tick.
   safe_dispatch 'hko-warning-truth-recorder.yml' 'HKO truth recorder'
 
+  # HKO local wind is observational shadow evidence only. Its source updates every
+  # 10 minutes, so dispatch every second 5-minute keeper tick. This does not feed
+  # frozen V1 or V2 Shadow 0.1 forecast calculations.
+  if (( iteration % 2 == 0 )); then
+    safe_dispatch 'hko-local-wind-shadow-recorder.yml' 'HKO local wind shadow recorder'
+  fi
+
   # Beta prospective is intentionally lower-frequency: every third 5-minute tick.
   if (( iteration % 3 == 0 )); then
     safe_dispatch 'beta-prospective-recorder.yml' 'Beta prospective recorder'
