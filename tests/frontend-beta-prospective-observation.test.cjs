@@ -53,6 +53,7 @@ assert.deepEqual(ui.readProspectiveObservations(), []);
 
 const html = ui.renderGroupSummary(group, { generatedAt: '2026-08-22T00:00:00Z' });
 assert.match(html, /香港影響 Beta/);
+assert.match(html, /V2 shadow/);
 
 const observations = ui.readProspectiveObservations();
 assert.equal(observations.length, 1);
@@ -68,8 +69,11 @@ assert.equal(observation.engineVersions.ui, ui.VERSION);
 assert.equal(observation.engineVersions.snapshot, 'storm-analysis-snapshot/v1');
 assert.equal(observation.engineVersions.impact, 'hk-impact/v1');
 assert.equal(observation.engineVersions.signalInputs, 'hko-signal-risk-inputs/v1');
+assert.equal(observation.engineVersions.shadowForecastV2, ui.SHADOW_V2_VERSION);
 assert.equal(observation.analysis.available, true);
 assert.ok(observation.analysis.basicForecast?.signals?.T1);
+assert.ok(observation.analysis.shadowForecastV2?.signals?.T1);
+assert.equal(observation.analysis.shadowForecastV2?.semantics?.shadowOnly, true);
 assert.ok(observation.analysis.threatAssessment?.summary);
 assert.ok(Number.isFinite(Number(observation.analysis.threatAssessment?.analyzers?.agencyDisagreement?.confidence)));
 assert.ok(Array.isArray(observation.analysis.threatAssessment?.timeline));

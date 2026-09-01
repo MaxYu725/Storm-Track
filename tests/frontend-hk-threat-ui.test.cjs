@@ -53,17 +53,21 @@ assert.ok(result.threatAssessment.timeline.some(item => item.label === '+12h'));
 assert.ok(result.threatAssessment.timeline.some(item => item.rapidEvolutionIndex > 0.3));
 assert.ok(result.threatAssessment.timeline.every(item => item.leadHours >= 0));
 assert.ok(result.basicForecast.signals.T8.riskIndex > 0.4);
+assert.equal(result.shadowForecastV2?.schemaVersion, ui.SHADOW_V2_VERSION);
+assert.equal(result.shadowForecastV2?.semantics?.shadowOnly, true);
 
 const html = ui.renderGroupSummary(group, { generatedAt: '2026-08-21T12:00:00Z' });
 assert.match(html, /香港影響/);
+assert.match(html, /V1 frozen/);
+assert.match(html, /V2 shadow/);
 assert.match(html, /T1/);
 assert.match(html, /T3/);
 assert.match(html, /T8/);
 assert.match(html, /部分機構預報在最近距離附近結束/);
 assert.doesNotMatch(html, /最低距離接近預報尾端/);
+assert.match(html, /同步影子版本/);
 assert.match(html, /非香港天文台官方風球預測/);
 assert.doesNotMatch(html, /D1|D2|D3|D4|D5/);
-
 
 // If HKO official warning context is explicitly supplied, the UI must show it as an
 // official current state rather than leaving only Storm Track's estimate visible.
