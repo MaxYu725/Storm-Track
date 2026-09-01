@@ -1,0 +1,142 @@
+name: Record HKO local wind shadow evidence
+
+on:
+  schedule:
+    - cron: '3-53/10 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - analysis/hko-local-wind-shadow.js
+      - scripts/capture-hko-local-wind-shadow.mjs
+      - tests/hko-local-wind-shadow.test.cjs
+      - .github/workflows/hko-local-wind-shadow-recorder.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - analysis/hko-local-wind-shadow.js
+      - scripts/capture-hko-local-wind-shadow.mjs
+      - tests/hko-local-wind-shadow.test.cjs
+      - .github/workflows/hko-local-wind-shadow-recorder.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hko-local-wind-shadow-recorder
+  cancel-in-progress: false
+
+env:
+  DATA_BRANCH: data/hko-local-wind-shadow
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run local wind shadow regression
+        run: |
+          set -euo pipefail
+          node --check analysis/hko-local-wind-shadow.js
+          node --check scripts/capture-hko-local-wind-shadow.mjs
+          node tests/hko-local-wind-shadow.test.cjs
+
+      - name: Capture HKO 10-minute local wind observations
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          rm -f /tmp/hko-local-wind-shadow.json
+          for attempt in 1 2 3; do
+            echo "capture attempt ${attempt}"
+            if node scripts/capture-hko-local-wind-shadow.mjs > /tmp/hko-local-wind-shadow.json; then
+              break
+            fi
+            rm -f /tmp/hko-local-wind-shadow.json
+            if [[ "$attempt" -lt 3 ]]; then sleep 20; fi
+          done
+          test -s /tmp/hko-local-wind-shadow.json
+
+      - name: Validate local wind shadow contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '
+            .schemaVersion == "hko-local-wind-shadow-observation/v1" and
+            .shadowVersion == "hko-local-wind-shadow/v1" and
+            .authority == "Hong Kong Observatory Open Data" and
+            .provisional == true and
+            .affectsForecast == false and
+            (.captureFingerprint | test("^[0-9a-f]{64}$")) and
+            (.source.sha256 | test("^[0-9a-f]{64}$")) and
+            .source.updateCadenceMinutes == 10 and
+            (.stations | type == "array") and
+            (.stations | length > 0) and
+            (.summary.stationCount == (.stations | length)) and
+            (.summary.validMeanStationCount | type == "number") and
+            (.summary.validGustStationCount | type == "number") and
+            .summary.thresholdsKmh.strong == 41 and
+            .summary.thresholdsKmh.gale == 63 and
+            (.summary.meanStrongStations | type == "array") and
+            (.summary.meanGaleStations | type == "array") and
+            (.summary.gustStrongStations | type == "array") and
+            (.summary.gustGaleStations | type == "array")
+          ' /tmp/hko-local-wind-shadow.json >/dev/null
+          jq '{retrievedAt,sourceAgeMinutes,captureFingerprint,source,summary}' /tmp/hko-local-wind-shadow.json
+
+      - name: Check branch whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check origin/main...HEAD
+
+      - name: Persist local wind shadow evidence
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin "$DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$DATA_BRANCH"
+            git switch -C "$DATA_BRANCH" FETCH_HEAD
+          else
+            git switch --orphan "$DATA_BRANCH"
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          fingerprint="$(jq -r '.captureFingerprint' /tmp/hko-local-wind-shadow.json)"
+          existing="$(jq -r '.captureFingerprint // empty' latest.json 2>/dev/null || true)"
+          if [[ "$fingerprint" == "$existing" ]]; then
+            echo "HKO_LOCAL_WIND_SHADOW_NOOP=true"
+            echo "HKO_LOCAL_WIND_SHADOW_FINGERPRINT=$fingerprint"
+            exit 0
+          fi
+
+          retrieved_at="$(jq -r '.retrievedAt' /tmp/hko-local-wind-shadow.json)"
+          data_timestamp="$(jq -r '.summary.dataTimestamp // .retrievedAt' /tmp/hko-local-wind-shadow.json)"
+          stamp="$(date -u -d "$data_timestamp" +'%Y%m%dT%H%M%SZ')"
+          short="${fingerprint:0:12}"
+          day_path="$(date -u -d "$data_timestamp" +'%Y/%m/%d')"
+          destination="observations/${day_path}/${stamp}-${short}.json"
+          mkdir -p "$(dirname "$destination")"
+
+          cp /tmp/hko-local-wind-shadow.json "$destination"
+          cp /tmp/hko-local-wind-shadow.json latest.json
+          jq -c '{schemaVersion,shadowVersion,retrievedAt,sourceCommit,captureFingerprint,sourceAgeMinutes,source:{url,sha256,updateCadenceMinutes},summary}' /tmp/hko-local-wind-shadow.json >> index.ndjson
+
+          git add "$destination" latest.json index.ndjson
+          git commit -m "Observe HKO local wind shadow ${stamp} ${short}"
+          git push origin "HEAD:${DATA_BRANCH}"
+          echo "HKO_LOCAL_WIND_SHADOW_STORED=$destination"
+          echo "HKO_LOCAL_WIND_SHADOW_FINGERPRINT=$fingerprint"
