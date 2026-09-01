@@ -28,14 +28,33 @@ storm-analysis-core
   → hk-impact-engine
   → hko-signal-risk-inputs
   → hk-threat-assessment
-  → basic-hk-signal-forecast
+  → basic-hk-signal-forecast/v1
+      ├─ frozen V1 benchmark / evaluator baseline
+      └─ HK Signal V2 Shadow 0.1
 ```
 
-目前模型維持 frozen v1，以 prospective evidence 驗證為主；沒有足夠跨案例證據前，不因單一風暴結果調整 threshold / weighting。
+V1 仍維持 frozen：現行 evaluator、HKO truth attribution、closeout、歷史 prospective 成績全部繼續以 V1 為準，不因 live storm 即時改 threshold / weighting。
+
+### HK Signal V2 Shadow
+
+HK Signal V2 Shadow 已開始與 frozen V1 **同步計算、同步顯示、同步保存**，但目前只作 parallel shadow comparison，暫不進 evaluator / scoring，也不回饋或改寫 V1。
+
+V2 Shadow 0.1 只針對已由多宗 prospective case 暴露的有限問題：
+
+- source membership 減少時，numeric confidence 不應因 disagreement 消失而看似更高；
+- T3 / T8 在 +72h 以後若 strongest checkpoint 集中於少數 agency，採連續折減而非 hard gate；
+- 最近點已過、明顯離港且 future timeline 已空時，殘留 risk 可連續衰減；
+- positive risk 但沒有 observable threshold crossing 時，明確標記 left-censored / horizon-limited timing，而不是捏造精確 window。
+
+**SAUDEL (`STC-2026-JMA-TC2621`) 是首個重點 live V1/V2 comparison case。** 它曾出現約 +119h 的 T3 `possible`，strongest checkpoint 主要由 CMA 單一 120h endpoint 支持，非常適合觀察 V2 能否減少 long-horizon support concentration，又不犧牲真正的 early warning。
+
+在香港附近仍有活躍風暴期間，V1 與 V2 Shadow 0.1 都暫時 freeze；correctness bug 可修，但不因 SAUDEL 或任何單一新 snapshot 再調參。待這一輪香港附近風暴全部消散／完成可用 closeout 後，再做一次統一 V1/V2 cross-case review 及架構整理。
+
+詳細 contract、公式、SAUDEL 觀察問題及 post-storm 整理清單：`docs/HK_SIGNAL_V2_SHADOW.md`。
 
 ### Consensus Track Beta
 
-Consensus Track Beta 已進入 `main`，是獨立於 HK Signal v1 的 app-computed 多機構共識路徑。
+Consensus Track Beta 已進入 `main`，是獨立於 HK Signal 的 app-computed 多機構共識路徑。
 
 核心原則：
 
@@ -45,7 +64,7 @@ Consensus Track Beta 已進入 `main`，是獨立於 HK Signal v1 的 app-comput
 - longitude interpolation 及 consensus mean 已處理 ±180° date line
 - spread / interpolation provenance 只屬 diagnostics，不代表 calibrated confidence / probability
 - 不使用 weighting / ML / probability cone
-- HK Signal v1 不消費 Consensus Track output
+- HK Signal V1 / V2 Shadow 都不消費 Consensus Track output
 
 在 `?beta=hk-signal` 的 **設定 → 實驗圖層 → 共識路徑 Beta** 可手動開啟；預設為 OFF。`consensus.html` 保留作 isolated force-on visual test entry。
 
@@ -61,11 +80,13 @@ Observation Board 只讀 HK Signal 與 Consensus Track 的 prospective recorder 
 
 HK Signal 主要觀察：
 
-- T1 risk / confidence / persistence
-- T1 window movement
+- frozen V1 T1 risk / confidence / persistence
+- V1 T1 window movement
 - agency spread / timing disagreement
 - closest distance / lead time
 - 各機構最新 input / movement diagnostics
+
+V2 Shadow 現階段直接在 live storm card 與同一 prospective observation 中保存；現有 Observation Board 的既有圖表仍以 V1 為基準，避免 active-storm 期間大幅重構觀察頁。Post-storm review 若決定保留 V2，再統一整理 Observation Board 的 V1/V2 comparison surface。
 
 Consensus Track 主要觀察：
 
@@ -93,6 +114,8 @@ live Beta forecast
 ```
 
 Raw observations 與 HKO truth 保持 immutable；evaluation / closeout 屬 derived output。
+
+V2 Shadow 不建立另一套 raw corpus：新的 `hk-beta-prospective-observation/v1` observation 在原有 `analysis.basicForecast` V1 旁額外保存 `analysis.shadowForecastV2`，並保留 V2 engine version。既有 evaluator 繼續只讀 V1，因此可在同一 capture 上公平比較而不改變 V1 成績語意。
 
 Consensus Track 另有獨立 prospective recorder。新 capture 使用 `storm-consensus-track-prospective/v2`：保存 derived consensus coordinates、valid time、參與機構、spread、provenance，以及不含座標的 agency source references（source ID、bulletin/base/valid times、point counts）；仍不保存各機構逐點 raw coordinates，也不在 capture 階段評估 forecast skill。舊 v1 snapshots 保持可讀、不改寫。
 
@@ -160,6 +183,8 @@ scripts/                   recorder / evaluator / historical replay / read-only 
 historical/cases/          historical case manifests
 tests/                     deterministic regression tests
 .github/workflows/         active deployment / recording / evaluation CI
+docs/HK_SIGNAL_V2_SHADOW.md
+                           V1/V2 parallel shadow contract、SAUDEL live comparison、post-storm review plan
 docs/CONSENSUS_TRACK_ROADMAP.md
                            CT-0 → CT-X evidence-gated roadmap
 docs/CONSENSUS_TRACK_VERIFICATION_READINESS.md
@@ -175,10 +200,10 @@ docs/WEATHER_APP_INTEGRATION.md
 保留的 workflow 只有仍有實際用途的流程：
 
 - Pages deployment
-- HK Signal Beta regression validation（包括 Observation Board / CT-1C browser smoke）
-- HK Signal prospective recorder
+- HK Signal Beta regression validation（包括 V1/V2 shadow regression、Observation Board / CT-1C browser smoke）
+- HK Signal prospective recorder（同一 observation 保存 V1 + V2 Shadow）
 - HKO warning truth recorder
-- HK Signal evaluator / closeout
+- HK Signal evaluator / closeout（仍只評 V1）
 - Consensus Track live dry-run / visual regression
 - Consensus Track prospective recorder + stable case reconciliation
 - CT-1B read-only verification-readiness audit
@@ -194,7 +219,7 @@ docs/WEATHER_APP_INTEGRATION.md
 狀態規則：
 
 - **Current** — `main` 及上述 data branches
-- **Experimental** — 明確標示的獨立研究 branch，例如 wind-field work
+- **Experimental** — 明確標示的獨立研究 branch，例如 wind-field work，以及 HK Signal V2 Shadow
 - **Archived** — `archive/legacy-ai-xx-20260822`，只供需要追查舊實驗時參考
 - **Withdrawn / write-off** — 舊 `ai*`、`*-probe`、重複 identity fix、已合併 feature/fix branch；不要從中恢復程式到 production
 
@@ -205,17 +230,23 @@ PR #35 已正式 withdrawn，不應合併。
 1. **先用現有能力。** 不因新問題立即建立新的 AI 編號或平行框架。
 2. **遇到同一路線反覆失敗就換方法。** 不在同一位置不斷增加例外規則、fallback 與限制。
 3. **Correctness bug 可以立即修。** Parser、identity、timezone、future leakage、recorder 等資料問題不需要等待模型驗證完成。
-4. **模型變更需要跨案例證據。** Live case 期間不因單次 risk/window 表現調參。
+4. **Active live case 期間保持版本穩定。** V1 frozen；V2 Shadow 0.1 上線後亦 freeze。新 snapshot 用來比較，不用來逐輪追著 truth 調參。
 5. **保持 agency independence。** 缺來源就是缺來源，不以其他機構靜默代替。
 6. **Forecast 與 truth 分離。** Official outcome 只能用於 verification，不能回餵較早 forecast snapshot。
 7. **Backend source integrity 優先。** 未確認 authoritative backend source 前，不從舊 Git history 猜測或恢復 production backend。
 8. **小 PR、可回退。** 一個 PR 解一個清楚問題；完成後停止擴張 scope。
+9. **候選模型必須能與 baseline 同時比較。** V2 不先覆蓋 V1；只有完成 cross-case review 後才決定 promotion、繼續 shadow 或 write-off。
 
 ## 下一步
 
-目前主線不是增加新模型功能，而是：
+目前 HK Signal 主線改為 **frozen V1 + V2 Shadow 0.1 parallel prospective comparison**：
 
-- 持續收集 HK Signal live prospective evidence
+- 持續收集 HK Signal live prospective evidence，同一 capture 保存 V1 + V2 Shadow
+- 以 SAUDEL 為首個重點 V1/V2 comparison case，特別觀察 T3 long-horizon single-agency support、後續多機構收斂、source membership、withdrawal 及 timing semantics
+- 活躍風暴期間不再調 V2 0.1 coefficient；只修 correctness bug
+- HKO truth / evaluator / closeout 繼續只評 frozen V1，避免改變已建立的 prospective grading contract
+- 香港附近這一輪風暴全部消散／完成足夠 closeout 後，按 `docs/HK_SIGNAL_V2_SHADOW.md` + `docs/HK_SIGNAL_POST_CASE_REVIEW.md` 做一次全面 V1/V2 cross-case review
+- 全面 review 才決定：KEEP V1、保留／修改 V2、正式 evaluator candidate、或 write-off；同時整理臨時 V1/V2 UI / module / recorder 結構
 - 持續收集 Consensus Track v2 derived prospective forecasts與 stable case identity
 - 持續收集 HKO / CMA / JMA / CWA as-issued prospective agency baselines，避免 CT-2 必需 evidence 再流失
 - 使用 CT-1C Observation Board 觀察 supported horizon、target-lead agency count/spread 及 exact-common-valid-time 路徑移動，但不要把這些 diagnostics 解讀成 skill
@@ -226,10 +257,6 @@ PR #35 已正式 withdrawn，不應合併。
 - weighting 屬 CT-3 conditional research；沒有跨案例穩定 skill difference 就不做
 - ECMWF IFS/AIFS 屬 CT-4 separate model-family research，不作第五個 agency vote
 - ML / probability / own-model work 留在 CT-X backlog，非 active roadmap
-- 使用 Observation Board 觀察不同風暴的 HK Signal 模型活動
-- 在出現正式 HKO outcome / closeout 後產生 HK Signal v1 diagnosis
-- 結案時統一按 `docs/HK_SIGNAL_POST_CASE_REVIEW.md` 檢查已記錄現象
-- 只有多個獨立案例顯示一致偏差時，才考慮 HK Signal v2 candidate / shadow comparison
 
 Weather App integration 與 wind-field animation 可以平行研究，但不應阻塞或改寫 HK Signal validation pipeline。
 
