@@ -46,6 +46,7 @@ jobs:
           )"
           printf '%s\n' "$output"
           grep -F 'hko-warning-truth-recorder.yml' <<<"$output" >/dev/null
+          grep -F 'hko-local-wind-shadow-recorder.yml' <<<"$output" >/dev/null
           grep -F 'beta-prospective-recorder.yml' <<<"$output" >/dev/null
           grep -F 'hk-signal-evaluator.yml' <<<"$output" >/dev/null
           grep -F 'coverage keeper one-shot complete' <<<"$output" >/dev/null
@@ -86,6 +87,6 @@ jobs:
             echo "WARNING: no successor queued; hourly schedule remains as fallback" >&2
           fi
 
-      - name: Maintain truth, prospective, and evaluator coverage
+      - name: Maintain truth, prospective, local-wind shadow, and evaluator coverage
         shell: bash
         run: bash scripts/hk-signal-coverage-keeper.sh
