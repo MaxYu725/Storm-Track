@@ -7,6 +7,7 @@ on:
     paths:
       - README.md
       - docs/CONSENSUS_TRACK_ROADMAP.md
+      - docs/HK_SIGNAL_V2_SHADOW.md
       - index.html
       - observation.html
       - sw.js
@@ -61,7 +62,10 @@ jobs:
           grep -F '資料來源 / 路徑圖例' analysis/settings-panel-ui.js
           grep -F 'storm-settings-backdrop' analysis/settings-panel-ui.js
           grep -F '模式風場 Beta' analysis/wind-field-overlay.js
-          grep -F '香港影響 Beta' analysis/frontend-hk-threat-ui.js
+          grep -F '香港影響 Beta · V1 / V2' analysis/frontend-hk-threat-ui.js
+          grep -F 'V1 frozen' analysis/frontend-hk-threat-ui.js
+          grep -F 'V2 shadow' analysis/frontend-hk-threat-ui.js
+          grep -F 'v1RemainsEvaluationBaseline: true' analysis/frontend-hk-threat-ui.js
           grep -F '非香港天文台官方風球預測' analysis/frontend-hk-threat-ui.js
           grep -F '<script src="./analysis/hk-signal-observation-board.js"></script>' observation.html
           grep -F 'Observation-only · v1' observation.html
@@ -70,6 +74,8 @@ jobs:
           grep -F 'Consensus Track Beta｜Prospective Observation' analysis/consensus-track-observation-ui.js
           grep -F 'valid-time diagnostics only · 無 skill / truth / probability' analysis/consensus-track-observation-ui.js
           grep -F 'CT-1C 已把 read-only prospective diagnostics 加入現有 Observation Board' README.md
+          grep -F 'HK Signal V2 Shadow' README.md
+          grep -F 'SAUDEL' docs/HK_SIGNAL_V2_SHADOW.md
           grep -F '**Status: complete / read-only production observation surface.**' docs/CONSENSUS_TRACK_ROADMAP.md
 
       - name: Run HK signal regression suite
@@ -100,7 +106,9 @@ jobs:
             tests/hk-wind-field-interpolation-independence.test.cjs
             tests/hk-wind-field-freshness-escalation-invariants.test.cjs
             tests/basic-hk-signal-forecast.test.cjs
+            tests/hk-signal-v2-shadow.test.cjs
             tests/frontend-hk-threat-ui.test.cjs
+            tests/frontend-beta-prospective-observation.test.cjs
             tests/frontend-hk-signal-beta-gate.test.cjs
             tests/frontend-storm-identity-grouping.test.cjs
             tests/storm-case-identity.test.cjs
