@@ -49,6 +49,8 @@ jobs:
           node --check scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
           node tests/hk-situation-analysis-shadow.test.cjs
           node tests/hk-situation-analysis-cloudflare-inference.test.cjs
+          grep -F 'hk-situation-analysis-prompt/v0.4' analysis/hk-situation-analysis-prompt.js
+          grep -F "evidenceReferenceMode: 'catalog-id-only'" scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
 
       - name: Load exact immutable packet
         shell: bash
@@ -64,7 +66,14 @@ jobs:
               elif length == 0 then error("case ID is not present in latest packet batch")
               else error("case ID is ambiguous in latest packet batch") end
           ' /tmp/hk-situation-packet-batch.json > /tmp/hk-situation-packet.json
-          jq '{schemaVersion,packetFingerprint,caseId,groupKey,sourceObservationObservedAt,provenance}' /tmp/hk-situation-packet.json
+          jq -e '
+            .semantics.noFutureTruthFeedback == true and
+            .semantics.contemporaneousOfficialContextOnly == true and
+            .semantics.noFutureOfficialContextJoin == true and
+            .evidencePacket.evidenceCatalog.schemaVersion == "hk-situation-analysis-evidence-catalog/v1" and
+            (.evidencePacket.evidenceCatalog.entries | length) > 0
+          ' /tmp/hk-situation-packet.json >/dev/null
+          jq '{schemaVersion,packetFingerprint,caseId,groupKey,sourceObservationObservedAt,provenance,evidenceCatalogCount:(.evidencePacket.evidenceCatalog.entries|length)}' /tmp/hk-situation-packet.json
 
       - name: Resolve Cloudflare Workers AI credentials
         shell: bash
@@ -108,15 +117,16 @@ jobs:
           jq --arg packet "$packet_fingerprint" -e '
             .schemaVersion == "hk-situation-analysis-shadow-inference/v0.1" and
             .input.packetFingerprint == $packet and
-            .prompt.version == "hk-situation-analysis-prompt/v0.2" and
-            .prompt.outputSchemaVersion == "hk-situation-analysis-shadow-output/v0.1" and
+            .input.evidenceCatalogSchemaVersion == "hk-situation-analysis-evidence-catalog/v1" and
+            .prompt.version == "hk-situation-analysis-prompt/v0.4" and
+            .prompt.outputSchemaVersion == "hk-situation-analysis-shadow-output/v0.3" and
             (.prompt.requestFingerprint | test("^[0-9a-f]{64}$")) and
             .provider.name == "cloudflare-workers-ai-chat-completions" and
             .provider.endpoint == "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions" and
             .provider.store == false and
             .provider.toolsEnabled == false and
             .provider.reasoningControl == "provider-default" and
-            .output.schemaVersion == "hk-situation-analysis-shadow-output/v0.1" and
+            .output.schemaVersion == "hk-situation-analysis-shadow-output/v0.3" and
             .semantics.shadowOnly == true and
             .semantics.affectsForecast == false and
             .semantics.affectsEvaluator == false and
@@ -127,7 +137,8 @@ jobs:
             .semantics.caseSpecificRulesForbidden == true and
             .semantics.structuredOutputRequired == true and
             .semantics.localValidationRequired == true and
-            .semantics.exactEvidenceReferencesRequired == true
+            .semantics.evidenceReferenceMode == "catalog-id-only" and
+            .semantics.evidenceCatalogIdsRequired == true
           ' /tmp/hk-situation-inference.json >/dev/null
           jq '{createdAt,input,prompt,provider:{name:.provider.name,requestedModel:.provider.requestedModel,returnedModel:.provider.returnedModel,responseId:.provider.responseId,requestId:.provider.requestId,status:.provider.status,reasoningControl:.provider.reasoningControl,temperature:.provider.temperature,seed:.provider.seed,maxTokens:.provider.maxTokens,usage:.provider.usage},output,semantics}' /tmp/hk-situation-inference.json
 
@@ -187,7 +198,7 @@ jobs:
           cp /tmp/hk-situation-inference.json "$destination"
           cp /tmp/hk-situation-inference.json "$provider_latest"
           cp /tmp/hk-situation-inference.json "providers/${provider_slug}/latest.json"
-          jq -c '{schemaVersion,createdAt,input,prompt,provider:{name:.provider.name,requestedModel:.provider.requestedModel,returnedModel:.provider.returnedModel,responseId:.provider.responseId,status:.provider.status,reasoningControl:.provider.reasoningControl,temperature:.provider.temperature,seed:.provider.seed,usage:.provider.usage},summary:{currentPhase:.output.currentPhase,currentPhaseConfidence:.output.currentPhaseConfidence,nextDecisionQuestion:.output.nextDecisionWindow.question},semantics}' /tmp/hk-situation-inference.json >> index.ndjson
+          jq -c '{schemaVersion,createdAt,input,prompt,provider:{name:.provider.name,requestedModel:.provider.requestedModel,returnedModel:.provider.returnedModel,responseId:.provider.responseId,status:.provider.status,reasoningControl:.provider.reasoningControl,temperature:.provider.temperature,seed:.provider.seed,usage:.provider.usage},summary:{currentPhase:.output.currentPhase,currentPhaseConfidence:.output.currentPhaseConfidence,nextDecisionSignal:.output.nextDecisionWindow.signalCode,nextDecisionQuestion:.output.nextDecisionWindow.question},semantics}' /tmp/hk-situation-inference.json >> index.ndjson
 
           git add "$destination" "$provider_latest" "providers/${provider_slug}/latest.json" index.ndjson
           git commit -m "Record Cloudflare AI situation shadow ${case_slug} ${stamp} ${packet_short}"

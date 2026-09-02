@@ -5,8 +5,8 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormHkSituationAnalysisPrompt() {
   'use strict';
 
-  const VERSION = 'hk-situation-analysis-prompt/v0.3';
-  const OUTPUT_SCHEMA_VERSION = 'hk-situation-analysis-shadow-output/v0.2';
+  const VERSION = 'hk-situation-analysis-prompt/v0.4';
+  const OUTPUT_SCHEMA_VERSION = 'hk-situation-analysis-shadow-output/v0.3';
 
   const PHASES = Object.freeze([
     'remote', 'approaching', 'passing', 'departing', 'quasi-stationary',
@@ -15,10 +15,12 @@
   const DECISION_QUESTIONS = Object.freeze([
     'maintenance', 'cancellation', 'escalation', 'reassessment', 'none', 'uncertain'
   ]);
+  const DECISION_SIGNAL_CODES = Object.freeze(['T1', 'T3', 'T8', 'all', 'none']);
   const SIGNAL_ASSESSMENTS = Object.freeze([
     'supports-escalation', 'supports-maintenance', 'supports-cancellation',
     'mixed', 'insufficient', 'not-applicable'
   ]);
+  const OFFICIAL_DECISION_BASIS = Object.freeze(['context-supported', 'not-inferred']);
 
   function isObject(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -48,10 +50,11 @@
       properties: {
         nextQuestion: { type: 'string', enum: [...DECISION_QUESTIONS] },
         assessment: { type: 'string', enum: [...SIGNAL_ASSESSMENTS] },
+        officialDecisionBasis: { type: 'string', enum: [...OFFICIAL_DECISION_BASIS] },
         interpretation: { type: 'string' },
         evidenceIds: evidenceIdsSchema()
       },
-      required: ['nextQuestion', 'assessment', 'interpretation', 'evidenceIds'],
+      required: ['nextQuestion', 'assessment', 'officialDecisionBasis', 'interpretation', 'evidenceIds'],
       additionalProperties: false
     });
 
@@ -80,13 +83,14 @@
         nextDecisionWindow: {
           type: 'object',
           properties: {
+            signalCode: { type: 'string', enum: [...DECISION_SIGNAL_CODES] },
             question: { type: 'string', enum: [...DECISION_QUESTIONS] },
             earliestTime: { type: ['string', 'null'] },
             latestTime: { type: ['string', 'null'] },
             interpretation: { type: 'string' },
             evidenceIds: evidenceIdsSchema()
           },
-          required: ['question', 'earliestTime', 'latestTime', 'interpretation', 'evidenceIds'],
+          required: ['signalCode', 'question', 'earliestTime', 'latestTime', 'interpretation', 'evidenceIds'],
           additionalProperties: false
         },
         signalInterpretation: {
@@ -159,14 +163,19 @@
       'Analyze ONLY the supplied evidence packet. Treat this as a closed-book task: do not use prior knowledge, remembered storm behavior, external weather information, or later outcomes.',
       'The storm name, case ID, agency IDs, dates, and station names are provenance only. They must never select a special rule or prompt branch.',
       'Do not modify, recalculate, or silently replace V1/V2 risk indices. Do not invent track coordinates, wind speeds, HKO signal times, or agency positions.',
-      'Separate the lifecycle phase that is operationally relevant now from later forecast phases. A later re-approach must not silently replace the current pass/departure phase.',
+      'currentPhase is the operationally relevant Hong Kong lifecycle phase now, not merely geometric motion. A later re-approach must not replace the current pass/departure phase.',
+      'If frozen deterministic impact says expected=false and likelihood=unlikely and there is no contemporaneous HKO operational context for this case, currentPhase must be remote even when the geometric trend is approaching.',
       'Use remote for a system that is not operationally relevant to Hong Kong even if its geometric distance trend is technically approaching. Motion direction alone does not make the current operational phase approaching.',
       'Treat deterministic geometry, lifecycle analyzers, V1/V2 outputs, TC wind-field evidence, local measured wind, and official HKO context as distinct evidence channels. Explicitly identify conflicts instead of averaging them away.',
-      'Cyclone representative or maximum wind is storm intensity, not Hong Kong local wind. Never compare cyclone-centre/representative wind directly with Hong Kong local 10-minute mean-wind or gust thresholds.',
+      'Cyclone representative or maximum wind is storm intensity, not Hong Kong local wind. Never describe cyclone-centre or representative wind as being above or below a Hong Kong signal/local-wind threshold.',
       'Local station observations are observation-only. A single exposed-station strong wind or gust is not by itself evidence that T3/T8 should be issued, and local wind must not be attributed to the tropical cyclone unless the packet contains supporting linkage evidence.',
       'Official HKO context may tell you the current operational question or stated reassessment context, but it must not rewrite an earlier deterministic forecast or be treated as future outcome feedback.',
-      'If the packet does not provide the current official HKO signal state, do not claim that HKO should maintain, cancel, issue, or upgrade a current signal. Express only forecast interpretation or reassessment uncertainty supported by the packet.',
-      'For T1/T3/T8, interpret the meaningful next operational question (maintenance, cancellation, escalation, reassessment, none, uncertain). Do not output a new probability or replacement risk score.',
+      'If the packet does not provide contemporaneous HKO operational context for this case, officialDecisionBasis must be not-inferred and nextQuestion must not be maintenance, cancellation, or escalation. Use reassessment, none, or uncertain instead.',
+      'If nextQuestion is maintenance, cancellation, or escalation, officialDecisionBasis must be context-supported.',
+      'assessment=not-applicable means no operational action question is applicable and must pair with nextQuestion=none. If maintenance, cancellation, escalation, or reassessment is under discussion, use a substantive assessment such as mixed, insufficient, or supports-* instead.',
+      'assessment=supports-maintenance must pair with nextQuestion=maintenance; supports-cancellation with cancellation; supports-escalation with escalation.',
+      'nextDecisionWindow.signalCode identifies which signal the window is about. For T1/T3/T8, nextDecisionWindow.question must exactly match that signal nextQuestion. Use signalCode=all only for a genuinely shared cross-signal question, and signalCode=none only when question=none.',
+      'For T1/T3/T8, interpret the meaningful next operational question without outputting a new probability or replacement risk score.',
       'A deterministic estimatedWindow is model guidance, not automatically an HKO issuance window. Do not describe it as an official issue/change time unless contemporaneous HKO context explicitly supports that meaning.',
       'If evidence is sparse, phase-mixed, horizon-limited, internally inconsistent, or temporally ambiguous, say so and use uncertain/insufficient rather than forcing a conclusion.',
       'For every evidence citation, use ONLY an ID present in evidenceCatalog.entries. Never output JSON paths, JSONPath expressions, filters, wildcards, predicates, functions, or invented evidence IDs.',
@@ -197,8 +206,25 @@
     }
     if (!DECISION_QUESTIONS.includes(value.nextQuestion)) errors.push(`${path}.nextQuestion invalid`);
     if (!SIGNAL_ASSESSMENTS.includes(value.assessment)) errors.push(`${path}.assessment invalid`);
+    if (!OFFICIAL_DECISION_BASIS.includes(value.officialDecisionBasis)) errors.push(`${path}.officialDecisionBasis invalid`);
     if (typeof value.interpretation !== 'string') errors.push(`${path}.interpretation must be string`);
     validateEvidenceIds(value.evidenceIds, `${path}.evidenceIds`, errors, allowedIds);
+
+    if (value.assessment === 'not-applicable' && value.nextQuestion !== 'none') {
+      errors.push(`${path}.assessment not-applicable requires nextQuestion=none`);
+    }
+    const supportedQuestion = {
+      'supports-maintenance': 'maintenance',
+      'supports-cancellation': 'cancellation',
+      'supports-escalation': 'escalation'
+    }[value.assessment];
+    if (supportedQuestion && value.nextQuestion !== supportedQuestion) {
+      errors.push(`${path}.assessment ${value.assessment} requires nextQuestion=${supportedQuestion}`);
+    }
+    if (['maintenance', 'cancellation', 'escalation'].includes(value.nextQuestion)
+        && value.officialDecisionBasis !== 'context-supported') {
+      errors.push(`${path}.nextQuestion ${value.nextQuestion} requires officialDecisionBasis=context-supported`);
+    }
   }
 
   function validateOutput(value, allowedIds = null) {
@@ -225,6 +251,7 @@
     const window = value.nextDecisionWindow;
     if (!isObject(window)) errors.push('nextDecisionWindow must be object');
     else {
+      if (!DECISION_SIGNAL_CODES.includes(window.signalCode)) errors.push('nextDecisionWindow.signalCode invalid');
       if (!DECISION_QUESTIONS.includes(window.question)) errors.push('nextDecisionWindow.question invalid');
       if (window.earliestTime !== null && typeof window.earliestTime !== 'string') errors.push('nextDecisionWindow.earliestTime invalid');
       if (window.latestTime !== null && typeof window.latestTime !== 'string') errors.push('nextDecisionWindow.latestTime invalid');
@@ -234,6 +261,18 @@
 
     if (!isObject(value.signalInterpretation)) errors.push('signalInterpretation must be object');
     else ['T1', 'T3', 'T8'].forEach(code => validateSignal(value.signalInterpretation[code], `signalInterpretation.${code}`, errors, allowedIds));
+
+    if (isObject(window) && isObject(value.signalInterpretation)) {
+      if (['T1', 'T3', 'T8'].includes(window.signalCode)) {
+        const signalQuestion = value.signalInterpretation?.[window.signalCode]?.nextQuestion;
+        if (signalQuestion && window.question !== signalQuestion) {
+          errors.push(`nextDecisionWindow.question must match signalInterpretation.${window.signalCode}.nextQuestion`);
+        }
+      }
+      if (window.signalCode === 'none' && window.question !== 'none') {
+        errors.push('nextDecisionWindow.signalCode=none requires question=none');
+      }
+    }
 
     for (const key of ['supportingEvidence', 'contradictingEvidence']) {
       const rows = value[key];
@@ -266,7 +305,36 @@
   function validateOutputAgainstEvidence(value, evidencePacket) {
     const ids = catalogIds(evidencePacket);
     if (!ids.length) return { valid: false, errors: ['supplied evidence catalog is missing or empty'] };
-    return validateOutput(value, ids);
+    const validation = validateOutput(value, ids);
+    const errors = [...validation.errors];
+    const hkoStatement = evidencePacket?.evidence?.officialHko?.signalStatement;
+    const hasOfficialContext = isObject(hkoStatement);
+    const impact = evidencePacket?.evidence?.deterministicForecasts?.v1?.impact;
+
+    if (!hasOfficialContext) {
+      for (const code of ['T1', 'T3', 'T8']) {
+        const signal = value?.signalInterpretation?.[code];
+        if (!signal) continue;
+        if (signal.officialDecisionBasis !== 'not-inferred') {
+          errors.push(`signalInterpretation.${code}.officialDecisionBasis must be not-inferred when contemporaneous HKO context is unavailable`);
+        }
+        if (['maintenance', 'cancellation', 'escalation'].includes(signal.nextQuestion)) {
+          errors.push(`signalInterpretation.${code}.nextQuestion cannot be ${signal.nextQuestion} without contemporaneous HKO context`);
+        }
+      }
+      if (['maintenance', 'cancellation', 'escalation'].includes(value?.nextDecisionWindow?.question)) {
+        errors.push(`nextDecisionWindow.question cannot be ${value.nextDecisionWindow.question} without contemporaneous HKO context`);
+      }
+    }
+
+    if (impact?.expected === false && impact?.likelihood === 'unlikely' && !hasOfficialContext && value?.currentPhase !== 'remote') {
+      errors.push('currentPhase must be remote when deterministic HK impact is expected=false/ unlikely and no contemporaneous HKO context is available');
+    }
+    if (hasOfficialContext && value?.currentPhase === 'remote') {
+      errors.push('currentPhase cannot be remote while contemporaneous HKO operational context for this case is present');
+    }
+
+    return { valid: errors.length === 0, errors };
   }
 
   function resolveEvidenceId(id, evidencePacket) {
@@ -281,7 +349,9 @@
     OUTPUT_JSON_SCHEMA,
     PHASES,
     DECISION_QUESTIONS,
+    DECISION_SIGNAL_CODES,
     SIGNAL_ASSESSMENTS,
+    OFFICIAL_DECISION_BASIS,
     buildInstructions,
     catalogIds,
     outputSchemaForEvidence,
