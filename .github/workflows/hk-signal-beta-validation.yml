@@ -14,8 +14,12 @@ on:
       - analysis/**
       - scripts/reconcile-beta-case-identities.mjs
       - scripts/validate-consensus-track-observation-ui.mjs
+      - scripts/build-hk-situation-analysis-shadow-packets.mjs
+      - scripts/run-hk-situation-analysis-shadow-openai.mjs
       - tests/**
       - .github/workflows/hk-signal-beta-validation.yml
+      - .github/workflows/hk-situation-analysis-shadow-recorder.yml
+      - .github/workflows/hk-situation-analysis-openai-shadow.yml
 
 permissions:
   contents: read
@@ -38,6 +42,7 @@ jobs:
           node --check analysis/basic-hk-signal-forecast.js
           node --check analysis/frontend-hk-threat-ui.js
           node --check analysis/hk-situation-analysis-shadow.js
+          node --check analysis/hk-situation-analysis-prompt.js
           node --check analysis/hko-signal-statement.js
           node --check analysis/settings-panel-ui.js
           node --check analysis/wind-field-overlay.js
@@ -47,6 +52,8 @@ jobs:
           node --check analysis/consensus-track-observation-ui.js
           node --check scripts/reconcile-beta-case-identities.mjs
           node --check scripts/validate-consensus-track-observation-ui.mjs
+          node --check scripts/build-hk-situation-analysis-shadow-packets.mjs
+          node --check scripts/run-hk-situation-analysis-shadow-openai.mjs
 
       - name: Verify Beta integration surface
         run: |
@@ -70,6 +77,10 @@ jobs:
           grep -F '非香港天文台官方風球預測' analysis/frontend-hk-threat-ui.js
           grep -F 'ai-situation-analysis-shadow-input' analysis/hk-situation-analysis-shadow.js
           grep -F 'caseSpecificRulesForbidden: true' analysis/hk-situation-analysis-shadow.js
+          grep -F 'hk-situation-analysis-prompt/v0.1' analysis/hk-situation-analysis-prompt.js
+          grep -F 'Analyze ONLY the supplied evidence packet' analysis/hk-situation-analysis-prompt.js
+          grep -F "type: 'json_schema'" scripts/run-hk-situation-analysis-shadow-openai.mjs
+          grep -F 'store: false' scripts/run-hk-situation-analysis-shadow-openai.mjs
           grep -F '<script src="./analysis/hk-signal-observation-board.js"></script>' observation.html
           grep -F 'Observation-only · v1' observation.html
           grep -F '不評分、不校準、不修改 forecast' observation.html
@@ -111,6 +122,8 @@ jobs:
             tests/basic-hk-signal-forecast.test.cjs
             tests/hk-signal-v2-shadow.test.cjs
             tests/hk-situation-analysis-shadow.test.cjs
+            tests/hk-situation-analysis-shadow-recorder.test.cjs
+            tests/hk-situation-analysis-openai-inference.test.cjs
             tests/frontend-hk-threat-ui.test.cjs
             tests/frontend-beta-prospective-observation.test.cjs
             tests/frontend-hk-signal-beta-gate.test.cjs
