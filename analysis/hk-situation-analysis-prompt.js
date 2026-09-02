@@ -5,7 +5,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormHkSituationAnalysisPrompt() {
   'use strict';
 
-  const VERSION = 'hk-situation-analysis-prompt/v0.4';
+  const VERSION = 'hk-situation-analysis-prompt/v0.5';
   const OUTPUT_SCHEMA_VERSION = 'hk-situation-analysis-shadow-output/v0.3';
 
   const PHASES = Object.freeze([
@@ -21,6 +21,7 @@
     'mixed', 'insufficient', 'not-applicable'
   ]);
   const OFFICIAL_DECISION_BASIS = Object.freeze(['context-supported', 'not-inferred']);
+  const SIGNAL_RANK = Object.freeze({ T1: 1, T3: 3, T8: 8 });
 
   function isObject(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -172,6 +173,9 @@
       'Official HKO context may tell you the current operational question or stated reassessment context, but it must not rewrite an earlier deterministic forecast or be treated as future outcome feedback.',
       'If the packet does not provide contemporaneous HKO operational context for this case, officialDecisionBasis must be not-inferred and nextQuestion must not be maintenance, cancellation, or escalation. Use reassessment, none, or uncertain instead.',
       'If nextQuestion is maintenance, cancellation, or escalation, officialDecisionBasis must be context-supported.',
+      'Maintenance and cancellation apply only to the currently active HKO signal tier. An inactive T1/T3/T8 tier must never be described as being maintained or cancelled.',
+      'Escalation is a question only for a signal tier above the currently active HKO tier. The active tier itself and lower tiers must not use escalation as their signal-specific nextQuestion.',
+      'When HKO has an active signal, inactive signal tiers may use reassessment, none, or uncertain unless a higher tier is genuinely the escalation target supported by the contemporaneous official context.',
       'assessment=not-applicable means no operational action question is applicable and must pair with nextQuestion=none. If maintenance, cancellation, escalation, or reassessment is under discussion, use a substantive assessment such as mixed, insufficient, or supports-* instead.',
       'assessment=supports-maintenance must pair with nextQuestion=maintenance; supports-cancellation with cancellation; supports-escalation with escalation.',
       'nextDecisionWindow.signalCode identifies which signal the window is about. For T1/T3/T8, nextDecisionWindow.question must exactly match that signal nextQuestion. Use signalCode=all only for a genuinely shared cross-signal question, and signalCode=none only when question=none.',
@@ -302,6 +306,20 @@
     return { valid: errors.length === 0, errors };
   }
 
+  function activeSignalTier(evidencePacket) {
+    const statement = evidencePacket?.evidence?.officialHko?.signalStatement;
+    if (!isObject(statement)) return null;
+    const code = String(statement.currentSignalCode || '').trim().toUpperCase();
+    if (code === 'TC1') return 'T1';
+    if (code === 'TC3') return 'T3';
+    if (/^TC8(?:NE|SE|SW|NW)?$/.test(code) || code === 'TC9' || code === 'TC10') return 'T8';
+    const label = String(statement.currentSignal || '');
+    if (/一號/.test(label)) return 'T1';
+    if (/三號/.test(label)) return 'T3';
+    if (/(?:八號|九號|十號)/.test(label)) return 'T8';
+    return null;
+  }
+
   function validateOutputAgainstEvidence(value, evidencePacket) {
     const ids = catalogIds(evidencePacket);
     if (!ids.length) return { valid: false, errors: ['supplied evidence catalog is missing or empty'] };
@@ -309,6 +327,7 @@
     const errors = [...validation.errors];
     const hkoStatement = evidencePacket?.evidence?.officialHko?.signalStatement;
     const hasOfficialContext = isObject(hkoStatement);
+    const activeTier = activeSignalTier(evidencePacket);
     const impact = evidencePacket?.evidence?.deterministicForecasts?.v1?.impact;
 
     if (!hasOfficialContext) {
@@ -324,6 +343,20 @@
       }
       if (['maintenance', 'cancellation', 'escalation'].includes(value?.nextDecisionWindow?.question)) {
         errors.push(`nextDecisionWindow.question cannot be ${value.nextDecisionWindow.question} without contemporaneous HKO context`);
+      }
+    }
+
+    if (activeTier) {
+      const activeRank = SIGNAL_RANK[activeTier];
+      for (const code of ['T1', 'T3', 'T8']) {
+        const signal = value?.signalInterpretation?.[code];
+        if (!signal) continue;
+        if (code !== activeTier && ['maintenance', 'cancellation'].includes(signal.nextQuestion)) {
+          errors.push(`signalInterpretation.${code}.nextQuestion ${signal.nextQuestion} is not applicable because active HKO signal tier is ${activeTier}`);
+        }
+        if (signal.nextQuestion === 'escalation' && SIGNAL_RANK[code] <= activeRank) {
+          errors.push(`signalInterpretation.${code}.nextQuestion escalation requires a tier above active HKO signal ${activeTier}`);
+        }
       }
     }
 
@@ -355,6 +388,7 @@
     buildInstructions,
     catalogIds,
     outputSchemaForEvidence,
+    activeSignalTier,
     resolveEvidenceId,
     validateOutput,
     validateOutputAgainstEvidence
