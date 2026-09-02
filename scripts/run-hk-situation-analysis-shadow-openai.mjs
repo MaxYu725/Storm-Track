@@ -88,7 +88,7 @@ function createRequestBody(packet, {
   };
 }
 
-function extractStructuredOutput(response) {
+function extractStructuredOutput(response, evidencePacket = null) {
   if (!response || typeof response !== 'object') throw new Error('OpenAI response is not an object');
   if (response.status && response.status !== 'completed') {
     const reason = response?.incomplete_details?.reason || response.status;
@@ -117,7 +117,9 @@ function extractStructuredOutput(response) {
   } catch (error) {
     throw new Error(`OpenAI structured output is not JSON: ${error.message}`);
   }
-  const validation = promptContract.validateOutput(parsed);
+  const validation = evidencePacket
+    ? promptContract.validateOutputAgainstEvidence(parsed, evidencePacket)
+    : promptContract.validateOutput(parsed);
   if (!validation.valid) throw new Error(`OpenAI structured output failed local validation: ${validation.errors.join('; ')}`);
   return parsed;
 }
@@ -146,7 +148,7 @@ async function runInference(packet, {
       headers: {
         authorization: `Bearer ${apiKey}`,
         'content-type': 'application/json',
-        'user-agent': 'storm-track-ai-situation-shadow/0.1'
+        'user-agent': 'storm-track-ai-situation-shadow/0.2'
       },
       body: JSON.stringify(requestBody),
       signal: controller.signal
@@ -167,7 +169,7 @@ async function runInference(packet, {
     throw new Error(`OpenAI request failed: ${message}`);
   }
 
-  const output = extractStructuredOutput(payload);
+  const output = extractStructuredOutput(payload, packet.evidencePacket);
   const returnedModel = payload.model ?? null;
   return {
     schemaVersion: INFERENCE_SCHEMA_VERSION,
@@ -209,7 +211,8 @@ async function runInference(packet, {
       noWebSearch: true,
       inputPacketIsSoleMeteorologicalEvidence: true,
       caseSpecificRulesForbidden: true,
-      structuredOutputRequired: true
+      structuredOutputRequired: true,
+      exactEvidenceReferencesRequired: true
     }
   };
 }

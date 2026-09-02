@@ -49,6 +49,7 @@ function validOutput() {
 }
 
 function validPacket() {
+  const t3 = { likelihood: 'possible', riskIndex: 0.5 };
   return {
     schemaVersion: 'hk-situation-analysis-shadow-packet/v0.1',
     packetFingerprint: 'a'.repeat(64),
@@ -62,10 +63,13 @@ function validPacket() {
       mode: 'ai-situation-analysis-shadow-input',
       case: { caseId: 'STC-2026-JMA-TC9999', displayName: 'Test', provenanceOnly: true },
       evidence: {
-        deterministicForecasts: { v1: { signals: {} }, v2Shadow: { signals: {} } },
+        deterministicForecasts: {
+          v1: { signals: { T1: {}, T3: t3, T8: {} } },
+          v2Shadow: { signals: { T1: {}, T3: { ...t3 }, T8: {} } }
+        },
         geometry: { representativeMinimum: null },
         lifecycleAnalyzers: { directDepart: { confidence: 0.7 }, reApproach: { confidence: 0.5 } },
-        localWind: { provided: false, affectsForecast: false }
+        localWind: { provided: true, affectsForecast: false, summary: { meanStrongStationCount: 0 } }
       },
       aiTask: {},
       semantics: {
@@ -91,21 +95,26 @@ function validPacket() {
 (async () => {
   const runner = await import('../scripts/run-hk-situation-analysis-shadow-openai.mjs');
 
-  assert.equal(prompt.VERSION, 'hk-situation-analysis-prompt/v0.1');
+  assert.equal(prompt.VERSION, 'hk-situation-analysis-prompt/v0.2');
   assert.equal(prompt.OUTPUT_SCHEMA_VERSION, 'hk-situation-analysis-shadow-output/v0.1');
   assert.equal(prompt.OUTPUT_JSON_SCHEMA.additionalProperties, false);
   assert.equal(prompt.OUTPUT_JSON_SCHEMA.properties.signalInterpretation.additionalProperties, false);
   assert.match(prompt.buildInstructions(), /closed-book/);
   assert.match(prompt.buildInstructions(), /must never select a special rule/);
   assert.match(prompt.buildInstructions(), /single exposed-station/);
+  assert.match(prompt.buildInstructions(), /remote for a system/);
+  assert.match(prompt.buildInstructions(), /Cyclone representative or maximum wind is storm intensity/);
 
-  const validation = prompt.validateOutput(validOutput());
+  const packet = validPacket();
+  const validation = prompt.validateOutputAgainstEvidence(validOutput(), packet.evidencePacket);
   assert.deepEqual(validation, { valid: true, errors: [] });
   const invalid = validOutput();
   invalid.supportingEvidence[0].ref = '$.truth.T3';
   assert.equal(prompt.validateOutput(invalid).valid, false);
+  const invalidExact = validOutput();
+  invalidExact.supportingEvidence[0].ref = '$.evidence.threatTimeline[?(@.label=="+1h")]';
+  assert.equal(prompt.validateOutputAgainstEvidence(invalidExact, packet.evidencePacket).valid, false);
 
-  const packet = validPacket();
   const request = runner.createRequestBody(packet, { model: 'gpt-5.6-terra', reasoningEffort: 'medium' });
   assert.equal(request.model, 'gpt-5.6-terra');
   assert.equal(request.store, false);
@@ -172,6 +181,15 @@ function validPacket() {
   assert.equal(result.semantics.affectsEvaluator, false);
   assert.equal(result.semantics.noExternalTools, true);
   assert.equal(result.semantics.inputPacketIsSoleMeteorologicalEvidence, true);
+  assert.equal(result.semantics.exactEvidenceReferencesRequired, true);
+
+  assert.deepEqual(runner.extractStructuredOutput(providerPayload, packet.evidencePacket), structured);
+
+  const invalidPayload = JSON.parse(JSON.stringify(providerPayload));
+  const invalidStructured = validOutput();
+  invalidStructured.supportingEvidence[0].ref = '$.evidence.missing.path';
+  invalidPayload.output[0].content[0].text = JSON.stringify(invalidStructured);
+  assert.throws(() => runner.extractStructuredOutput(invalidPayload, packet.evidencePacket), /does not resolve exactly/);
 
   assert.throws(
     () => runner.extractStructuredOutput({

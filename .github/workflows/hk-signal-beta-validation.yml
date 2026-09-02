@@ -81,13 +81,16 @@ jobs:
           grep -F '非香港天文台官方風球預測' analysis/frontend-hk-threat-ui.js
           grep -F 'ai-situation-analysis-shadow-input' analysis/hk-situation-analysis-shadow.js
           grep -F 'caseSpecificRulesForbidden: true' analysis/hk-situation-analysis-shadow.js
-          grep -F 'hk-situation-analysis-prompt/v0.1' analysis/hk-situation-analysis-prompt.js
+          grep -F 'hk-situation-analysis-prompt/v0.2' analysis/hk-situation-analysis-prompt.js
           grep -F 'Analyze ONLY the supplied evidence packet' analysis/hk-situation-analysis-prompt.js
+          grep -F 'Do not use filters, wildcards' analysis/hk-situation-analysis-prompt.js
           grep -F "type: 'json_schema'" scripts/run-hk-situation-analysis-shadow-openai.mjs
           grep -F 'store: false' scripts/run-hk-situation-analysis-shadow-openai.mjs
+          grep -F 'exactEvidenceReferencesRequired: true' scripts/run-hk-situation-analysis-shadow-openai.mjs
           grep -F "type: 'json_schema'" scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
           grep -F '@cf/openai/gpt-oss-120b' scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
           grep -F 'cloudflare-workers-ai-chat-completions' scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
+          grep -F 'exactEvidenceReferencesRequired: true' scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
           grep -F '<script src="./analysis/hk-signal-observation-board.js"></script>' observation.html
           grep -F 'Observation-only · v1' observation.html
           grep -F '不評分、不校準、不修改 forecast' observation.html

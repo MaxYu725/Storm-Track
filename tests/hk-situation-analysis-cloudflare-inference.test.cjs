@@ -49,6 +49,7 @@ function validOutput() {
 }
 
 function validPacket() {
+  const t3 = { likelihood: 'possible', riskIndex: 0.5 };
   return {
     schemaVersion: 'hk-situation-analysis-shadow-packet/v0.1',
     packetFingerprint: 'a'.repeat(64),
@@ -62,10 +63,13 @@ function validPacket() {
       mode: 'ai-situation-analysis-shadow-input',
       case: { caseId: 'STC-2026-JMA-TC9999', displayName: 'Test', provenanceOnly: true },
       evidence: {
-        deterministicForecasts: { v1: { signals: {} }, v2Shadow: { signals: {} } },
+        deterministicForecasts: {
+          v1: { signals: { T1: {}, T3: t3, T8: {} } },
+          v2Shadow: { signals: { T1: {}, T3: { ...t3 }, T8: {} } }
+        },
         geometry: { representativeMinimum: null },
         lifecycleAnalyzers: { directDepart: { confidence: 0.7 }, reApproach: { confidence: 0.5 } },
-        localWind: { provided: false, affectsForecast: false }
+        localWind: { provided: true, affectsForecast: false, summary: { meanStrongStationCount: 0 } }
       },
       aiTask: {},
       semantics: {
@@ -92,6 +96,10 @@ function validPacket() {
   const runner = await import('../scripts/run-hk-situation-analysis-shadow-cloudflare.mjs');
   const packet = validPacket();
 
+  assert.equal(prompt.VERSION, 'hk-situation-analysis-prompt/v0.2');
+  assert.match(prompt.buildInstructions(), /remote for a system/);
+  assert.match(prompt.buildInstructions(), /Cyclone representative or maximum wind is storm intensity/);
+  assert.match(prompt.buildInstructions(), /Do not use filters, wildcards/);
   assert.equal(runner.DEFAULT_MODEL, '@cf/openai/gpt-oss-120b');
   assert.equal(runner.PROVIDER, 'cloudflare-workers-ai-chat-completions');
   assert.equal(
@@ -113,6 +121,11 @@ function validPacket() {
   assert.equal(request.seed, 725);
 
   const structured = validOutput();
+  assert.deepEqual(prompt.validateOutputAgainstEvidence(structured, packet.evidencePacket), { valid: true, errors: [] });
+  const badRef = validOutput();
+  badRef.supportingEvidence[0].ref = '$.evidence.threatTimeline[?(@.label=="+1h")]';
+  assert.equal(prompt.validateOutputAgainstEvidence(badRef, packet.evidencePacket).valid, false);
+
   const providerPayload = {
     id: 'chatcmpl_cf_test',
     model: '@cf/openai/gpt-oss-120b',
@@ -168,9 +181,16 @@ function validPacket() {
   assert.equal(result.semantics.noExternalTools, true);
   assert.equal(result.semantics.inputPacketIsSoleMeteorologicalEvidence, true);
   assert.equal(result.semantics.localValidationRequired, true);
+  assert.equal(result.semantics.exactEvidenceReferencesRequired, true);
 
   const wrapped = { success: true, result: providerPayload, errors: [], messages: [] };
-  assert.deepEqual(runner.extractStructuredOutput(wrapped), structured);
+  assert.deepEqual(runner.extractStructuredOutput(wrapped, packet.evidencePacket), structured);
+
+  const invalidPayload = JSON.parse(JSON.stringify(providerPayload));
+  const invalidStructured = validOutput();
+  invalidStructured.supportingEvidence[0].ref = '$.evidence.missing.path';
+  invalidPayload.choices[0].message.content = JSON.stringify(invalidStructured);
+  assert.throws(() => runner.extractStructuredOutput(invalidPayload, packet.evidencePacket), /does not resolve exactly/);
 
   assert.throws(
     () => runner.extractStructuredOutput({
