@@ -5,162 +5,153 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormHkSituationAnalysisPrompt() {
   'use strict';
 
-  const VERSION = 'hk-situation-analysis-prompt/v0.2';
-  const OUTPUT_SCHEMA_VERSION = 'hk-situation-analysis-shadow-output/v0.1';
+  const VERSION = 'hk-situation-analysis-prompt/v0.3';
+  const OUTPUT_SCHEMA_VERSION = 'hk-situation-analysis-shadow-output/v0.2';
 
   const PHASES = Object.freeze([
-    'remote',
-    'approaching',
-    'passing',
-    'departing',
-    'quasi-stationary',
-    're-approaching',
-    'transition',
-    'uncertain'
+    'remote', 'approaching', 'passing', 'departing', 'quasi-stationary',
+    're-approaching', 'transition', 'uncertain'
   ]);
   const DECISION_QUESTIONS = Object.freeze([
-    'maintenance',
-    'cancellation',
-    'escalation',
-    'reassessment',
-    'none',
-    'uncertain'
+    'maintenance', 'cancellation', 'escalation', 'reassessment', 'none', 'uncertain'
   ]);
   const SIGNAL_ASSESSMENTS = Object.freeze([
-    'supports-escalation',
-    'supports-maintenance',
-    'supports-cancellation',
-    'mixed',
-    'insufficient',
-    'not-applicable'
+    'supports-escalation', 'supports-maintenance', 'supports-cancellation',
+    'mixed', 'insufficient', 'not-applicable'
   ]);
 
-  const evidenceRefsSchema = Object.freeze({
-    type: 'array',
-    items: { type: 'string' }
-  });
+  function isObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  }
 
-  const signalSchema = Object.freeze({
-    type: 'object',
-    properties: {
-      nextQuestion: { type: 'string', enum: [...DECISION_QUESTIONS] },
-      assessment: { type: 'string', enum: [...SIGNAL_ASSESSMENTS] },
-      interpretation: { type: 'string' },
-      evidenceRefs: evidenceRefsSchema
-    },
-    required: ['nextQuestion', 'assessment', 'interpretation', 'evidenceRefs'],
-    additionalProperties: false
-  });
+  function catalogEntries(evidencePacket) {
+    return Array.isArray(evidencePacket?.evidenceCatalog?.entries)
+      ? evidencePacket.evidenceCatalog.entries
+      : [];
+  }
 
-  const OUTPUT_JSON_SCHEMA = Object.freeze({
-    type: 'object',
-    properties: {
-      schemaVersion: { type: 'string', enum: [OUTPUT_SCHEMA_VERSION] },
-      currentPhase: { type: 'string', enum: [...PHASES] },
-      currentPhaseConfidence: { type: 'number', minimum: 0, maximum: 1 },
-      futurePhases: {
-        type: 'array',
-        items: {
+  function catalogIds(evidencePacket) {
+    return [...new Set(catalogEntries(evidencePacket)
+      .map(entry => String(entry?.id || '').trim())
+      .filter(id => /^E_[A-Z0-9_]+$/.test(id)))];
+  }
+
+  function idItemSchema(allowedIds = null) {
+    if (Array.isArray(allowedIds) && allowedIds.length) return { type: 'string', enum: [...allowedIds] };
+    return { type: 'string', pattern: '^E_[A-Z0-9_]+$' };
+  }
+
+  function makeOutputJsonSchema(allowedIds = null) {
+    const evidenceIdsSchema = () => ({ type: 'array', items: idItemSchema(allowedIds) });
+    const signalSchema = () => ({
+      type: 'object',
+      properties: {
+        nextQuestion: { type: 'string', enum: [...DECISION_QUESTIONS] },
+        assessment: { type: 'string', enum: [...SIGNAL_ASSESSMENTS] },
+        interpretation: { type: 'string' },
+        evidenceIds: evidenceIdsSchema()
+      },
+      required: ['nextQuestion', 'assessment', 'interpretation', 'evidenceIds'],
+      additionalProperties: false
+    });
+
+    return {
+      type: 'object',
+      properties: {
+        schemaVersion: { type: 'string', enum: [OUTPUT_SCHEMA_VERSION] },
+        currentPhase: { type: 'string', enum: [...PHASES] },
+        currentPhaseConfidence: { type: 'number', minimum: 0, maximum: 1 },
+        futurePhases: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              phase: { type: 'string', enum: [...PHASES] },
+              earliestTime: { type: ['string', 'null'] },
+              latestTime: { type: ['string', 'null'] },
+              interpretation: { type: 'string' },
+              evidenceIds: evidenceIdsSchema()
+            },
+            required: ['phase', 'earliestTime', 'latestTime', 'interpretation', 'evidenceIds'],
+            additionalProperties: false
+          }
+        },
+        currentThreatInterpretation: { type: 'string' },
+        nextDecisionWindow: {
           type: 'object',
           properties: {
-            phase: { type: 'string', enum: [...PHASES] },
+            question: { type: 'string', enum: [...DECISION_QUESTIONS] },
             earliestTime: { type: ['string', 'null'] },
             latestTime: { type: ['string', 'null'] },
             interpretation: { type: 'string' },
-            evidenceRefs: evidenceRefsSchema
+            evidenceIds: evidenceIdsSchema()
           },
-          required: ['phase', 'earliestTime', 'latestTime', 'interpretation', 'evidenceRefs'],
+          required: ['question', 'earliestTime', 'latestTime', 'interpretation', 'evidenceIds'],
           additionalProperties: false
-        }
-      },
-      currentThreatInterpretation: { type: 'string' },
-      nextDecisionWindow: {
-        type: 'object',
-        properties: {
-          question: { type: 'string', enum: [...DECISION_QUESTIONS] },
-          earliestTime: { type: ['string', 'null'] },
-          latestTime: { type: ['string', 'null'] },
-          interpretation: { type: 'string' },
-          evidenceRefs: evidenceRefsSchema
         },
-        required: ['question', 'earliestTime', 'latestTime', 'interpretation', 'evidenceRefs'],
-        additionalProperties: false
-      },
-      signalInterpretation: {
-        type: 'object',
-        properties: {
-          T1: signalSchema,
-          T3: signalSchema,
-          T8: signalSchema
+        signalInterpretation: {
+          type: 'object',
+          properties: { T1: signalSchema(), T3: signalSchema(), T8: signalSchema() },
+          required: ['T1', 'T3', 'T8'],
+          additionalProperties: false
         },
-        required: ['T1', 'T3', 'T8'],
-        additionalProperties: false
-      },
-      supportingEvidence: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            ref: { type: 'string' },
-            finding: { type: 'string' }
-          },
-          required: ['ref', 'finding'],
-          additionalProperties: false
+        supportingEvidence: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { id: idItemSchema(allowedIds), finding: { type: 'string' } },
+            required: ['id', 'finding'],
+            additionalProperties: false
+          }
+        },
+        contradictingEvidence: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { id: idItemSchema(allowedIds), finding: { type: 'string' } },
+            required: ['id', 'finding'],
+            additionalProperties: false
+          }
+        },
+        modelSemanticConcerns: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              code: { type: 'string' },
+              description: { type: 'string' },
+              evidenceIds: evidenceIdsSchema()
+            },
+            required: ['code', 'description', 'evidenceIds'],
+            additionalProperties: false
+          }
+        },
+        uncertainties: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { description: { type: 'string' }, evidenceIds: evidenceIdsSchema() },
+            required: ['description', 'evidenceIds'],
+            additionalProperties: false
+          }
         }
       },
-      contradictingEvidence: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            ref: { type: 'string' },
-            finding: { type: 'string' }
-          },
-          required: ['ref', 'finding'],
-          additionalProperties: false
-        }
-      },
-      modelSemanticConcerns: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            code: { type: 'string' },
-            description: { type: 'string' },
-            evidenceRefs: evidenceRefsSchema
-          },
-          required: ['code', 'description', 'evidenceRefs'],
-          additionalProperties: false
-        }
-      },
-      uncertainties: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            description: { type: 'string' },
-            evidenceRefs: evidenceRefsSchema
-          },
-          required: ['description', 'evidenceRefs'],
-          additionalProperties: false
-        }
-      }
-    },
-    required: [
-      'schemaVersion',
-      'currentPhase',
-      'currentPhaseConfidence',
-      'futurePhases',
-      'currentThreatInterpretation',
-      'nextDecisionWindow',
-      'signalInterpretation',
-      'supportingEvidence',
-      'contradictingEvidence',
-      'modelSemanticConcerns',
-      'uncertainties'
-    ],
-    additionalProperties: false
-  });
+      required: [
+        'schemaVersion', 'currentPhase', 'currentPhaseConfidence', 'futurePhases',
+        'currentThreatInterpretation', 'nextDecisionWindow', 'signalInterpretation',
+        'supportingEvidence', 'contradictingEvidence', 'modelSemanticConcerns', 'uncertainties'
+      ],
+      additionalProperties: false
+    };
+  }
+
+  const OUTPUT_JSON_SCHEMA = Object.freeze(makeOutputJsonSchema());
+
+  function outputSchemaForEvidence(evidencePacket) {
+    const ids = catalogIds(evidencePacket);
+    if (!ids.length) throw new Error('Evidence catalog is missing or empty');
+    return makeOutputJsonSchema(ids);
+  }
 
   function buildInstructions() {
     return [
@@ -173,33 +164,33 @@
       'Treat deterministic geometry, lifecycle analyzers, V1/V2 outputs, TC wind-field evidence, local measured wind, and official HKO context as distinct evidence channels. Explicitly identify conflicts instead of averaging them away.',
       'Cyclone representative or maximum wind is storm intensity, not Hong Kong local wind. Never compare cyclone-centre/representative wind directly with Hong Kong local 10-minute mean-wind or gust thresholds.',
       'Local station observations are observation-only. A single exposed-station strong wind or gust is not by itself evidence that T3/T8 should be issued, and local wind must not be attributed to the tropical cyclone unless the packet contains supporting linkage evidence.',
-      'Official HKO context may tell you the current operational question or stated reassessment context, but it must not rewrite an earlier deterministic forecast or be treated as a hidden training label.',
+      'Official HKO context may tell you the current operational question or stated reassessment context, but it must not rewrite an earlier deterministic forecast or be treated as future outcome feedback.',
       'If the packet does not provide the current official HKO signal state, do not claim that HKO should maintain, cancel, issue, or upgrade a current signal. Express only forecast interpretation or reassessment uncertainty supported by the packet.',
       'For T1/T3/T8, interpret the meaningful next operational question (maintenance, cancellation, escalation, reassessment, none, uncertain). Do not output a new probability or replacement risk score.',
-      'A deterministic estimatedWindow is a model guidance window, not automatically an HKO issuance window. Do not describe it as an official issue/change time unless contemporaneous HKO context explicitly supports that meaning.',
+      'A deterministic estimatedWindow is model guidance, not automatically an HKO issuance window. Do not describe it as an official issue/change time unless contemporaneous HKO context explicitly supports that meaning.',
       'If evidence is sparse, phase-mixed, horizon-limited, internally inconsistent, or temporally ambiguous, say so and use uncertain/insufficient rather than forcing a conclusion.',
-      'Every evidence reference must be an exact JSON path into the supplied packet, must begin with $.evidence., and may use only object keys and numeric array indexes. Do not use filters, wildcards, predicates, functions, or invented paths.',
+      'For every evidence citation, use ONLY an ID present in evidenceCatalog.entries. Never output JSON paths, JSONPath expressions, filters, wildcards, predicates, functions, or invented evidence IDs.',
+      'The catalog entry path is provided only for audit/provenance; cite its ID in the structured output.',
       'Keep interpretations concise and auditable. The structured JSON output is the complete answer.'
     ].join('\n');
   }
 
-  function isObject(value) {
-    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-  }
-
-  function validateEvidenceRefs(refs, path, errors) {
-    if (!Array.isArray(refs)) {
+  function validateEvidenceIds(ids, path, errors, allowedIds = null) {
+    if (!Array.isArray(ids)) {
       errors.push(`${path} must be an array`);
       return;
     }
-    refs.forEach((ref, index) => {
-      if (typeof ref !== 'string' || !ref.startsWith('$.evidence.')) {
-        errors.push(`${path}[${index}] must start with $.evidence.`);
+    const allowed = allowedIds ? new Set(allowedIds) : null;
+    ids.forEach((id, index) => {
+      if (typeof id !== 'string' || !/^E_[A-Z0-9_]+$/.test(id)) {
+        errors.push(`${path}[${index}] must be a catalog evidence ID`);
+      } else if (allowed && !allowed.has(id)) {
+        errors.push(`${path}[${index}] is not present in the supplied evidence catalog: ${id}`);
       }
     });
   }
 
-  function validateSignal(value, path, errors) {
+  function validateSignal(value, path, errors, allowedIds) {
     if (!isObject(value)) {
       errors.push(`${path} must be an object`);
       return;
@@ -207,10 +198,10 @@
     if (!DECISION_QUESTIONS.includes(value.nextQuestion)) errors.push(`${path}.nextQuestion invalid`);
     if (!SIGNAL_ASSESSMENTS.includes(value.assessment)) errors.push(`${path}.assessment invalid`);
     if (typeof value.interpretation !== 'string') errors.push(`${path}.interpretation must be string`);
-    validateEvidenceRefs(value.evidenceRefs, `${path}.evidenceRefs`, errors);
+    validateEvidenceIds(value.evidenceIds, `${path}.evidenceIds`, errors, allowedIds);
   }
 
-  function validateOutput(value) {
+  function validateOutput(value, allowedIds = null) {
     const errors = [];
     if (!isObject(value)) return { valid: false, errors: ['output must be an object'] };
     if (value.schemaVersion !== OUTPUT_SCHEMA_VERSION) errors.push('schemaVersion mismatch');
@@ -223,15 +214,12 @@
     if (!Array.isArray(value.futurePhases)) errors.push('futurePhases must be an array');
     else value.futurePhases.forEach((phase, index) => {
       const path = `futurePhases[${index}]`;
-      if (!isObject(phase)) {
-        errors.push(`${path} must be object`);
-        return;
-      }
+      if (!isObject(phase)) return errors.push(`${path} must be object`);
       if (!PHASES.includes(phase.phase)) errors.push(`${path}.phase invalid`);
       if (phase.earliestTime !== null && typeof phase.earliestTime !== 'string') errors.push(`${path}.earliestTime invalid`);
       if (phase.latestTime !== null && typeof phase.latestTime !== 'string') errors.push(`${path}.latestTime invalid`);
       if (typeof phase.interpretation !== 'string') errors.push(`${path}.interpretation must be string`);
-      validateEvidenceRefs(phase.evidenceRefs, `${path}.evidenceRefs`, errors);
+      validateEvidenceIds(phase.evidenceIds, `${path}.evidenceIds`, errors, allowedIds);
     });
 
     const window = value.nextDecisionWindow;
@@ -241,109 +229,50 @@
       if (window.earliestTime !== null && typeof window.earliestTime !== 'string') errors.push('nextDecisionWindow.earliestTime invalid');
       if (window.latestTime !== null && typeof window.latestTime !== 'string') errors.push('nextDecisionWindow.latestTime invalid');
       if (typeof window.interpretation !== 'string') errors.push('nextDecisionWindow.interpretation must be string');
-      validateEvidenceRefs(window.evidenceRefs, 'nextDecisionWindow.evidenceRefs', errors);
+      validateEvidenceIds(window.evidenceIds, 'nextDecisionWindow.evidenceIds', errors, allowedIds);
     }
 
     if (!isObject(value.signalInterpretation)) errors.push('signalInterpretation must be object');
-    else ['T1', 'T3', 'T8'].forEach(code => validateSignal(value.signalInterpretation[code], `signalInterpretation.${code}`, errors));
+    else ['T1', 'T3', 'T8'].forEach(code => validateSignal(value.signalInterpretation[code], `signalInterpretation.${code}`, errors, allowedIds));
 
     for (const key of ['supportingEvidence', 'contradictingEvidence']) {
       const rows = value[key];
       if (!Array.isArray(rows)) errors.push(`${key} must be array`);
       else rows.forEach((row, index) => {
-        if (!isObject(row)) {
-          errors.push(`${key}[${index}] must be object`);
-          return;
-        }
-        if (typeof row.ref !== 'string' || !row.ref.startsWith('$.evidence.')) errors.push(`${key}[${index}].ref invalid`);
+        if (!isObject(row)) return errors.push(`${key}[${index}] must be object`);
+        validateEvidenceIds([row.id], `${key}[${index}].id`, errors, allowedIds);
         if (typeof row.finding !== 'string') errors.push(`${key}[${index}].finding must be string`);
       });
     }
 
     if (!Array.isArray(value.modelSemanticConcerns)) errors.push('modelSemanticConcerns must be array');
     else value.modelSemanticConcerns.forEach((row, index) => {
-      if (!isObject(row)) {
-        errors.push(`modelSemanticConcerns[${index}] must be object`);
-        return;
-      }
+      if (!isObject(row)) return errors.push(`modelSemanticConcerns[${index}] must be object`);
       if (typeof row.code !== 'string') errors.push(`modelSemanticConcerns[${index}].code must be string`);
       if (typeof row.description !== 'string') errors.push(`modelSemanticConcerns[${index}].description must be string`);
-      validateEvidenceRefs(row.evidenceRefs, `modelSemanticConcerns[${index}].evidenceRefs`, errors);
+      validateEvidenceIds(row.evidenceIds, `modelSemanticConcerns[${index}].evidenceIds`, errors, allowedIds);
     });
 
     if (!Array.isArray(value.uncertainties)) errors.push('uncertainties must be array');
     else value.uncertainties.forEach((row, index) => {
-      if (!isObject(row)) {
-        errors.push(`uncertainties[${index}] must be object`);
-        return;
-      }
+      if (!isObject(row)) return errors.push(`uncertainties[${index}] must be object`);
       if (typeof row.description !== 'string') errors.push(`uncertainties[${index}].description must be string`);
-      validateEvidenceRefs(row.evidenceRefs, `uncertainties[${index}].evidenceRefs`, errors);
+      validateEvidenceIds(row.evidenceIds, `uncertainties[${index}].evidenceIds`, errors, allowedIds);
     });
 
     return { valid: errors.length === 0, errors };
-  }
-
-  function evidenceRefTokens(ref) {
-    if (typeof ref !== 'string' || !ref.startsWith('$.evidence.')) return null;
-    if (/[?*()]/.test(ref)) return null;
-    const tokens = [];
-    let cursor = 1;
-    const pattern = /\.([A-Za-z_][A-Za-z0-9_-]*)|\[(\d+)\]/gy;
-    while (cursor < ref.length) {
-      pattern.lastIndex = cursor;
-      const match = pattern.exec(ref);
-      if (!match || match.index !== cursor) return null;
-      tokens.push(match[1] != null ? match[1] : Number(match[2]));
-      cursor = pattern.lastIndex;
-    }
-    return tokens;
-  }
-
-  function resolveEvidenceRef(ref, evidencePacket) {
-    const tokens = evidenceRefTokens(ref);
-    if (!tokens || !isObject(evidencePacket)) return { valid: false, value: undefined };
-    let current = evidencePacket;
-    for (const token of tokens) {
-      if (typeof token === 'number') {
-        if (!Array.isArray(current) || token < 0 || token >= current.length) return { valid: false, value: undefined };
-        current = current[token];
-      } else {
-        if ((typeof current !== 'object' || current == null) || !Object.prototype.hasOwnProperty.call(current, token)) {
-          return { valid: false, value: undefined };
-        }
-        current = current[token];
-      }
-    }
-    return { valid: true, value: current };
-  }
-
-  function collectEvidenceRefs(value) {
-    const refs = [];
-    const addMany = rows => { if (Array.isArray(rows)) rows.forEach(ref => refs.push(ref)); };
-    if (Array.isArray(value?.futurePhases)) value.futurePhases.forEach(row => addMany(row?.evidenceRefs));
-    addMany(value?.nextDecisionWindow?.evidenceRefs);
-    ['T1', 'T3', 'T8'].forEach(code => addMany(value?.signalInterpretation?.[code]?.evidenceRefs));
-    ['supportingEvidence', 'contradictingEvidence'].forEach(key => {
-      if (Array.isArray(value?.[key])) value[key].forEach(row => refs.push(row?.ref));
-    });
-    if (Array.isArray(value?.modelSemanticConcerns)) value.modelSemanticConcerns.forEach(row => addMany(row?.evidenceRefs));
-    if (Array.isArray(value?.uncertainties)) value.uncertainties.forEach(row => addMany(row?.evidenceRefs));
-    return refs;
   }
 
   function validateOutputAgainstEvidence(value, evidencePacket) {
-    const base = validateOutput(value);
-    const errors = [...base.errors];
-    if (!isObject(evidencePacket) || !isObject(evidencePacket.evidence)) {
-      errors.push('evidence packet missing .evidence object');
-      return { valid: false, errors };
-    }
-    collectEvidenceRefs(value).forEach((ref, index) => {
-      const resolved = resolveEvidenceRef(ref, evidencePacket);
-      if (!resolved.valid) errors.push(`evidence reference ${index} does not resolve exactly: ${String(ref)}`);
-    });
-    return { valid: errors.length === 0, errors };
+    const ids = catalogIds(evidencePacket);
+    if (!ids.length) return { valid: false, errors: ['supplied evidence catalog is missing or empty'] };
+    return validateOutput(value, ids);
+  }
+
+  function resolveEvidenceId(id, evidencePacket) {
+    const entry = catalogEntries(evidencePacket).find(row => row?.id === id) || null;
+    if (!entry) return null;
+    return { id: entry.id, path: entry.path, kind: entry.kind, description: entry.description };
   }
 
   return Object.freeze({
@@ -354,8 +283,10 @@
     DECISION_QUESTIONS,
     SIGNAL_ASSESSMENTS,
     buildInstructions,
+    catalogIds,
+    outputSchemaForEvidence,
+    resolveEvidenceId,
     validateOutput,
-    validateOutputAgainstEvidence,
-    resolveEvidenceRef
+    validateOutputAgainstEvidence
   });
 });
