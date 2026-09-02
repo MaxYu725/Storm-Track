@@ -1,0 +1,189 @@
+name: Run AI situation analysis OpenAI shadow
+
+on:
+  workflow_dispatch:
+    inputs:
+      case_id:
+        description: Exact case ID from the immutable situation packet corpus
+        required: true
+        type: string
+      model:
+        description: OpenAI model ID
+        required: true
+        default: gpt-5.6-terra
+        type: string
+      reasoning_effort:
+        description: Reasoning effort
+        required: true
+        default: medium
+        type: choice
+        options:
+          - none
+          - low
+          - medium
+          - high
+          - xhigh
+          - max
+      force:
+        description: Allow another inference for the same packet/prompt/model
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hk-situation-openai-shadow-${{ inputs.case_id }}
+  cancel-in-progress: false
+
+env:
+  INPUT_DATA_BRANCH: data/hk-situation-analysis-shadow-packets
+  OUTPUT_DATA_BRANCH: data/hk-situation-analysis-shadow-inferences
+
+jobs:
+  infer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run inference adapter regressions
+        run: |
+          set -euo pipefail
+          node --check analysis/hk-situation-analysis-prompt.js
+          node --check scripts/run-hk-situation-analysis-shadow-openai.mjs
+          node tests/hk-situation-analysis-shadow.test.cjs
+          node tests/hk-situation-analysis-openai-inference.test.cjs
+
+      - name: Load exact immutable packet
+        shell: bash
+        env:
+          CASE_ID: ${{ inputs.case_id }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/${INPUT_DATA_BRANCH}:refs/remotes/origin/${INPUT_DATA_BRANCH}"
+          git show "refs/remotes/origin/${INPUT_DATA_BRANCH}:latest.json" > /tmp/hk-situation-packet-batch.json
+          jq --arg case_id "$CASE_ID" -e '
+            [.packets[] | select(.caseId == $case_id)]
+            | if length == 1 then .[0]
+              elif length == 0 then error("case ID is not present in latest packet batch")
+              else error("case ID is ambiguous in latest packet batch") end
+          ' /tmp/hk-situation-packet-batch.json > /tmp/hk-situation-packet.json
+          jq '{schemaVersion,packetFingerprint,caseId,groupKey,sourceObservationObservedAt,provenance}' /tmp/hk-situation-packet.json
+
+      - name: Verify API credential is configured
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+            echo "OPENAI_API_KEY repository secret is not configured." >&2
+            exit 2
+          fi
+
+      - name: Run one closed-book structured inference
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODEL: ${{ inputs.model }}
+          REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        run: |
+          set -euo pipefail
+          node scripts/run-hk-situation-analysis-shadow-openai.mjs \
+            /tmp/hk-situation-packet.json \
+            "$MODEL" \
+            "$REASONING_EFFORT" \
+            > /tmp/hk-situation-inference.json
+          test -s /tmp/hk-situation-inference.json
+
+      - name: Validate inference isolation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          packet_fingerprint="$(jq -r '.packetFingerprint' /tmp/hk-situation-packet.json)"
+          jq --arg packet "$packet_fingerprint" -e '
+            .schemaVersion == "hk-situation-analysis-shadow-inference/v0.1" and
+            .input.packetFingerprint == $packet and
+            .prompt.version == "hk-situation-analysis-prompt/v0.1" and
+            .prompt.outputSchemaVersion == "hk-situation-analysis-shadow-output/v0.1" and
+            (.prompt.requestFingerprint | test("^[0-9a-f]{64}$")) and
+            .provider.name == "openai-responses" and
+            .provider.store == false and
+            .provider.toolsEnabled == false and
+            .output.schemaVersion == "hk-situation-analysis-shadow-output/v0.1" and
+            .semantics.shadowOnly == true and
+            .semantics.affectsForecast == false and
+            .semantics.affectsEvaluator == false and
+            .semantics.noTruthFeedback == true and
+            .semantics.noExternalTools == true and
+            .semantics.noWebSearch == true and
+            .semantics.inputPacketIsSoleMeteorologicalEvidence == true and
+            .semantics.caseSpecificRulesForbidden == true
+          ' /tmp/hk-situation-inference.json >/dev/null
+          jq '{createdAt,input,prompt,provider:{name:.provider.name,requestedModel:.provider.requestedModel,returnedModel:.provider.returnedModel,responseId:.provider.responseId,requestId:.provider.requestId,status:.provider.status,reasoningEffort:.provider.reasoningEffort,store:.provider.store,toolsEnabled:.provider.toolsEnabled,usage:.provider.usage},output,semantics}' /tmp/hk-situation-inference.json
+
+      - name: Persist immutable inference output
+        shell: bash
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin "$OUTPUT_DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$OUTPUT_DATA_BRANCH"
+            git switch -C "$OUTPUT_DATA_BRANCH" FETCH_HEAD
+          else
+            git switch --orphan "$OUTPUT_DATA_BRANCH"
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          case_id="$(jq -r '.input.caseId // "unresolved"' /tmp/hk-situation-inference.json)"
+          case_slug="$(printf '%s' "$case_id" | sed -E 's/[^A-Za-z0-9._-]+/_/g')"
+          packet_fingerprint="$(jq -r '.input.packetFingerprint' /tmp/hk-situation-inference.json)"
+          prompt_version="$(jq -r '.prompt.version' /tmp/hk-situation-inference.json)"
+          requested_model="$(jq -r '.provider.requestedModel' /tmp/hk-situation-inference.json)"
+          reasoning_effort="$(jq -r '.provider.reasoningEffort' /tmp/hk-situation-inference.json)"
+
+          if [[ "$FORCE" != "true" && -f "cases/${case_slug}/latest.json" ]]; then
+            existing_packet="$(jq -r '.input.packetFingerprint // empty' "cases/${case_slug}/latest.json")"
+            existing_prompt="$(jq -r '.prompt.version // empty' "cases/${case_slug}/latest.json")"
+            existing_model="$(jq -r '.provider.requestedModel // empty' "cases/${case_slug}/latest.json")"
+            existing_effort="$(jq -r '.provider.reasoningEffort // empty' "cases/${case_slug}/latest.json")"
+            if [[ "$packet_fingerprint" == "$existing_packet" \
+               && "$prompt_version" == "$existing_prompt" \
+               && "$requested_model" == "$existing_model" \
+               && "$reasoning_effort" == "$existing_effort" ]]; then
+              echo "HK_SITUATION_OPENAI_SHADOW_NOOP=true"
+              echo "Existing inference already covers the same packet/prompt/model/effort. Use force=true only for an intentional repeat."
+              exit 0
+            fi
+          fi
+
+          created_at="$(jq -r '.createdAt' /tmp/hk-situation-inference.json)"
+          day_path="$(date -u -d "$created_at" +'%Y/%m/%d')"
+          stamp="$(date -u -d "$created_at" +'%Y%m%dT%H%M%SZ')"
+          packet_short="${packet_fingerprint:0:12}"
+          request_fingerprint="$(jq -r '.prompt.requestFingerprint' /tmp/hk-situation-inference.json)"
+          request_short="${request_fingerprint:0:12}"
+          destination="inferences/${case_slug}/${day_path}/${stamp}-${packet_short}-${request_short}.json"
+          mkdir -p "$(dirname "$destination")" "cases/${case_slug}"
+
+          cp /tmp/hk-situation-inference.json "$destination"
+          cp /tmp/hk-situation-inference.json "cases/${case_slug}/latest.json"
+          cp /tmp/hk-situation-inference.json latest.json
+          jq -c '{schemaVersion,createdAt,input,prompt,provider:{name:.provider.name,requestedModel:.provider.requestedModel,returnedModel:.provider.returnedModel,responseId:.provider.responseId,status:.provider.status,reasoningEffort:.provider.reasoningEffort,usage:.provider.usage},summary:{currentPhase:.output.currentPhase,currentPhaseConfidence:.output.currentPhaseConfidence,nextDecisionQuestion:.output.nextDecisionWindow.question},semantics}' /tmp/hk-situation-inference.json >> index.ndjson
+
+          git add "$destination" "cases/${case_slug}/latest.json" latest.json index.ndjson
+          git commit -m "Record AI situation shadow inference ${case_slug} ${stamp} ${packet_short}"
+          git push origin "HEAD:${OUTPUT_DATA_BRANCH}"
+          echo "HK_SITUATION_OPENAI_SHADOW_STORED=$destination"
