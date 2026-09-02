@@ -1,6 +1,11 @@
 name: Audit AI situation analysis prospective outputs
 
 on:
+  workflow_run:
+    workflows:
+      - Run AI situation analysis Cloudflare Workers AI shadow
+    types:
+      - completed
   push:
     paths:
       - analysis/hk-situation-analysis-prospective-audit.js
@@ -20,14 +25,22 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: hk-situation-analysis-prospective-audit
+  cancel-in-progress: false
 
 env:
   PACKET_DATA_BRANCH: data/hk-situation-analysis-shadow-packets
   INFERENCE_DATA_BRANCH: data/hk-situation-analysis-shadow-inferences
+  OUTPUT_DATA_BRANCH: data/hk-situation-analysis-prospective-audits
 
 jobs:
   audit:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -48,6 +61,7 @@ jobs:
           grep -F 'hk-situation-analysis-prospective-audit/v0.1' analysis/hk-situation-analysis-prospective-audit.js
           grep -F 'noOutcomeTruthUsed: true' analysis/hk-situation-analysis-prospective-audit.js
           grep -F 'doesNotRetunePrompt: true' analysis/hk-situation-analysis-prospective-audit.js
+          grep -F 'inferenceRequestFingerprint' analysis/hk-situation-analysis-prospective-audit.js
 
       - name: Audit latest saved Workers AI outputs against their exact packets
         if: github.event_name != 'pull_request'
@@ -80,10 +94,87 @@ jobs:
             fi
             git show "${packet_ref}:${packet_paths[0]}" > "$packet_file"
             node scripts/audit-hk-situation-analysis-shadow-inference.mjs "$inference_file" "$packet_file" > "$audit_file"
+            jq -e '
+              .schemaVersion == "hk-situation-analysis-prospective-audit/v0.1" and
+              (.input.inferenceRequestFingerprint | test("^[0-9a-f]{64}$")) and
+              .semantics.prospectiveOnly == true and
+              .semantics.noOutcomeTruthUsed == true and
+              .semantics.affectsForecast == false and
+              .semantics.affectsEvaluator == false
+            ' "$audit_file" >/dev/null
             jq '{caseId:.input.caseId,promptVersion:.input.promptVersion,status,reviewFlags:[.reviewFlags[]|{code,field,detail}]}' "$audit_file"
           done
 
-          jq -s '{schemaVersion:"hk-situation-analysis-prospective-audit-batch/v0.1",audited:length,statusCounts:(group_by(.status)|map({key:.[0].status,value:length})|from_entries),reviews:[.[]|select(.status=="review")|{caseId:.input.caseId,flags:[.reviewFlags[].code]}]}' /tmp/hk-situation-audit/*-audit.json
+          jq -s '{schemaVersion:"hk-situation-analysis-prospective-audit-batch/v0.1",audited:length,statusCounts:(group_by(.status)|map({key:.[0].status,value:length})|from_entries),reviews:[.[]|select(.status=="review")|{caseId:.input.caseId,flags:[.reviewFlags[].code]}]}' /tmp/hk-situation-audit/*-audit.json > /tmp/hk-situation-audit/batch-summary.json
+          cat /tmp/hk-situation-audit/batch-summary.json
+
+      - name: Persist immutable prospective audit records
+        if: >-
+          github.event_name != 'pull_request' &&
+          (github.event_name != 'push' || github.ref == 'refs/heads/main')
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /tmp/hk-situation-audit/batch-summary.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin "$OUTPUT_DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$OUTPUT_DATA_BRANCH"
+            git switch -C "$OUTPUT_DATA_BRANCH" FETCH_HEAD
+          else
+            git switch --orphan "$OUTPUT_DATA_BRANCH"
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          new_count=0
+          for audit_file in /tmp/hk-situation-audit/*-audit.json; do
+            case_id="$(jq -r '.input.caseId // "unresolved"' "$audit_file")"
+            case_slug="$(printf '%s' "$case_id" | sed -E 's/[^A-Za-z0-9._-]+/_/g')"
+            provider_name="$(jq -r '.input.provider // "unknown"' "$audit_file")"
+            if [[ "$provider_name" == "cloudflare-workers-ai-chat-completions" ]]; then
+              provider_slug="cloudflare-workers-ai"
+            else
+              provider_slug="$(printf '%s' "$provider_name" | sed -E 's/[^A-Za-z0-9._-]+/_/g')"
+            fi
+            packet_fingerprint="$(jq -r '.input.packetFingerprint' "$audit_file")"
+            request_fingerprint="$(jq -r '.input.inferenceRequestFingerprint' "$audit_file")"
+            inference_created_at="$(jq -r '.input.inferenceCreatedAt' "$audit_file")"
+            [[ "$packet_fingerprint" =~ ^[0-9a-f]{64}$ ]]
+            [[ "$request_fingerprint" =~ ^[0-9a-f]{64}$ ]]
+            test -n "$inference_created_at"
+
+            day_path="$(date -u -d "$inference_created_at" +'%Y/%m/%d')"
+            stamp="$(date -u -d "$inference_created_at" +'%Y%m%dT%H%M%SZ')"
+            packet_short="${packet_fingerprint:0:12}"
+            request_short="${request_fingerprint:0:12}"
+            destination="audits/${case_slug}/${provider_slug}/${day_path}/${stamp}-${packet_short}-${request_short}-v01.json"
+            latest_path="cases/${case_slug}/providers/${provider_slug}/latest.json"
+            mkdir -p "$(dirname "$destination")" "$(dirname "$latest_path")"
+
+            if [[ -f "$destination" ]]; then
+              if [[ ! -f "$latest_path" ]]; then cp "$destination" "$latest_path"; fi
+              echo "HK_SITUATION_PROSPECTIVE_AUDIT_NOOP=$destination"
+              continue
+            fi
+
+            cp "$audit_file" "$destination"
+            cp "$audit_file" "$latest_path"
+            jq -c '{schemaVersion,createdAt,status,input,reviewFlags:[.reviewFlags[]|{code,severity,field}],semantics}' "$audit_file" >> index.ndjson
+            new_count=$((new_count + 1))
+            echo "HK_SITUATION_PROSPECTIVE_AUDIT_STORED=$destination"
+          done
+
+          git add audits cases index.ndjson 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "HK_SITUATION_PROSPECTIVE_AUDIT_BATCH_NOOP=true"
+            exit 0
+          fi
+
+          git commit -m "Record AI situation prospective audits ${new_count}"
+          git push origin "HEAD:${OUTPUT_DATA_BRANCH}"
+          echo "HK_SITUATION_PROSPECTIVE_AUDIT_NEW_COUNT=$new_count"
 
       - name: Check whitespace
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main')
         run: git diff --check origin/main...HEAD

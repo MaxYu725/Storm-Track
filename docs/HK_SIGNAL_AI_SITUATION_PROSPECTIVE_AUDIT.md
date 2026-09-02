@@ -18,7 +18,7 @@ The audit verifies:
 - inference remains `shadowOnly=true`;
 - `affectsForecast=false` and `affectsEvaluator=false`;
 - the current prompt/evidence validator still accepts the saved structured output when supplied;
-- provider attempt and repair metadata remain available for later reliability analysis.
+- the source inference request fingerprint, provider attempt count and repair metadata remain available for later reliability analysis.
 
 A structural failure produces `status=fail`.
 
@@ -60,6 +60,40 @@ The v0.1 prospective audit does not read later HKO truth, evaluator outcomes or 
 
 Therefore the audit can be run immediately after inference without contaminating later prospective verification.
 
+## Automatic recorder
+
+`.github/workflows/hk-situation-analysis-prospective-audit.yml` also acts as the audit recorder.
+
+After a successful **main-branch** `Run AI situation analysis Cloudflare Workers AI shadow` workflow completes, `workflow_run` starts the prospective audit automatically. It reloads each provider `latest.json`, resolves the exact immutable packet by the source packet fingerprint, runs the same v0.1 audit and validates the no-outcome/isolation contract.
+
+Feature-branch and pull-request runs exercise code and audit logic but do not write prospective audit data.
+
+Successful `pass` and `review` audit records are persisted to the dedicated branch:
+
+```text
+data/hk-situation-analysis-prospective-audits
+```
+
+Immutable history is keyed to the source inference, not the time the audit happened:
+
+```text
+audits/<case-id>/<provider>/YYYY/MM/DD/<inference-time>-<packet-fingerprint>-<request-fingerprint>-v01.json
+```
+
+Convenience pointers are stored under:
+
+```text
+cases/<case-id>/providers/<provider>/latest.json
+```
+
+and a compact append-only `index.ndjson` supports later aggregate review.
+
+The source inference `requestFingerprint` is carried into every audit record. Re-running the recorder for an already-audited inference is therefore a no-op rather than a duplicate prospective sample.
+
+The recorder is serialized with `cancel-in-progress: false` so two completed inference workflows cannot race while updating the audit data branch.
+
+A structural `fail` stops the workflow before persistence. It is treated as an audit-contract failure rather than silently entering the accepted prospective corpus.
+
 ## Controlled v0.5 pilot observations
 
 The fifth controlled Workers AI pilot produced valid first-pass outputs for both the SAUDEL stress case and KROVANH ordinary remote control case; neither required the one-shot repair path.
@@ -69,6 +103,11 @@ The audit framework was introduced after inspecting those outputs because they e
 - metric-name/value provenance in the qualitative current-threat summary;
 - operational lifecycle phase versus geometry-only approach wording;
 - avoiding causal interpretation of a missing deterministic timing window.
+
+The first two-case audit produced:
+
+- SAUDEL — `review`: `CURRENT_THREAT_METRIC_MISMATCH` and `NULL_TIMING_ACTION_CAUSALITY_REVIEW`;
+- KROVANH — `review`: `FUTURE_OPERATIONAL_PHASE_REVIEW`.
 
 These are deliberately recorded as review dimensions instead of immediately creating prompt v0.6.
 
