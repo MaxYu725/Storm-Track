@@ -1,0 +1,189 @@
+name: Record AI situation analysis shadow packets
+
+on:
+  workflow_run:
+    workflows:
+      - Record HK signal Beta prospective snapshots
+    types:
+      - completed
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - analysis/hk-situation-analysis-shadow.js
+      - scripts/build-hk-situation-analysis-shadow-packets.mjs
+      - tests/hk-situation-analysis-shadow-recorder.test.cjs
+      - .github/workflows/hk-situation-analysis-shadow-recorder.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - analysis/hk-situation-analysis-shadow.js
+      - scripts/build-hk-situation-analysis-shadow-packets.mjs
+      - tests/hk-situation-analysis-shadow-recorder.test.cjs
+      - .github/workflows/hk-situation-analysis-shadow-recorder.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hk-situation-analysis-shadow-recorder
+  cancel-in-progress: false
+
+env:
+  BETA_DATA_BRANCH: data/beta-prospective-observations
+  LOCAL_WIND_DATA_BRANCH: data/hko-local-wind-shadow
+  OUTPUT_DATA_BRANCH: data/hk-situation-analysis-shadow-packets
+
+jobs:
+  record:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run AI situation packet regressions
+        run: |
+          set -euo pipefail
+          node --check analysis/hk-situation-analysis-shadow.js
+          node --check scripts/build-hk-situation-analysis-shadow-packets.mjs
+          node tests/hk-situation-analysis-shadow.test.cjs
+          node tests/hk-situation-analysis-shadow-recorder.test.cjs
+
+      - name: Check branch whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check origin/main...HEAD
+
+      - name: Materialize prospective source corpora
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/hk-situation-beta /tmp/hk-situation-local-wind
+          mkdir -p /tmp/hk-situation-beta /tmp/hk-situation-local-wind
+
+          git fetch --no-tags origin "refs/heads/${BETA_DATA_BRANCH}:refs/remotes/origin/${BETA_DATA_BRANCH}"
+          git show "refs/remotes/origin/${BETA_DATA_BRANCH}:latest.json" > /tmp/hk-situation-beta/latest.json
+          git show "refs/remotes/origin/${BETA_DATA_BRANCH}:case-registry.json" > /tmp/hk-situation-beta/case-registry.json
+
+          if git ls-remote --exit-code --heads origin "$LOCAL_WIND_DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "refs/heads/${LOCAL_WIND_DATA_BRANCH}:refs/remotes/origin/${LOCAL_WIND_DATA_BRANCH}"
+            if git cat-file -e "refs/remotes/origin/${LOCAL_WIND_DATA_BRANCH}:observations" 2>/dev/null; then
+              git archive "refs/remotes/origin/${LOCAL_WIND_DATA_BRANCH}" observations | tar -x -C /tmp/hk-situation-local-wind
+            fi
+          fi
+
+      - name: Build exact pre-inference evidence packets
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-hk-situation-analysis-shadow-packets.mjs \
+            /tmp/hk-situation-beta/latest.json \
+            /tmp/hk-situation-beta/case-registry.json \
+            /tmp/hk-situation-local-wind \
+            > /tmp/hk-situation-analysis-shadow-batch.json
+          test -s /tmp/hk-situation-analysis-shadow-batch.json
+
+      - name: Validate no-truth / no-future evidence contract
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '
+            .schemaVersion == "hk-situation-analysis-shadow-packet-batch/v0.1" and
+            (.batchFingerprint | test("^[0-9a-f]{64}$")) and
+            (.sourceCaptureFingerprint | test("^[0-9a-f]{64}$")) and
+            (.packetCount == (.packets | length)) and
+            .semantics.shadowOnly == true and
+            .semantics.affectsForecast == false and
+            .semantics.affectsEvaluator == false and
+            .semantics.providerInvocationIncluded == false and
+            .semantics.truthBranchInputIncluded == false and
+            .semantics.localWindJoinMustBeAtOrBeforeObservation == true and
+            all(.packets[];
+              (.packetFingerprint | test("^[0-9a-f]{64}$")) and
+              .semantics.shadowOnly == true and
+              .semantics.affectsForecast == false and
+              .semantics.affectsEvaluator == false and
+              .semantics.noTruthCorpusRead == true and
+              .semantics.noFutureLocalWindJoin == true and
+              .evidencePacket.semantics.shadowOnly == true and
+              .evidencePacket.semantics.affectsForecast == false and
+              .evidencePacket.semantics.affectsEvaluator == false and
+              .evidencePacket.semantics.noTruthFeedback == true and
+              .evidencePacket.semantics.caseSpecificRulesForbidden == true
+            )
+          ' /tmp/hk-situation-analysis-shadow-batch.json >/dev/null
+          jq '{builtAt,sourceCapturedAt,sourceCaptureFingerprint,batchFingerprint,packetCount,packets:[.packets[]|{caseId,groupKey,packetFingerprint,observedAt:.sourceObservationObservedAt,caseResolution:.provenance.caseResolution,localWindJoin:.provenance.localWindJoin}]}' /tmp/hk-situation-analysis-shadow-batch.json
+
+      - name: Persist immutable packet corpus
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin "$OUTPUT_DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$OUTPUT_DATA_BRANCH"
+            git switch -C "$OUTPUT_DATA_BRANCH" FETCH_HEAD
+          else
+            git switch --orphan "$OUTPUT_DATA_BRANCH"
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          fingerprint="$(jq -r '.batchFingerprint' /tmp/hk-situation-analysis-shadow-batch.json)"
+          existing="$(jq -r '.batchFingerprint // empty' latest.json 2>/dev/null || true)"
+          if [[ "$fingerprint" == "$existing" ]]; then
+            echo "HK_SITUATION_SHADOW_PACKET_NOOP=true"
+            echo "HK_SITUATION_SHADOW_BATCH_FINGERPRINT=$fingerprint"
+            exit 0
+          fi
+
+          source_captured_at="$(jq -r '.sourceCapturedAt // .builtAt' /tmp/hk-situation-analysis-shadow-batch.json)"
+          batch_stamp="$(date -u -d "$source_captured_at" +'%Y%m%dT%H%M%SZ')"
+          batch_day="$(date -u -d "$source_captured_at" +'%Y/%m/%d')"
+          batch_short="${fingerprint:0:12}"
+          batch_destination="batches/${batch_day}/${batch_stamp}-${batch_short}.json"
+          mkdir -p "$(dirname "$batch_destination")"
+          cp /tmp/hk-situation-analysis-shadow-batch.json "$batch_destination"
+          cp /tmp/hk-situation-analysis-shadow-batch.json latest.json
+
+          while IFS= read -r packet; do
+            packet_fingerprint="$(jq -r '.packetFingerprint' <<<"$packet")"
+            packet_short="${packet_fingerprint:0:12}"
+            case_id="$(jq -r '.caseId // "unresolved"' <<<"$packet")"
+            case_slug="$(printf '%s' "$case_id" | sed -E 's/[^A-Za-z0-9._-]+/_/g')"
+            observed_at="$(jq -r '.sourceObservationObservedAt // empty' <<<"$packet")"
+            if [[ -z "$observed_at" ]]; then observed_at="$source_captured_at"; fi
+            packet_stamp="$(date -u -d "$observed_at" +'%Y%m%dT%H%M%SZ')"
+            packet_day="$(date -u -d "$observed_at" +'%Y/%m/%d')"
+            packet_destination="packets/${case_slug}/${packet_day}/${packet_stamp}-${packet_short}.json"
+            mkdir -p "$(dirname "$packet_destination")" "cases/${case_slug}"
+            jq '.' <<<"$packet" > "$packet_destination"
+            jq '.' <<<"$packet" > "cases/${case_slug}/latest.json"
+            jq -c '{schemaVersion,packetFingerprint,caseId,groupKey,sourceObservationObservedAt,provenance:{betaCaptureFingerprint:.provenance.betaCaptureFingerprint,betaCapturedAt:.provenance.betaCapturedAt,betaSourceCommit:.provenance.betaSourceCommit,caseResolution:.provenance.caseResolution,localWindJoin:.provenance.localWindJoin},semantics}' <<<"$packet" >> index.ndjson
+          done < <(jq -c '.packets[]' /tmp/hk-situation-analysis-shadow-batch.json)
+
+          git add -A batches packets cases latest.json index.ndjson
+          if git diff --cached --quiet; then
+            echo "HK_SITUATION_SHADOW_PACKET_NOOP=true"
+            echo "HK_SITUATION_SHADOW_BATCH_FINGERPRINT=$fingerprint"
+            exit 0
+          fi
+
+          git commit -m "Record AI situation shadow packets ${batch_stamp} ${batch_short}"
+          git push origin "HEAD:${OUTPUT_DATA_BRANCH}"
+          echo "HK_SITUATION_SHADOW_PACKET_STORED=$batch_destination"
+          echo "HK_SITUATION_SHADOW_BATCH_FINGERPRINT=$fingerprint"
