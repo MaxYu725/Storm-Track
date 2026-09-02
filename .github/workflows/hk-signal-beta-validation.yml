@@ -8,6 +8,7 @@ on:
       - README.md
       - docs/CONSENSUS_TRACK_ROADMAP.md
       - docs/HK_SIGNAL_V2_SHADOW.md
+      - docs/HK_SIGNAL_AI_SITUATION_CLOUDFLARE_SHADOW.md
       - index.html
       - observation.html
       - sw.js
@@ -16,10 +17,12 @@ on:
       - scripts/validate-consensus-track-observation-ui.mjs
       - scripts/build-hk-situation-analysis-shadow-packets.mjs
       - scripts/run-hk-situation-analysis-shadow-openai.mjs
+      - scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
       - tests/**
       - .github/workflows/hk-signal-beta-validation.yml
       - .github/workflows/hk-situation-analysis-shadow-recorder.yml
       - .github/workflows/hk-situation-analysis-openai-shadow.yml
+      - .github/workflows/hk-situation-analysis-cloudflare-shadow.yml
 
 permissions:
   contents: read
@@ -54,6 +57,7 @@ jobs:
           node --check scripts/validate-consensus-track-observation-ui.mjs
           node --check scripts/build-hk-situation-analysis-shadow-packets.mjs
           node --check scripts/run-hk-situation-analysis-shadow-openai.mjs
+          node --check scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
 
       - name: Verify Beta integration surface
         run: |
@@ -81,6 +85,9 @@ jobs:
           grep -F 'Analyze ONLY the supplied evidence packet' analysis/hk-situation-analysis-prompt.js
           grep -F "type: 'json_schema'" scripts/run-hk-situation-analysis-shadow-openai.mjs
           grep -F 'store: false' scripts/run-hk-situation-analysis-shadow-openai.mjs
+          grep -F "type: 'json_schema'" scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
+          grep -F '@cf/openai/gpt-oss-120b' scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
+          grep -F 'cloudflare-workers-ai-chat-completions' scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
           grep -F '<script src="./analysis/hk-signal-observation-board.js"></script>' observation.html
           grep -F 'Observation-only · v1' observation.html
           grep -F '不評分、不校準、不修改 forecast' observation.html
@@ -124,6 +131,7 @@ jobs:
             tests/hk-situation-analysis-shadow.test.cjs
             tests/hk-situation-analysis-shadow-recorder.test.cjs
             tests/hk-situation-analysis-openai-inference.test.cjs
+            tests/hk-situation-analysis-cloudflare-inference.test.cjs
             tests/frontend-hk-threat-ui.test.cjs
             tests/frontend-beta-prospective-observation.test.cjs
             tests/frontend-hk-signal-beta-gate.test.cjs
