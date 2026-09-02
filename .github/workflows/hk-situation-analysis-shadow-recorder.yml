@@ -34,6 +34,7 @@ concurrency:
 env:
   BETA_DATA_BRANCH: data/beta-prospective-observations
   LOCAL_WIND_DATA_BRANCH: data/hko-local-wind-shadow
+  HKO_WARNING_DATA_BRANCH: data/hko-warning-truth
   OUTPUT_DATA_BRANCH: data/hk-situation-analysis-shadow-packets
 
 jobs:
@@ -69,8 +70,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/hk-situation-beta /tmp/hk-situation-local-wind
-          mkdir -p /tmp/hk-situation-beta /tmp/hk-situation-local-wind
+          rm -rf /tmp/hk-situation-beta /tmp/hk-situation-local-wind /tmp/hk-situation-hko-warning
+          mkdir -p /tmp/hk-situation-beta /tmp/hk-situation-local-wind /tmp/hk-situation-hko-warning
 
           git fetch --no-tags origin "refs/heads/${BETA_DATA_BRANCH}:refs/remotes/origin/${BETA_DATA_BRANCH}"
           git show "refs/remotes/origin/${BETA_DATA_BRANCH}:latest.json" > /tmp/hk-situation-beta/latest.json
@@ -83,6 +84,13 @@ jobs:
             fi
           fi
 
+          if git ls-remote --exit-code --heads origin "$HKO_WARNING_DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "refs/heads/${HKO_WARNING_DATA_BRANCH}:refs/remotes/origin/${HKO_WARNING_DATA_BRANCH}"
+            if git cat-file -e "refs/remotes/origin/${HKO_WARNING_DATA_BRANCH}:observations" 2>/dev/null; then
+              git archive "refs/remotes/origin/${HKO_WARNING_DATA_BRANCH}" observations | tar -x -C /tmp/hk-situation-hko-warning
+            fi
+          fi
+
       - name: Build exact pre-inference evidence packets
         if: github.event_name != 'pull_request'
         shell: bash
@@ -92,10 +100,11 @@ jobs:
             /tmp/hk-situation-beta/latest.json \
             /tmp/hk-situation-beta/case-registry.json \
             /tmp/hk-situation-local-wind \
+            /tmp/hk-situation-hko-warning \
             > /tmp/hk-situation-analysis-shadow-batch.json
           test -s /tmp/hk-situation-analysis-shadow-batch.json
 
-      - name: Validate no-truth / no-future evidence contract
+      - name: Validate contemporaneous-only / no-future evidence contract
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
@@ -109,14 +118,21 @@ jobs:
             .semantics.affectsForecast == false and
             .semantics.affectsEvaluator == false and
             .semantics.providerInvocationIncluded == false and
-            .semantics.truthBranchInputIncluded == false and
+            .semantics.truthBranchInputIncluded == true and
+            .semantics.truthBranchUseRestrictedToContemporaneousOfficialContext == true and
+            .semantics.futureTruthFeedbackIncluded == false and
+            .semantics.outcomeEvaluatorInputIncluded == false and
+            .semantics.officialContextJoinMustBeAtOrBeforeObservation == true and
             .semantics.localWindJoinMustBeAtOrBeforeObservation == true and
             all(.packets[];
               (.packetFingerprint | test("^[0-9a-f]{64}$")) and
               .semantics.shadowOnly == true and
               .semantics.affectsForecast == false and
               .semantics.affectsEvaluator == false and
-              .semantics.noTruthCorpusRead == true and
+              .semantics.noTruthCorpusRead == false and
+              .semantics.noFutureTruthFeedback == true and
+              .semantics.contemporaneousOfficialContextOnly == true and
+              .semantics.noFutureOfficialContextJoin == true and
               .semantics.noFutureLocalWindJoin == true and
               .evidencePacket.semantics.shadowOnly == true and
               .evidencePacket.semantics.affectsForecast == false and
@@ -125,7 +141,7 @@ jobs:
               .evidencePacket.semantics.caseSpecificRulesForbidden == true
             )
           ' /tmp/hk-situation-analysis-shadow-batch.json >/dev/null
-          jq '{builtAt,sourceCapturedAt,sourceCaptureFingerprint,batchFingerprint,packetCount,packets:[.packets[]|{caseId,groupKey,packetFingerprint,observedAt:.sourceObservationObservedAt,caseResolution:.provenance.caseResolution,localWindJoin:.provenance.localWindJoin}]}' /tmp/hk-situation-analysis-shadow-batch.json
+          jq '{builtAt,sourceCapturedAt,sourceCaptureFingerprint,batchFingerprint,packetCount,packets:[.packets[]|{caseId,groupKey,packetFingerprint,observedAt:.sourceObservationObservedAt,caseResolution:.provenance.caseResolution,localWindJoin:.provenance.localWindJoin,hkoOperationalContextJoin:.provenance.hkoOperationalContextJoin}]}' /tmp/hk-situation-analysis-shadow-batch.json
 
       - name: Persist immutable packet corpus
         if: github.event_name != 'pull_request'
@@ -173,7 +189,7 @@ jobs:
             mkdir -p "$(dirname "$packet_destination")" "cases/${case_slug}"
             jq '.' <<<"$packet" > "$packet_destination"
             jq '.' <<<"$packet" > "cases/${case_slug}/latest.json"
-            jq -c '{schemaVersion,packetFingerprint,caseId,groupKey,sourceObservationObservedAt,provenance:{betaCaptureFingerprint:.provenance.betaCaptureFingerprint,betaCapturedAt:.provenance.betaCapturedAt,betaSourceCommit:.provenance.betaSourceCommit,caseResolution:.provenance.caseResolution,localWindJoin:.provenance.localWindJoin},semantics}' <<<"$packet" >> index.ndjson
+            jq -c '{schemaVersion,packetFingerprint,caseId,groupKey,sourceObservationObservedAt,provenance:{betaCaptureFingerprint:.provenance.betaCaptureFingerprint,betaCapturedAt:.provenance.betaCapturedAt,betaSourceCommit:.provenance.betaSourceCommit,caseResolution:.provenance.caseResolution,localWindJoin:.provenance.localWindJoin,hkoOperationalContextJoin:.provenance.hkoOperationalContextJoin},semantics}' <<<"$packet" >> index.ndjson
           done < <(jq -c '.packets[]' /tmp/hk-situation-analysis-shadow-batch.json)
 
           git add -A batches packets cases latest.json index.ndjson
