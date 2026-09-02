@@ -1,0 +1,88 @@
+name: Audit AI situation analysis prospective outputs
+
+on:
+  push:
+    paths:
+      - analysis/hk-situation-analysis-prospective-audit.js
+      - scripts/audit-hk-situation-analysis-shadow-inference.mjs
+      - tests/hk-situation-analysis-prospective-audit.test.cjs
+      - docs/HK_SIGNAL_AI_SITUATION_PROSPECTIVE_AUDIT.md
+      - .github/workflows/hk-situation-analysis-prospective-audit.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - analysis/hk-situation-analysis-prospective-audit.js
+      - scripts/audit-hk-situation-analysis-shadow-inference.mjs
+      - tests/hk-situation-analysis-prospective-audit.test.cjs
+      - docs/HK_SIGNAL_AI_SITUATION_PROSPECTIVE_AUDIT.md
+      - .github/workflows/hk-situation-analysis-prospective-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PACKET_DATA_BRANCH: data/hk-situation-analysis-shadow-packets
+  INFERENCE_DATA_BRANCH: data/hk-situation-analysis-shadow-inferences
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run prospective audit regressions
+        run: |
+          set -euo pipefail
+          node --check analysis/hk-situation-analysis-prospective-audit.js
+          node --check scripts/audit-hk-situation-analysis-shadow-inference.mjs
+          node tests/hk-situation-analysis-prospective-audit.test.cjs
+          grep -F 'hk-situation-analysis-prospective-audit/v0.1' analysis/hk-situation-analysis-prospective-audit.js
+          grep -F 'noOutcomeTruthUsed: true' analysis/hk-situation-analysis-prospective-audit.js
+          grep -F 'doesNotRetunePrompt: true' analysis/hk-situation-analysis-prospective-audit.js
+
+      - name: Audit latest saved Workers AI outputs against their exact packets
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/${PACKET_DATA_BRANCH}:refs/remotes/origin/${PACKET_DATA_BRANCH}"
+          git fetch --no-tags origin "refs/heads/${INFERENCE_DATA_BRANCH}:refs/remotes/origin/${INFERENCE_DATA_BRANCH}"
+          packet_ref="refs/remotes/origin/${PACKET_DATA_BRANCH}"
+          inference_ref="refs/remotes/origin/${INFERENCE_DATA_BRANCH}"
+          rm -rf /tmp/hk-situation-audit
+          mkdir -p /tmp/hk-situation-audit
+
+          mapfile -t latest_paths < <(git ls-tree -r --name-only "$inference_ref" | grep -E '^cases/[^/]+/providers/cloudflare-workers-ai/latest\.json$' | sort)
+          test "${#latest_paths[@]}" -gt 0
+
+          for inference_path in "${latest_paths[@]}"; do
+            case_id="$(basename "$(dirname "$(dirname "$(dirname "$inference_path")")")")"
+            inference_file="/tmp/hk-situation-audit/${case_id}-inference.json"
+            packet_file="/tmp/hk-situation-audit/${case_id}-packet.json"
+            audit_file="/tmp/hk-situation-audit/${case_id}-audit.json"
+            git show "${inference_ref}:${inference_path}" > "$inference_file"
+            packet_fingerprint="$(jq -r '.input.packetFingerprint' "$inference_file")"
+            packet_short="${packet_fingerprint:0:12}"
+            mapfile -t packet_paths < <(git ls-tree -r --name-only "$packet_ref" "packets/${case_id}" | grep -E "-${packet_short}\\.json$" || true)
+            if [[ "${#packet_paths[@]}" -ne 1 ]]; then
+              echo "Expected exactly one immutable packet for ${case_id} ${packet_short}; found ${#packet_paths[@]}" >&2
+              exit 3
+            fi
+            git show "${packet_ref}:${packet_paths[0]}" > "$packet_file"
+            node scripts/audit-hk-situation-analysis-shadow-inference.mjs "$inference_file" "$packet_file" > "$audit_file"
+            jq '{caseId:.input.caseId,promptVersion:.input.promptVersion,status,reviewFlags:[.reviewFlags[]|{code,field,detail}]}' "$audit_file"
+          done
+
+          jq -s '{schemaVersion:"hk-situation-analysis-prospective-audit-batch/v0.1",audited:length,statusCounts:(group_by(.status)|map({key:.[0].status,value:length})|from_entries),reviews:[.[]|select(.status=="review")|{caseId:.input.caseId,flags:[.reviewFlags[].code]}]}' /tmp/hk-situation-audit/*-audit.json
+
+      - name: Check whitespace
+        run: git diff --check origin/main...HEAD
