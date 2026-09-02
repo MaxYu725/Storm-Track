@@ -82,7 +82,10 @@ jobs:
           grep -F 'ai-situation-analysis-shadow-input' analysis/hk-situation-analysis-shadow.js
           grep -F 'hk-situation-analysis-evidence-catalog/v1' analysis/hk-situation-analysis-shadow.js
           grep -F 'evidenceReferencesUseCatalogIds: true' analysis/hk-situation-analysis-shadow.js
-          grep -F 'hk-situation-analysis-prompt/v0.3' analysis/hk-situation-analysis-prompt.js
+          grep -F 'semanticCrossFieldConsistencyRequired: true' analysis/hk-situation-analysis-shadow.js
+          grep -F 'hk-situation-analysis-prompt/v0.4' analysis/hk-situation-analysis-prompt.js
+          grep -F 'currentPhase must be remote' analysis/hk-situation-analysis-prompt.js
+          grep -F 'assessment=not-applicable' analysis/hk-situation-analysis-prompt.js
           grep -F 'use ONLY an ID present in evidenceCatalog.entries' analysis/hk-situation-analysis-prompt.js
           grep -F "type: 'json_schema'" scripts/run-hk-situation-analysis-shadow-openai.mjs
           grep -F 'store: false' scripts/run-hk-situation-analysis-shadow-openai.mjs
