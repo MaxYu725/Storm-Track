@@ -1,26 +1,27 @@
 {
   "schemaVersion": "hk-situation-analysis-shadow-inference/v0.1",
-  "createdAt": "2026-09-02T05:26:27.460Z",
+  "createdAt": "2026-09-02T06:04:34.427Z",
   "input": {
-    "packetFingerprint": "e6a3320c323a7704b8af06df8f0c7f90f2b10bf791151873c997983820d0d268",
+    "packetFingerprint": "f067caccd97dc00ee47dd1aa19af9d74d9e5e653aa411e846b2dd877d1cd39a3",
     "packetSchemaVersion": "hk-situation-analysis-shadow-packet/v0.1",
     "evidencePacketSchemaVersion": "hk-situation-analysis-shadow-input/v0.1",
+    "evidenceCatalogSchemaVersion": "hk-situation-analysis-evidence-catalog/v1",
     "caseId": "STC-2026-JMA-TC2628",
     "groupKey": "KROVANH",
-    "sourceObservationObservedAt": "2026-09-02T04:16:46.702Z"
+    "sourceObservationObservedAt": "2026-09-02T06:01:43.111Z"
   },
   "prompt": {
-    "version": "hk-situation-analysis-prompt/v0.1",
-    "outputSchemaVersion": "hk-situation-analysis-shadow-output/v0.1",
-    "requestFingerprint": "d41e326417f9184c48be5f782d09aac784f5bc04521dcef1ae144194f5d2cc8e"
+    "version": "hk-situation-analysis-prompt/v0.3",
+    "outputSchemaVersion": "hk-situation-analysis-shadow-output/v0.2",
+    "requestFingerprint": "4bf895771d978320ac41a4107fbb1ca157eab8aa433f0858e730a8e036761f67"
   },
   "provider": {
     "name": "cloudflare-workers-ai-chat-completions",
     "endpoint": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions",
     "requestedModel": "@cf/openai/gpt-oss-120b",
     "returnedModel": "@cf/openai/gpt-oss-120b",
-    "responseId": "id-1788326787436",
-    "requestId": "a34a189e28282ed3-LAX",
+    "responseId": "id-1788329074397",
+    "requestId": "a34a5027d930758c-SEA",
     "status": "completed",
     "reasoningControl": "provider-default",
     "temperature": 0.2,
@@ -29,155 +30,181 @@
     "store": false,
     "toolsEnabled": false,
     "usage": {
-      "prompt_tokens": 21174,
-      "completion_tokens": 2279,
-      "total_tokens": 23453,
+      "prompt_tokens": 22530,
+      "completion_tokens": 2384,
+      "total_tokens": 24914,
       "prompt_tokens_details": {
         "cached_tokens": 0
       },
-      "neurons": 829.1005859375
+      "neurons": 879.4049072265625
     }
   },
   "output": {
     "contradictingEvidence": [
       {
-        "finding": "Agency disagreement is high (confidence 0.702) indicating divergent model outputs.",
-        "ref": "$.evidence.lifecycleAnalyzers.agencyDisagreement.confidence"
+        "finding": "High agency disagreement on storm track and distance",
+        "id": "E_AGENCY_DISAGREEMENT"
       },
       {
-        "finding": "Rapid evolution confidence (0.296) suggests possible changes in storm motion or intensity.",
-        "ref": "$.evidence.lifecycleAnalyzers.rapidEvolution.confidence"
+        "finding": "Impact uncertainty is high (distance spread ≈ 80 km, closest‑time spread ≈ 35 h)",
+        "id": "E_IMPACT_UNCERTAINTY"
       },
       {
-        "finding": "Impact uncertainty is flagged as high due to large distance and time spreads.",
-        "ref": "$.evidence.impactUncertainty.level"
+        "finding": "Rapid‑evolution analyzer shows non‑negligible confidence (≈ 0.30) indicating possible intensity or motion change",
+        "id": "E_RAPID_EVOLUTION"
       },
       {
-        "finding": "Local wind observations recorded gusts exceeding the strong‑gust threshold (48 km/h at Tate’s Cairn, 47 km/h at Lamma Island, 46 km/h at Peng Chau).",
-        "ref": "$.evidence.localWind.summary.gustStrongStations"
+        "finding": "Quasi‑stationary analyzer confidence (≈ 0.37) suggests the storm could linger longer than a simple approach",
+        "id": "E_QUASI_STATIONARY"
+      },
+      {
+        "finding": "Direct‑depart analyzer shows a small but present confidence (≈ 0.07) that the storm may start moving away soon after minimum",
+        "id": "E_DIRECT_DEPART"
       }
     ],
     "currentPhase": "approaching",
-    "currentPhaseConfidence": 0.57,
-    "currentThreatInterpretation": "Threat is low; all signal likelihoods are \"unlikely\" with risk indices well below escalation thresholds.",
+    "currentPhaseConfidence": 0.55,
+    "currentThreatInterpretation": "Overall threat to Hong Kong is low; the storm is still far (> 1 500 km) and the representative wind (≈ 18 m s⁻¹) is well below signal‑relevant thresholds. Likelihood of any warning signal issuance is classified as unlikely.",
     "futurePhases": [
       {
-        "earliestTime": "2026-09-04T03:00:00.000Z",
-        "evidenceRefs": [
-          "$.evidence.deterministicForecasts.v1.signals.T3.strongestCheckpoint.validTime",
-          "$.evidence.deterministicForecasts.v1.signals.T8.strongestCheckpoint.validTime"
+        "earliestTime": "2026-09-04T03:00:00Z",
+        "evidenceIds": [
+          "E_V1_IMPACT"
         ],
-        "interpretation": "closest‑approach window (minimum distance ~1594 km).",
-        "latestTime": "2026-09-05T00:00:00.000Z",
+        "interpretation": "closest approach (minimum distance ≈ 1 594 km, lead ≈ 47 h)",
+        "latestTime": "2026-09-04T03:00:00Z",
+        "phase": "approaching"
+      },
+      {
+        "earliestTime": "2026-09-04T03:00:00Z",
+        "evidenceIds": [
+          "E_V1_IMPACT"
+        ],
+        "interpretation": "post‑minimum departure (distance expected to increase after the minimum)",
+        "latestTime": "2026-09-07T00:00:00Z",
         "phase": "departing"
       }
     ],
     "modelSemanticConcerns": [
       {
-        "code": "officialHkoDecisionInferred",
-        "description": "No official HKO signal statement is present; the analysis must not invent a decision.",
-        "evidenceRefs": [
-          "$.evidence.officialHko.warningContext.provided",
-          "$.evidence.officialHko.warningContext.inferred"
+        "code": "highAgencyDisagreement",
+        "description": "Agency disagreement confidence 0.70 indicates substantial spread in track forecasts, reducing confidence in any single‑source timing.",
+        "evidenceIds": [
+          "E_AGENCY_DISAGREEMENT"
         ]
       },
       {
-        "code": "riskIndicesImmutable",
-        "description": "Risk indices from V1/V2 must not be altered.",
-        "evidenceRefs": [
-          "$.evidence.deterministicForecasts.v1.signals.T1.riskIndex",
-          "$.evidence.deterministicForecasts.v2Shadow.signals.T1.riskIndex"
+        "code": "lackOfWindFieldData",
+        "description": "No wind‑field evidence (wind‑field confidence = 0) means signal risk relies solely on distance and representative wind, limiting exposure assessment.",
+        "evidenceIds": [
+          "E_TC_WIND_FIELD"
         ]
       },
       {
-        "code": "localWindSeparate",
-        "description": "Local wind observations are observation‑only and must not be merged into the TC wind‑field evidence.",
-        "evidenceRefs": [
-          "$.evidence.localWind.interpretation",
-          "$.evidence.lifecycleAnalyzers.windField.confidence"
+        "code": "localWindNotCoupled",
+        "description": "Local wind observations are observation‑only and are not linked to the tropical‑cyclone wind field; they cannot be used to infer signal risk.",
+        "evidenceIds": [
+          "E_LOCAL_WIND_SUMMARY"
         ]
       }
     ],
     "nextDecisionWindow": {
-      "earliestTime": "2026-09-02T12:00:00.000Z",
-      "evidenceRefs": [
-        "$.evidence.deterministicForecasts.v1.signals.T1.strongestCheckpoint.validTime",
-        "$.evidence.deterministicForecasts.v1.signals.T3.strongestCheckpoint.validTime"
+      "earliestTime": "2026-09-02T12:00:00Z",
+      "evidenceIds": [
+        "E_V1_T1",
+        "E_THREAT_TIMELINE"
       ],
-      "interpretation": "Monitor until the +44 h to +48 h window when T3/T8 risk peaks, though still unlikely.",
-      "latestTime": "2026-09-04T03:00:00.000Z",
-      "question": "maintenance"
+      "interpretation": "First checkpoint where T1 risk peaks (+8.3 h). Although risk remains low, this is the earliest point for a possible reassessment of signal issuance.",
+      "latestTime": null,
+      "question": "reassessment"
     },
-    "schemaVersion": "hk-situation-analysis-shadow-output/v0.1",
+    "schemaVersion": "hk-situation-analysis-shadow-output/v0.2",
     "signalInterpretation": {
       "T1": {
         "assessment": "not-applicable",
-        "evidenceRefs": [
-          "$.evidence.deterministicForecasts.v1.signals.T1.likelihood",
-          "$.evidence.deterministicForecasts.v1.signals.T1.riskIndex"
+        "evidenceIds": [
+          "E_V1_T1",
+          "E_V2_T1"
         ],
-        "interpretation": "Risk index 0.121, likelihood unlikely – no signal needed.",
+        "interpretation": "Maintain current state of no T1 signal; likelihood unlikely.",
         "nextQuestion": "none"
       },
       "T3": {
         "assessment": "not-applicable",
-        "evidenceRefs": [
-          "$.evidence.deterministicForecasts.v1.signals.T3.likelihood",
-          "$.evidence.deterministicForecasts.v1.signals.T3.riskIndex"
+        "evidenceIds": [
+          "E_V1_T3",
+          "E_V2_T3"
         ],
-        "interpretation": "Risk index 0.053, likelihood unlikely – no signal needed.",
+        "interpretation": "Maintain current state of no T3 signal; likelihood unlikely.",
         "nextQuestion": "none"
       },
       "T8": {
         "assessment": "not-applicable",
-        "evidenceRefs": [
-          "$.evidence.deterministicForecasts.v1.signals.T8.likelihood",
-          "$.evidence.deterministicForecasts.v1.signals.T8.riskIndex"
+        "evidenceIds": [
+          "E_V1_T8",
+          "E_V2_T8"
         ],
-        "interpretation": "Risk index 0.048, likelihood unlikely – no signal needed.",
+        "interpretation": "Maintain current state of no T8 signal; likelihood unlikely.",
         "nextQuestion": "none"
       }
     },
     "supportingEvidence": [
       {
-        "finding": "Current distance ~1881 km, far beyond the 10 km impact threshold.",
-        "ref": "$.evidence.currentDistanceKm"
+        "finding": "Deterministic impact summary shows low threat index (≈ 0.11) and unlikely likelihood",
+        "id": "E_V1_IMPACT"
       },
       {
-        "finding": "Forecast minimum distance ~1594 km occurs in ~47 h, still well outside impact zone.",
-        "ref": "$.evidence.forecastMinimumKm"
+        "finding": "All signal risk indices are low (T1 ≈ 0.12, T3 ≈ 0.05, T8 ≈ 0.05) with unlikely likelihood",
+        "id": "E_V1_T1"
       },
       {
-        "finding": "Representative wind speed 18 m/s (≈65 km/h) is below strong‑wind thresholds for Hong Kong signals.",
-        "ref": "$.evidence.deterministicForecasts.v1.signals.T1.basis[?(@.startsWith('representative-wind'))]"
+        "finding": "Same for T3 and T8",
+        "id": "E_V1_T3"
       },
       {
-        "finding": "No wind‑field intersection with Hong Kong (wind‑field‑any = 0).",
-        "ref": "$.evidence.lifecycleAnalyzers.windField.confidence"
+        "finding": "Same for T8",
+        "id": "E_V1_T8"
       },
       {
-        "finding": "Timeline evidence for T1 is low (0.121) and for T3/T8 even lower, reflecting limited threat.",
-        "ref": "$.evidence.deterministicForecasts.v1.signals.T1.basis[?(@.startsWith('timeline-evidence'))]"
+        "finding": "Geometry shows current distance > 1 800 km and forecast minimum > 1 590 km, well beyond signal‑relevant radii",
+        "id": "E_GEOMETRY"
+      },
+      {
+        "finding": "Impact trend aggregates as ‘approaching’ (3 approaching, 1 steady)",
+        "id": "E_IMPACT_TREND"
+      },
+      {
+        "finding": "Direct‑approach analyzer confidence (≈ 0.18) indicates a modest approach component",
+        "id": "E_DIRECT_APPROACH"
+      },
+      {
+        "finding": "Signal feature vector includes low proximity and wind‑severity indices",
+        "id": "E_SIGNAL_FEATURES"
       }
     ],
     "uncertainties": [
       {
-        "description": "High impact uncertainty due to large spread in agency forecasts (79 km) and forecast‑minimum span (131 km).",
-        "evidenceRefs": [
-          "$.evidence.impactUncertainty.reasons[0]",
-          "$.evidence.impactUncertainty.reasons[1]"
+        "description": "High impact uncertainty due to large distance and time spreads",
+        "evidenceIds": [
+          "E_IMPACT_UNCERTAINTY"
         ]
       },
       {
-        "description": "Lack of wind‑field data (0 agencies with wind‑radius coverage).",
-        "evidenceRefs": [
-          "$.evidence.signalFeatureVector.windRadiusAgencyCount"
+        "description": "Significant agency disagreement reduces confidence in track and timing",
+        "evidenceIds": [
+          "E_AGENCY_DISAGREEMENT"
         ]
       },
       {
-        "description": "Local gust observations exceed strong‑gust threshold but are not linked to the TC wind‑field.",
-        "evidenceRefs": [
-          "$.evidence.localWind.summary.gustStrongStations"
+        "description": "Interpolation reliability moderate (≈ 0.69) adds uncertainty to timeline estimates",
+        "evidenceIds": [
+          "E_INTERPOLATION_RELIABILITY"
+        ]
+      },
+      {
+        "description": "Absence of wind‑field data prevents direct exposure assessment",
+        "evidenceIds": [
+          "E_TC_WIND_FIELD"
         ]
       }
     ]
@@ -193,6 +220,8 @@
     "inputPacketIsSoleMeteorologicalEvidence": true,
     "caseSpecificRulesForbidden": true,
     "structuredOutputRequired": true,
-    "localValidationRequired": true
+    "localValidationRequired": true,
+    "evidenceReferenceMode": "catalog-id-only",
+    "evidenceCatalogIdsRequired": true
   }
 }
