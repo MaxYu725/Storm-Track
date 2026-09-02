@@ -6,7 +6,8 @@
   'use strict';
 
   const VERSION = 'hk-situation-analysis-shadow-input/v0.1';
-  const OUTPUT_CONTRACT_VERSION = 'hk-situation-analysis-shadow-output/v0.1';
+  const OUTPUT_CONTRACT_VERSION = 'hk-situation-analysis-shadow-output/v0.2';
+  const EVIDENCE_CATALOG_VERSION = 'hk-situation-analysis-evidence-catalog/v1';
 
   function finite(value) {
     if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
@@ -22,10 +23,7 @@
 
   function compactWindow(window) {
     if (!window || typeof window !== 'object') return null;
-    return {
-      start: window.start ?? null,
-      end: window.end ?? null
-    };
+    return { start: window.start ?? null, end: window.end ?? null };
   }
 
   function compactCheckpoint(checkpoint) {
@@ -98,13 +96,8 @@
 
   function localWindEvidence(localWindShadow) {
     if (!localWindShadow || typeof localWindShadow !== 'object') {
-      return {
-        provided: false,
-        affectsForecast: false,
-        interpretation: 'observation-only'
-      };
+      return { provided: false, affectsForecast: false, interpretation: 'observation-only' };
     }
-
     const summary = localWindShadow.summary && typeof localWindShadow.summary === 'object'
       ? localWindShadow.summary
       : localWindShadow;
@@ -113,7 +106,6 @@
       : (Array.isArray(localWindShadow.observations)
           ? localWindShadow.observations
           : (Array.isArray(localWindShadow.rows) ? localWindShadow.rows : []));
-
     return {
       provided: true,
       schemaVersion: localWindShadow.schemaVersion ?? summary.schemaVersion ?? null,
@@ -140,23 +132,82 @@
     };
   }
 
+  function valueAtPath(rootValue, path) {
+    if (!path.startsWith('$.evidence.')) return undefined;
+    const relative = path.slice('$.evidence.'.length);
+    const tokens = relative.split('.');
+    let current = rootValue?.evidence;
+    for (const token of tokens) {
+      if (current == null || typeof current !== 'object' || !Object.prototype.hasOwnProperty.call(current, token)) return undefined;
+      current = current[token];
+    }
+    return current;
+  }
+
+  function buildEvidenceCatalog(packet) {
+    const definitions = [
+      ['E_V1_IMPACT', '$.evidence.deterministicForecasts.v1.impact', 'forecast', 'Frozen V1 Hong Kong impact summary.'],
+      ['E_V1_T1', '$.evidence.deterministicForecasts.v1.signals.T1', 'signal', 'Frozen V1 T1 likelihood, risk, confidence and timing guidance.'],
+      ['E_V1_T3', '$.evidence.deterministicForecasts.v1.signals.T3', 'signal', 'Frozen V1 T3 likelihood, risk, confidence and timing guidance.'],
+      ['E_V1_T8', '$.evidence.deterministicForecasts.v1.signals.T8', 'signal', 'Frozen V1 T8 likelihood, risk, confidence and timing guidance.'],
+      ['E_V2_IMPACT', '$.evidence.deterministicForecasts.v2Shadow.impact', 'forecast', 'V2 Shadow Hong Kong impact summary.'],
+      ['E_V2_T1', '$.evidence.deterministicForecasts.v2Shadow.signals.T1', 'signal', 'V2 Shadow T1 interpretation and timing state.'],
+      ['E_V2_T3', '$.evidence.deterministicForecasts.v2Shadow.signals.T3', 'signal', 'V2 Shadow T3 interpretation and timing state.'],
+      ['E_V2_T8', '$.evidence.deterministicForecasts.v2Shadow.signals.T8', 'signal', 'V2 Shadow T8 interpretation and timing state.'],
+      ['E_GEOMETRY', '$.evidence.geometry', 'geometry', 'Current, minimum and full-horizon Hong Kong geometry evidence.'],
+      ['E_IMPACT_TREND', '$.evidence.geometry.impactTrend', 'geometry', 'Aggregate impact-distance trend evidence.'],
+      ['E_IMPACT_UNCERTAINTY', '$.evidence.geometry.impactUncertainty', 'uncertainty', 'Impact uncertainty evidence.'],
+      ['E_DIRECT_APPROACH', '$.evidence.lifecycleAnalyzers.directApproach', 'lifecycle', 'Direct-approach analyzer evidence.'],
+      ['E_DIRECT_DEPART', '$.evidence.lifecycleAnalyzers.directDepart', 'lifecycle', 'Direct-departure analyzer evidence.'],
+      ['E_REAPPROACH', '$.evidence.lifecycleAnalyzers.reApproach', 'lifecycle', 'Re-approach analyzer evidence.'],
+      ['E_QUASI_STATIONARY', '$.evidence.lifecycleAnalyzers.quasiStationary', 'lifecycle', 'Quasi-stationary analyzer evidence.'],
+      ['E_FORECAST_EDGE', '$.evidence.lifecycleAnalyzers.forecastEdge', 'uncertainty', 'Forecast-edge / horizon-limitation evidence.'],
+      ['E_AGENCY_DISAGREEMENT', '$.evidence.lifecycleAnalyzers.agencyDisagreement', 'uncertainty', 'Cross-agency disagreement analyzer evidence.'],
+      ['E_INTERPOLATION_RELIABILITY', '$.evidence.lifecycleAnalyzers.interpolationReliability', 'uncertainty', 'Interpolation reliability evidence.'],
+      ['E_TC_WIND_FIELD', '$.evidence.lifecycleAnalyzers.windField', 'wind-field', 'Tropical-cyclone forecast wind-field evidence, separate from local observed wind.'],
+      ['E_RAPID_EVOLUTION', '$.evidence.lifecycleAnalyzers.rapidEvolution', 'lifecycle', 'Rapid-evolution analyzer evidence.'],
+      ['E_AGENCY_PATTERNS', '$.evidence.agencyPatterns', 'agency', 'Per-agency movement and geometry patterns.'],
+      ['E_THREAT_TIMELINE', '$.evidence.threatTimeline', 'timeline', 'Prospective multi-agency threat timeline.'],
+      ['E_SIGNAL_FEATURES', '$.evidence.signalFeatureVector', 'signal-input', 'Deterministic HK signal feature vector.'],
+      ['E_SIGNAL_COVERAGE', '$.evidence.signalCoverage', 'coverage', 'Deterministic source/agency coverage evidence.'],
+      ['E_SIGNAL_DISAGREEMENT', '$.evidence.signalDisagreement', 'uncertainty', 'Signal-specific agency spread and disagreement evidence.'],
+      ['E_HKO_WARNING_CONTEXT', '$.evidence.officialHko.warningContext', 'official-context', 'Structured HKO warning context carried by deterministic signal inputs.'],
+      ['E_HKO_SIGNAL_STATEMENT', '$.evidence.officialHko.signalStatement', 'official-context', 'Contemporaneous HKO operational signal statement, when safely joined.'],
+      ['E_LOCAL_WIND_SUMMARY', '$.evidence.localWind.summary', 'local-observation', 'HKO local 10-minute wind summary; observation-only and not a forecast input.'],
+      ['E_LOCAL_WIND_STATIONS', '$.evidence.localWind.stations', 'local-observation', 'HKO local station wind observations; observation-only.'],
+      ['E_PREVIOUS_SITUATION', '$.evidence.previousSituation', 'continuity', 'Previous AI situation shadow state if explicitly supplied.']
+    ];
+
+    const entries = definitions
+      .map(([id, path, kind, description]) => ({ id, path, kind, description, value: valueAtPath(packet, path) }))
+      .filter(entry => entry.value !== undefined && entry.value !== null)
+      .map(({ value, ...entry }) => entry);
+
+    return {
+      schemaVersion: EVIDENCE_CATALOG_VERSION,
+      referenceMode: 'catalog-id-only',
+      entries,
+      semantics: {
+        deterministic: true,
+        stormAgnostic: true,
+        idsAreStableAcrossCasesWhenEvidenceKindMatches: true,
+        idsResolveToExactPacketPaths: true,
+        modelMustNotInventIds: true
+      }
+    };
+  }
+
   function targetOutputContract() {
     return {
       schemaVersion: OUTPUT_CONTRACT_VERSION,
       requiredFields: [
-        'currentPhase',
-        'currentPhaseConfidence',
-        'futurePhases',
-        'currentThreatInterpretation',
-        'nextDecisionWindow',
-        'signalInterpretation',
-        'supportingEvidence',
-        'contradictingEvidence',
-        'modelSemanticConcerns',
-        'uncertainties'
+        'currentPhase', 'currentPhaseConfidence', 'futurePhases', 'currentThreatInterpretation',
+        'nextDecisionWindow', 'signalInterpretation', 'supportingEvidence', 'contradictingEvidence',
+        'modelSemanticConcerns', 'uncertainties'
       ],
       signalKeys: ['T1', 'T3', 'T8'],
       evidenceReferenceRequired: true,
+      evidenceReferenceMode: 'catalog-id-only',
       uncertainAnswerAllowed: true
     };
   }
@@ -173,21 +224,14 @@
       officialOutcomeCannotRewriteEarlierForecast: true,
       underlyingV1V2RiskIndicesImmutable: true,
       officialHkoDecisionMustNotBeInvented: true,
+      evidenceCatalogIdsOnly: true,
       uncertaintyMayBeExplicit: true
     };
   }
 
   function buildSituationAnalysisInput({
-    caseInfo,
-    generatedAt,
-    impact,
-    signalInputs,
-    threatAssessment,
-    basicForecast,
-    shadowForecastV2,
-    hkoSignalStatement,
-    localWindShadow,
-    previousSituation
+    caseInfo, generatedAt, impact, signalInputs, threatAssessment, basicForecast, shadowForecastV2,
+    hkoSignalStatement, localWindShadow, previousSituation
   } = {}) {
     const referenceTime = generatedAt
       ?? basicForecast?.generatedAt
@@ -197,7 +241,7 @@
       ?? null;
     const summary = threatAssessment?.summary || {};
 
-    return {
+    const packet = {
       schemaVersion: VERSION,
       generatedAt: referenceTime,
       mode: 'ai-situation-analysis-shadow-input',
@@ -233,6 +277,7 @@
         localWind: localWindEvidence(localWindShadow),
         previousSituation: cloneSerializable(previousSituation ?? null)
       },
+      evidenceCatalog: null,
       aiTask: {
         purpose: 'Interpret lifecycle, conflicting evidence, operational timing semantics, and uncertainty without changing deterministic forecast values.',
         targetOutput: targetOutputContract(),
@@ -248,16 +293,21 @@
         evidencePacketOnly: true,
         caseSpecificRulesForbidden: true,
         localWindAffectsForecast: false,
+        evidenceReferencesUseCatalogIds: true,
         officialHkoForecast: false,
         officialHkoDecisionInferred: false,
         label: 'Storm Track AI Situation Analysis Shadow evidence packet'
       }
     };
+    packet.evidenceCatalog = buildEvidenceCatalog(packet);
+    return packet;
   }
 
   return Object.freeze({
     VERSION,
     OUTPUT_CONTRACT_VERSION,
+    EVIDENCE_CATALOG_VERSION,
+    buildEvidenceCatalog,
     buildSituationAnalysisInput
   });
 });

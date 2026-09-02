@@ -39,22 +39,20 @@ function parsePacket(value) {
   if (value.schemaVersion !== 'hk-situation-analysis-shadow-packet/v0.1') {
     throw new Error(`Unsupported packet schema: ${value.schemaVersion ?? 'missing'}`);
   }
-  if (!/^[0-9a-f]{64}$/.test(String(value.packetFingerprint || ''))) {
-    throw new Error('Packet fingerprint is missing or invalid');
-  }
+  if (!/^[0-9a-f]{64}$/.test(String(value.packetFingerprint || ''))) throw new Error('Packet fingerprint is missing or invalid');
   if (value?.semantics?.shadowOnly !== true
       || value?.semantics?.affectsForecast !== false
       || value?.semantics?.affectsEvaluator !== false
       || !hasSafeOfficialContextSemantics(value?.semantics)) {
     throw new Error('Packet does not satisfy shadow/no-future-outcome semantics');
   }
-  if (value?.evidencePacket?.schemaVersion !== 'hk-situation-analysis-shadow-input/v0.1') {
-    throw new Error('Evidence packet schema mismatch');
-  }
+  if (value?.evidencePacket?.schemaVersion !== 'hk-situation-analysis-shadow-input/v0.1') throw new Error('Evidence packet schema mismatch');
   if (value?.evidencePacket?.semantics?.caseSpecificRulesForbidden !== true
-      || value?.evidencePacket?.semantics?.noTruthFeedback !== true) {
-    throw new Error('Evidence packet anti-overfitting semantics missing');
+      || value?.evidencePacket?.semantics?.noTruthFeedback !== true
+      || value?.evidencePacket?.semantics?.evidenceReferencesUseCatalogIds !== true) {
+    throw new Error('Evidence packet anti-overfitting/catalog semantics missing');
   }
+  if (!promptContract.catalogIds(value.evidencePacket).length) throw new Error('Evidence catalog is missing or empty');
   return value;
 }
 
@@ -85,7 +83,7 @@ function createRequestBody(packet, {
     ],
     response_format: {
       type: 'json_schema',
-      json_schema: promptContract.OUTPUT_JSON_SCHEMA
+      json_schema: promptContract.outputSchemaForEvidence(packet.evidencePacket)
     },
     max_tokens: maxTokens,
     temperature,
@@ -112,27 +110,18 @@ function extractStructuredOutput(payload, evidencePacket = null) {
   if (first.finish_reason && !['stop', 'end_turn'].includes(first.finish_reason)) {
     throw new Error(`Cloudflare Workers AI response did not finish normally: ${first.finish_reason}`);
   }
-
   const content = first?.message?.content;
   let parsed;
-  if (content && typeof content === 'object' && !Array.isArray(content)) {
-    parsed = content;
-  } else if (typeof content === 'string' && content.trim()) {
-    try {
-      parsed = JSON.parse(content);
-    } catch (error) {
-      throw new Error(`Cloudflare Workers AI structured output is not JSON: ${error.message}`);
-    }
-  } else {
-    throw new Error('Cloudflare Workers AI response contained no assistant content');
-  }
+  if (content && typeof content === 'object' && !Array.isArray(content)) parsed = content;
+  else if (typeof content === 'string' && content.trim()) {
+    try { parsed = JSON.parse(content); }
+    catch (error) { throw new Error(`Cloudflare Workers AI structured output is not JSON: ${error.message}`); }
+  } else throw new Error('Cloudflare Workers AI response contained no assistant content');
 
   const validation = evidencePacket
     ? promptContract.validateOutputAgainstEvidence(parsed, evidencePacket)
     : promptContract.validateOutput(parsed);
-  if (!validation.valid) {
-    throw new Error(`Cloudflare Workers AI structured output failed local validation: ${validation.errors.join('; ')}`);
-  }
+  if (!validation.valid) throw new Error(`Cloudflare Workers AI structured output failed local validation: ${validation.errors.join('; ')}`);
   return parsed;
 }
 
@@ -157,7 +146,6 @@ async function runInference(packet, {
   const requestFingerprint = sha256(requestBody);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   let response;
   try {
     response = await fetchImpl(endpoint, {
@@ -165,22 +153,17 @@ async function runInference(packet, {
       headers: {
         authorization: `Bearer ${apiToken}`,
         'content-type': 'application/json',
-        'user-agent': 'storm-track-ai-situation-shadow/0.2'
+        'user-agent': 'storm-track-ai-situation-shadow/0.3'
       },
       body: JSON.stringify(requestBody),
       signal: controller.signal
     });
-  } finally {
-    clearTimeout(timer);
-  }
+  } finally { clearTimeout(timer); }
 
   const responseText = await response.text();
   let payload;
-  try {
-    payload = responseText ? JSON.parse(responseText) : {};
-  } catch {
-    throw new Error(`Cloudflare HTTP ${response.status}: non-JSON response`);
-  }
+  try { payload = responseText ? JSON.parse(responseText) : {}; }
+  catch { throw new Error(`Cloudflare HTTP ${response.status}: non-JSON response`); }
   if (!response.ok) {
     const first = Array.isArray(payload?.errors) ? payload.errors[0] : null;
     const message = first?.message || payload?.error?.message || payload?.message || `HTTP ${response.status}`;
@@ -196,6 +179,7 @@ async function runInference(packet, {
       packetFingerprint: packet.packetFingerprint,
       packetSchemaVersion: packet.schemaVersion,
       evidencePacketSchemaVersion: packet.evidencePacket.schemaVersion,
+      evidenceCatalogSchemaVersion: packet.evidencePacket.evidenceCatalog.schemaVersion,
       caseId: packet.caseId ?? null,
       groupKey: packet.groupKey ?? null,
       sourceObservationObservedAt: packet.sourceObservationObservedAt ?? null
@@ -234,16 +218,15 @@ async function runInference(packet, {
       caseSpecificRulesForbidden: true,
       structuredOutputRequired: true,
       localValidationRequired: true,
-      exactEvidenceReferencesRequired: true
+      evidenceReferenceMode: 'catalog-id-only',
+      evidenceCatalogIdsRequired: true
     }
   };
 }
 
 async function main(argv = process.argv.slice(2)) {
   const [packetPath, modelArg] = argv;
-  if (!packetPath) {
-    throw new Error('Usage: node scripts/run-hk-situation-analysis-shadow-cloudflare.mjs <packet.json> [model]');
-  }
+  if (!packetPath) throw new Error('Usage: node scripts/run-hk-situation-analysis-shadow-cloudflare.mjs <packet.json> [model]');
   const packet = parsePacket(JSON.parse(readFileSync(resolve(packetPath), 'utf8')));
   const result = await runInference(packet, {
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CF_ACCOUNT_ID,
@@ -256,10 +239,7 @@ async function main(argv = process.argv.slice(2)) {
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : null;
 const modulePath = resolve(fileURLToPath(import.meta.url));
 if (invokedPath === modulePath) {
-  main().catch(error => {
-    console.error(error?.stack || error);
-    process.exitCode = 1;
-  });
+  main().catch(error => { console.error(error?.stack || error); process.exitCode = 1; });
 }
 
 export {
