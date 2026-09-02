@@ -17,13 +17,7 @@ on:
         required: true
         default: medium
         type: choice
-        options:
-          - none
-          - low
-          - medium
-          - high
-          - xhigh
-          - max
+        options: [none, low, medium, high, xhigh, max]
       force:
         description: Allow another inference for the same packet/prompt/model
         required: true
@@ -61,6 +55,8 @@ jobs:
           node --check scripts/run-hk-situation-analysis-shadow-openai.mjs
           node tests/hk-situation-analysis-shadow.test.cjs
           node tests/hk-situation-analysis-openai-inference.test.cjs
+          grep -F 'hk-situation-analysis-prompt/v0.4' analysis/hk-situation-analysis-prompt.js
+          grep -F "evidenceReferenceMode: 'catalog-id-only'" scripts/run-hk-situation-analysis-shadow-openai.mjs
 
       - name: Load exact immutable packet
         shell: bash
@@ -76,7 +72,14 @@ jobs:
               elif length == 0 then error("case ID is not present in latest packet batch")
               else error("case ID is ambiguous in latest packet batch") end
           ' /tmp/hk-situation-packet-batch.json > /tmp/hk-situation-packet.json
-          jq '{schemaVersion,packetFingerprint,caseId,groupKey,sourceObservationObservedAt,provenance}' /tmp/hk-situation-packet.json
+          jq -e '
+            .semantics.noFutureTruthFeedback == true and
+            .semantics.contemporaneousOfficialContextOnly == true and
+            .semantics.noFutureOfficialContextJoin == true and
+            .evidencePacket.evidenceCatalog.schemaVersion == "hk-situation-analysis-evidence-catalog/v1" and
+            (.evidencePacket.evidenceCatalog.entries | length) > 0
+          ' /tmp/hk-situation-packet.json >/dev/null
+          jq '{schemaVersion,packetFingerprint,caseId,groupKey,sourceObservationObservedAt,provenance,evidenceCatalogCount:(.evidencePacket.evidenceCatalog.entries|length)}' /tmp/hk-situation-packet.json
 
       - name: Verify API credential is configured
         shell: bash
@@ -112,13 +115,14 @@ jobs:
           jq --arg packet "$packet_fingerprint" -e '
             .schemaVersion == "hk-situation-analysis-shadow-inference/v0.1" and
             .input.packetFingerprint == $packet and
-            .prompt.version == "hk-situation-analysis-prompt/v0.2" and
-            .prompt.outputSchemaVersion == "hk-situation-analysis-shadow-output/v0.1" and
+            .input.evidenceCatalogSchemaVersion == "hk-situation-analysis-evidence-catalog/v1" and
+            .prompt.version == "hk-situation-analysis-prompt/v0.4" and
+            .prompt.outputSchemaVersion == "hk-situation-analysis-shadow-output/v0.3" and
             (.prompt.requestFingerprint | test("^[0-9a-f]{64}$")) and
             .provider.name == "openai-responses" and
             .provider.store == false and
             .provider.toolsEnabled == false and
-            .output.schemaVersion == "hk-situation-analysis-shadow-output/v0.1" and
+            .output.schemaVersion == "hk-situation-analysis-shadow-output/v0.3" and
             .semantics.shadowOnly == true and
             .semantics.affectsForecast == false and
             .semantics.affectsEvaluator == false and
@@ -128,7 +132,8 @@ jobs:
             .semantics.inputPacketIsSoleMeteorologicalEvidence == true and
             .semantics.caseSpecificRulesForbidden == true and
             .semantics.structuredOutputRequired == true and
-            .semantics.exactEvidenceReferencesRequired == true
+            .semantics.evidenceReferenceMode == "catalog-id-only" and
+            .semantics.evidenceCatalogIdsRequired == true
           ' /tmp/hk-situation-inference.json >/dev/null
           jq '{createdAt,input,prompt,provider:{name:.provider.name,requestedModel:.provider.requestedModel,returnedModel:.provider.returnedModel,responseId:.provider.responseId,requestId:.provider.requestId,status:.provider.status,reasoningEffort:.provider.reasoningEffort,store:.provider.store,toolsEnabled:.provider.toolsEnabled,usage:.provider.usage},output,semantics}' /tmp/hk-situation-inference.json
 
@@ -183,7 +188,7 @@ jobs:
           cp /tmp/hk-situation-inference.json "$destination"
           cp /tmp/hk-situation-inference.json "cases/${case_slug}/latest.json"
           cp /tmp/hk-situation-inference.json latest.json
-          jq -c '{schemaVersion,createdAt,input,prompt,provider:{name:.provider.name,requestedModel:.provider.requestedModel,returnedModel:.provider.returnedModel,responseId:.provider.responseId,status:.provider.status,reasoningEffort:.provider.reasoningEffort,usage:.provider.usage},summary:{currentPhase:.output.currentPhase,currentPhaseConfidence:.output.currentPhaseConfidence,nextDecisionQuestion:.output.nextDecisionWindow.question},semantics}' /tmp/hk-situation-inference.json >> index.ndjson
+          jq -c '{schemaVersion,createdAt,input,prompt,provider:{name:.provider.name,requestedModel:.provider.requestedModel,returnedModel:.provider.returnedModel,responseId:.provider.responseId,status:.provider.status,reasoningEffort:.provider.reasoningEffort,usage:.provider.usage},summary:{currentPhase:.output.currentPhase,currentPhaseConfidence:.output.currentPhaseConfidence,nextDecisionSignal:.output.nextDecisionWindow.signalCode,nextDecisionQuestion:.output.nextDecisionWindow.question},semantics}' /tmp/hk-situation-inference.json >> index.ndjson
 
           git add "$destination" "cases/${case_slug}/latest.json" latest.json index.ndjson
           git commit -m "Record AI situation shadow inference ${case_slug} ${stamp} ${packet_short}"
