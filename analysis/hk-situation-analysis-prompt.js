@@ -5,7 +5,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormHkSituationAnalysisPrompt() {
   'use strict';
 
-  const VERSION = 'hk-situation-analysis-prompt/v0.1';
+  const VERSION = 'hk-situation-analysis-prompt/v0.2';
   const OUTPUT_SCHEMA_VERSION = 'hk-situation-analysis-shadow-output/v0.1';
 
   const PHASES = Object.freeze([
@@ -169,12 +169,16 @@
       'The storm name, case ID, agency IDs, dates, and station names are provenance only. They must never select a special rule or prompt branch.',
       'Do not modify, recalculate, or silently replace V1/V2 risk indices. Do not invent track coordinates, wind speeds, HKO signal times, or agency positions.',
       'Separate the lifecycle phase that is operationally relevant now from later forecast phases. A later re-approach must not silently replace the current pass/departure phase.',
+      'Use remote for a system that is not operationally relevant to Hong Kong even if its geometric distance trend is technically approaching. Motion direction alone does not make the current operational phase approaching.',
       'Treat deterministic geometry, lifecycle analyzers, V1/V2 outputs, TC wind-field evidence, local measured wind, and official HKO context as distinct evidence channels. Explicitly identify conflicts instead of averaging them away.',
-      'Local station observations are observation-only. A single exposed-station strong wind or gust is not by itself evidence that T3/T8 should be issued.',
+      'Cyclone representative or maximum wind is storm intensity, not Hong Kong local wind. Never compare cyclone-centre/representative wind directly with Hong Kong local 10-minute mean-wind or gust thresholds.',
+      'Local station observations are observation-only. A single exposed-station strong wind or gust is not by itself evidence that T3/T8 should be issued, and local wind must not be attributed to the tropical cyclone unless the packet contains supporting linkage evidence.',
       'Official HKO context may tell you the current operational question or stated reassessment context, but it must not rewrite an earlier deterministic forecast or be treated as a hidden training label.',
+      'If the packet does not provide the current official HKO signal state, do not claim that HKO should maintain, cancel, issue, or upgrade a current signal. Express only forecast interpretation or reassessment uncertainty supported by the packet.',
       'For T1/T3/T8, interpret the meaningful next operational question (maintenance, cancellation, escalation, reassessment, none, uncertain). Do not output a new probability or replacement risk score.',
+      'A deterministic estimatedWindow is a model guidance window, not automatically an HKO issuance window. Do not describe it as an official issue/change time unless contemporaneous HKO context explicitly supports that meaning.',
       'If evidence is sparse, phase-mixed, horizon-limited, internally inconsistent, or temporally ambiguous, say so and use uncertain/insufficient rather than forcing a conclusion.',
-      'Every evidence reference must be a JSON path into the supplied packet and must begin with $.evidence.',
+      'Every evidence reference must be an exact JSON path into the supplied packet, must begin with $.evidence., and may use only object keys and numeric array indexes. Do not use filters, wildcards, predicates, functions, or invented paths.',
       'Keep interpretations concise and auditable. The structured JSON output is the complete answer.'
     ].join('\n');
   }
@@ -280,6 +284,68 @@
     return { valid: errors.length === 0, errors };
   }
 
+  function evidenceRefTokens(ref) {
+    if (typeof ref !== 'string' || !ref.startsWith('$.evidence.')) return null;
+    if (/[?*()]/.test(ref)) return null;
+    const tokens = [];
+    let cursor = 1;
+    const pattern = /\.([A-Za-z_][A-Za-z0-9_-]*)|\[(\d+)\]/gy;
+    while (cursor < ref.length) {
+      pattern.lastIndex = cursor;
+      const match = pattern.exec(ref);
+      if (!match || match.index !== cursor) return null;
+      tokens.push(match[1] != null ? match[1] : Number(match[2]));
+      cursor = pattern.lastIndex;
+    }
+    return tokens;
+  }
+
+  function resolveEvidenceRef(ref, evidencePacket) {
+    const tokens = evidenceRefTokens(ref);
+    if (!tokens || !isObject(evidencePacket)) return { valid: false, value: undefined };
+    let current = evidencePacket;
+    for (const token of tokens) {
+      if (typeof token === 'number') {
+        if (!Array.isArray(current) || token < 0 || token >= current.length) return { valid: false, value: undefined };
+        current = current[token];
+      } else {
+        if ((typeof current !== 'object' || current == null) || !Object.prototype.hasOwnProperty.call(current, token)) {
+          return { valid: false, value: undefined };
+        }
+        current = current[token];
+      }
+    }
+    return { valid: true, value: current };
+  }
+
+  function collectEvidenceRefs(value) {
+    const refs = [];
+    const addMany = rows => { if (Array.isArray(rows)) rows.forEach(ref => refs.push(ref)); };
+    if (Array.isArray(value?.futurePhases)) value.futurePhases.forEach(row => addMany(row?.evidenceRefs));
+    addMany(value?.nextDecisionWindow?.evidenceRefs);
+    ['T1', 'T3', 'T8'].forEach(code => addMany(value?.signalInterpretation?.[code]?.evidenceRefs));
+    ['supportingEvidence', 'contradictingEvidence'].forEach(key => {
+      if (Array.isArray(value?.[key])) value[key].forEach(row => refs.push(row?.ref));
+    });
+    if (Array.isArray(value?.modelSemanticConcerns)) value.modelSemanticConcerns.forEach(row => addMany(row?.evidenceRefs));
+    if (Array.isArray(value?.uncertainties)) value.uncertainties.forEach(row => addMany(row?.evidenceRefs));
+    return refs;
+  }
+
+  function validateOutputAgainstEvidence(value, evidencePacket) {
+    const base = validateOutput(value);
+    const errors = [...base.errors];
+    if (!isObject(evidencePacket) || !isObject(evidencePacket.evidence)) {
+      errors.push('evidence packet missing .evidence object');
+      return { valid: false, errors };
+    }
+    collectEvidenceRefs(value).forEach((ref, index) => {
+      const resolved = resolveEvidenceRef(ref, evidencePacket);
+      if (!resolved.valid) errors.push(`evidence reference ${index} does not resolve exactly: ${String(ref)}`);
+    });
+    return { valid: errors.length === 0, errors };
+  }
+
   return Object.freeze({
     VERSION,
     OUTPUT_SCHEMA_VERSION,
@@ -288,6 +354,8 @@
     DECISION_QUESTIONS,
     SIGNAL_ASSESSMENTS,
     buildInstructions,
-    validateOutput
+    validateOutput,
+    validateOutputAgainstEvidence,
+    resolveEvidenceRef
   });
 });
