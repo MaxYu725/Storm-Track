@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const shadow = require('../analysis/hk-situation-analysis-shadow.js');
 
 assert.equal(shadow.VERSION, 'hk-situation-analysis-shadow-input/v0.1');
-assert.equal(shadow.OUTPUT_CONTRACT_VERSION, 'hk-situation-analysis-shadow-output/v0.2');
+assert.equal(shadow.OUTPUT_CONTRACT_VERSION, 'hk-situation-analysis-shadow-output/v0.3');
 assert.equal(shadow.EVIDENCE_CATALOG_VERSION, 'hk-situation-analysis-evidence-catalog/v1');
 
 const basicForecast = {
@@ -63,8 +63,12 @@ assert.equal(catalog.E_TC_WIND_FIELD.path, '$.evidence.lifecycleAnalyzers.windFi
 assert.equal(catalog.E_HKO_SIGNAL_STATEMENT.path, '$.evidence.officialHko.signalStatement');
 assert.equal(catalog.E_LOCAL_WIND_SUMMARY.path, '$.evidence.localWind.summary');
 assert.equal(packet.semantics.evidenceReferencesUseCatalogIds, true);
+assert.equal(packet.semantics.semanticCrossFieldConsistencyRequired, true);
 assert.equal(packet.aiTask.targetOutput.evidenceReferenceMode, 'catalog-id-only');
+assert.equal(packet.aiTask.targetOutput.decisionWindowSignalCodeRequired, true);
+assert.equal(packet.aiTask.targetOutput.signalOfficialDecisionBasisRequired, true);
 assert.equal(packet.aiTask.constraints.evidenceCatalogIdsOnly, true);
+assert.equal(packet.aiTask.constraints.semanticCrossFieldConsistencyRequired, true);
 assert.equal(JSON.stringify(basicForecast), beforeV1, 'catalog generation must not mutate V1');
 
 const packetWithoutOptional = shadow.buildSituationAnalysisInput({ basicForecast, threatAssessment, signalInputs });
