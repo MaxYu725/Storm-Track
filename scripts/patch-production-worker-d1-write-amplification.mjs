@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 const inputPath = process.argv[2] || 'worker.js';
 const outputPath = process.argv[3] || 'worker.d1-fixed.js';
+const BT = String.fromCharCode(96);
 let source = fs.readFileSync(inputPath, 'utf8');
 
 function replaceOnce(search, replacement, label) {
@@ -53,7 +54,7 @@ replaceSection(
     return { written: false };
   }
 
-  await db.prepare(`
+  await db.prepare(${BT}
     INSERT INTO storms(
       id, basin, year, international_number, name_en, name_zh, name_en_norm, name_zh_norm,
       first_seen_at, last_seen_at, status, merged_into_id, created_at, updated_at
@@ -67,7 +68,7 @@ replaceSection(
       first_seen_at=CASE WHEN excluded.first_seen_at<storms.first_seen_at THEN excluded.first_seen_at ELSE storms.first_seen_at END,
       last_seen_at=CASE WHEN excluded.last_seen_at>storms.last_seen_at THEN excluded.last_seen_at ELSE storms.last_seen_at END,
       status='active', merged_into_id=NULL, updated_at=excluded.updated_at
-  `).bind(
+  ${BT}).bind(
     stormId, year, internationalNumber, nameEn, nameZh, nameEnNorm, nameZhNorm,
     firstSeen, lastSeen, seed?.created_at || now, now
   ).run();
@@ -86,10 +87,10 @@ replaceSection(
   await ensureStormRow(db, resolvedId, storm, existing);
 
   const aliasName = storm.nameEn || storm.nameZh || '';
-  const existingAlias = await db.prepare(`
+  const existingAlias = await db.prepare(${BT}
     SELECT storm_id, agency_name, first_seen_at, last_seen_at
     FROM storm_aliases WHERE agency=? AND agency_storm_id=? LIMIT 1
-  `).bind(storm.agency, storm.sourceId).first();
+  ${BT}).bind(storm.agency, storm.sourceId).first();
   const desiredAliasName = aliasName || String(existingAlias?.agency_name || '');
   const desiredLastSeen = [existingAlias?.last_seen_at, storm.issuedAt].filter(Boolean).sort().at(-1) || storm.issuedAt;
   const aliasUnchanged = Boolean(existingAlias) &&
@@ -98,14 +99,14 @@ replaceSection(
     String(existingAlias.last_seen_at || '') === String(desiredLastSeen || '');
 
   if (!aliasUnchanged) {
-    await db.prepare(`
+    await db.prepare(${BT}
       INSERT INTO storm_aliases(storm_id, agency, agency_storm_id, agency_name, first_seen_at, last_seen_at)
       VALUES(?, ?, ?, ?, ?, ?)
       ON CONFLICT(agency, agency_storm_id) DO UPDATE SET
         storm_id=excluded.storm_id,
         agency_name=CASE WHEN excluded.agency_name<>'' THEN excluded.agency_name ELSE storm_aliases.agency_name END,
         last_seen_at=CASE WHEN excluded.last_seen_at>storm_aliases.last_seen_at THEN excluded.last_seen_at ELSE storm_aliases.last_seen_at END
-    `).bind(resolvedId, storm.agency, storm.sourceId, aliasName, storm.issuedAt, storm.issuedAt).run();
+    ${BT}).bind(resolvedId, storm.agency, storm.sourceId, aliasName, storm.issuedAt, storm.issuedAt).run();
   }
   return resolvedId;
 }`,
@@ -152,20 +153,20 @@ function normalizedIncomingAdvisoryPoints(storm) {
 
 async function persistedAdvisoryMatches(db, advisoryId, storm) {
   const [pointResult, radiusResult] = await db.batch([
-    db.prepare(`
+    db.prepare(${BT}
       SELECT id, point_type, valid_at, forecast_hour, latitude, longitude,
              pressure_hpa, wind_ms, gust_ms, wind_averaging_minutes, intensity_code, intensity_label,
              movement_direction, movement_speed_kmh, probability_radius_km, source_order
       FROM track_points WHERE advisory_id=? ORDER BY source_order
-    `).bind(advisoryId),
-    db.prepare(`
+    ${BT}).bind(advisoryId),
+    db.prepare(${BT}
       SELECT wr.id, wr.track_point_id, wr.threshold_code, wr.threshold_ms,
              wr.radius_ne_km, wr.radius_se_km, wr.radius_sw_km, wr.radius_nw_km
       FROM wind_radii wr
       JOIN track_points tp ON tp.id=wr.track_point_id
       WHERE tp.advisory_id=?
       ORDER BY tp.source_order, wr.id
-    `).bind(advisoryId)
+    ${BT}).bind(advisoryId)
   ]);
 
   const incoming = normalizedIncomingAdvisoryPoints(storm);
