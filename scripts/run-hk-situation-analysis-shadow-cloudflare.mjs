@@ -102,7 +102,7 @@ function unwrapPayload(payload) {
   return payload;
 }
 
-function extractStructuredOutput(payload) {
+function extractStructuredOutput(payload, evidencePacket = null) {
   const response = unwrapPayload(payload);
   const choices = Array.isArray(response.choices) ? response.choices : [];
   const first = choices[0] || null;
@@ -125,7 +125,9 @@ function extractStructuredOutput(payload) {
     throw new Error('Cloudflare Workers AI response contained no assistant content');
   }
 
-  const validation = promptContract.validateOutput(parsed);
+  const validation = evidencePacket
+    ? promptContract.validateOutputAgainstEvidence(parsed, evidencePacket)
+    : promptContract.validateOutput(parsed);
   if (!validation.valid) {
     throw new Error(`Cloudflare Workers AI structured output failed local validation: ${validation.errors.join('; ')}`);
   }
@@ -161,7 +163,7 @@ async function runInference(packet, {
       headers: {
         authorization: `Bearer ${apiToken}`,
         'content-type': 'application/json',
-        'user-agent': 'storm-track-ai-situation-shadow/0.1'
+        'user-agent': 'storm-track-ai-situation-shadow/0.2'
       },
       body: JSON.stringify(requestBody),
       signal: controller.signal
@@ -184,7 +186,7 @@ async function runInference(packet, {
   }
 
   const providerPayload = unwrapPayload(payload);
-  const output = extractStructuredOutput(payload);
+  const output = extractStructuredOutput(payload, packet.evidencePacket);
   return {
     schemaVersion: INFERENCE_SCHEMA_VERSION,
     createdAt: now(),
@@ -229,7 +231,8 @@ async function runInference(packet, {
       inputPacketIsSoleMeteorologicalEvidence: true,
       caseSpecificRulesForbidden: true,
       structuredOutputRequired: true,
-      localValidationRequired: true
+      localValidationRequired: true,
+      exactEvidenceReferencesRequired: true
     }
   };
 }
