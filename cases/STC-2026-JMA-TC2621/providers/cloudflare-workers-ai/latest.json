@@ -1,27 +1,27 @@
 {
   "schemaVersion": "hk-situation-analysis-shadow-inference/v0.1",
-  "createdAt": "2026-09-02T06:03:20.929Z",
+  "createdAt": "2026-09-02T06:14:40.337Z",
   "input": {
-    "packetFingerprint": "4b816184d9f50aca9ddd5e4e1281167609162618f486b5316d914698ca75f7f4",
+    "packetFingerprint": "b1f6858a9e9d48642358428524cf67a50ac23eb8df199ffb00d959948a6279a6",
     "packetSchemaVersion": "hk-situation-analysis-shadow-packet/v0.1",
     "evidencePacketSchemaVersion": "hk-situation-analysis-shadow-input/v0.1",
     "evidenceCatalogSchemaVersion": "hk-situation-analysis-evidence-catalog/v1",
     "caseId": "STC-2026-JMA-TC2621",
     "groupKey": "SAUDEL",
-    "sourceObservationObservedAt": "2026-09-02T06:01:43.089Z"
+    "sourceObservationObservedAt": "2026-09-02T06:03:51.758Z"
   },
   "prompt": {
-    "version": "hk-situation-analysis-prompt/v0.3",
-    "outputSchemaVersion": "hk-situation-analysis-shadow-output/v0.2",
-    "requestFingerprint": "a5c16b7df864d1b07ce98f48c6e88de44d1e339f95ebd9d1080522bb8141c83e"
+    "version": "hk-situation-analysis-prompt/v0.4",
+    "outputSchemaVersion": "hk-situation-analysis-shadow-output/v0.3",
+    "requestFingerprint": "d65ec6a15d01a761fb87579e1205113d949538cbe58b1dff9dd347d035736ce4"
   },
   "provider": {
     "name": "cloudflare-workers-ai-chat-completions",
     "endpoint": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions",
     "requestedModel": "@cf/openai/gpt-oss-120b",
     "returnedModel": "@cf/openai/gpt-oss-120b",
-    "responseId": "id-1788329000905",
-    "requestId": "a34a4e593b270c73-MSP",
+    "responseId": "id-1788329680318",
+    "requestId": "a34a5ec58d82ad84-SJC",
     "status": "completed",
     "reasoningControl": "provider-default",
     "temperature": 0.2,
@@ -30,45 +30,41 @@
     "store": false,
     "toolsEnabled": false,
     "usage": {
-      "prompt_tokens": 23303,
-      "completion_tokens": 2811,
-      "total_tokens": 26114,
+      "prompt_tokens": 23539,
+      "completion_tokens": 2965,
+      "total_tokens": 26504,
       "prompt_tokens_details": {
         "cached_tokens": 0
       },
-      "neurons": 933.1138916015625
+      "neurons": 951.1229248046875
     }
   },
   "output": {
     "contradictingEvidence": [
       {
-        "finding": "High impact uncertainty (large distance and time spread) reduces confidence in precise threat timing.",
-        "id": "E_IMPACT_UNCERTAINTY"
+        "finding": "T8 signal likelihood is unlikely with low risk index",
+        "id": "E_V2_T8"
       },
       {
-        "finding": "Agency disagreement confidence 0.619 indicates notable spread among agencies on distance and timing.",
-        "id": "E_AGENCY_DISAGREEMENT"
-      },
-      {
-        "finding": "No usable tropical‑cyclone wind‑field data (wind‑field confidence 0, no radii).",
+        "finding": "No tropical‑cyclone wind‑field data available (wind‑field confidence 0)",
         "id": "E_TC_WIND_FIELD"
       },
       {
-        "finding": "Rapid‑evolution analyzer confidence low (0.308), so no sudden intensification expected.",
-        "id": "E_RAPID_EVOLUTION"
+        "finding": "High impact‑uncertainty (spread ≈ 105 km, closest‑distance span ≈ 78 km, time span ≈ 22 h)",
+        "id": "E_IMPACT_UNCERTAINTY"
       },
       {
-        "finding": "Local wind observations show only isolated strong gusts (max 53 km/h) and no gale‑force winds; insufficient for T3/T8.",
-        "id": "E_LOCAL_WIND_SUMMARY"
+        "finding": "Significant agency disagreement (confidence ≈ 0.62)",
+        "id": "E_AGENCY_DISAGREEMENT"
       },
       {
-        "finding": "Direct‑approach analyzer confidence low (0.228); storm not on a direct inbound track.",
-        "id": "E_DIRECT_APPROACH"
+        "finding": "Forecast minimum may be horizon‑limited (forecast‑edge confidence ≈ 0.63)",
+        "id": "E_FORECAST_EDGE"
       }
     ],
     "currentPhase": "departing",
-    "currentPhaseConfidence": 0.62,
-    "currentThreatInterpretation": "Moderate threat to Hong Kong. T1 risk index 0.674 (possible) suggests the one‑number warning (TC1) remains appropriate. T3 risk 0.610 (possible) indicates a potential need to upgrade to a strong‑wind signal, but evidence is not yet decisive. T8 risk 0.306 (unlikely) shows little chance of gale‑force conditions.",
+    "currentPhaseConfidence": 0.85,
+    "currentThreatInterpretation": "moderate",
     "futurePhases": [
       {
         "earliestTime": "2026-09-04T00:00:00Z",
@@ -77,138 +73,146 @@
           "E_V2_T3",
           "E_V2_T1"
         ],
-        "interpretation": "Possible re‑approach around 4 Sep with forecast minimum distance ~144 km; could raise threat again.",
-        "latestTime": "2026-09-05T13:21:00Z",
-        "phase": "re-approaching"
+        "interpretation": "re‑approach",
+        "latestTime": "2026-09-04T05:00:00Z",
+        "phase": "approaching"
+      },
+      {
+        "earliestTime": "2026-09-04T20:38:34Z",
+        "evidenceIds": [
+          "E_V2_T3"
+        ],
+        "interpretation": "potential escalation to T3",
+        "latestTime": "2026-09-05T13:21:03Z",
+        "phase": "approaching"
+      },
+      {
+        "earliestTime": "2026-09-05T13:21:03Z",
+        "evidenceIds": [
+          "E_V2_T3"
+        ],
+        "interpretation": "post‑minimum departure",
+        "latestTime": null,
+        "phase": "departing"
       }
     ],
     "modelSemanticConcerns": [
       {
-        "code": "V1_V2_IMMUTABLE",
-        "description": "Risk indices and likelihoods from V1 and V2 must not be altered; they are treated as immutable evidence.",
-        "evidenceIds": [
-          "E_V1_T1",
-          "E_V1_T3",
-          "E_V1_T8",
-          "E_V2_T1",
-          "E_V2_T3",
-          "E_V2_T8"
-        ]
-      },
-      {
-        "code": "TIMING_STATE_LIMITED",
-        "description": "T1 timing state is left‑censored/or horizon‑limited; no precise future crossing time can be inferred.",
-        "evidenceIds": [
-          "E_V2_T1"
-        ]
-      },
-      {
-        "code": "NO_OFFICIAL_DECISION_INFERENCE",
-        "description": "The packet contains an official HKO signal statement (TC1) but the analysis must not rewrite or infer future official decisions.",
-        "evidenceIds": [
-          "E_HKO_SIGNAL_STATEMENT"
-        ]
-      },
-      {
-        "code": "LOCAL_WIND_SEPARATION",
-        "description": "Local wind observations are observation‑only and must not be combined with tropical‑cyclone wind‑field forecasts.",
-        "evidenceIds": [
-          "E_LOCAL_WIND_SUMMARY",
-          "E_LOCAL_WIND_STATIONS"
-        ]
-      }
-    ],
-    "nextDecisionWindow": {
-      "earliestTime": "2026-09-04T00:00:00Z",
-      "evidenceIds": [
-        "E_V2_T3",
-        "E_THREAT_TIMELINE",
-        "E_REAPPROACH"
-      ],
-      "interpretation": "Window during which an upgrade to T3 (strong‑wind signal) may be considered if threat indices rise.",
-      "latestTime": "2026-09-05T13:21:00Z",
-      "question": "maintenance"
-    },
-    "schemaVersion": "hk-situation-analysis-shadow-output/v0.2",
-    "signalInterpretation": {
-      "T1": {
-        "assessment": "not-applicable",
-        "evidenceIds": [
-          "E_V2_T1"
-        ],
-        "interpretation": "TC1 already issued; risk remains possible but no indication to cancel yet.",
-        "nextQuestion": "maintenance"
-      },
-      "T3": {
-        "assessment": "not-applicable",
-        "evidenceIds": [
-          "E_V2_T3"
-        ],
-        "interpretation": "Possible escalation to TC3 within the estimated window (2026‑09‑04 20:38 – 2026‑09‑05 13:21). Decision pending further evolution.",
-        "nextQuestion": "escalation"
-      },
-      "T8": {
-        "assessment": "not-applicable",
-        "evidenceIds": [
-          "E_V2_T8"
-        ],
-        "interpretation": "T8 unlikely; no escalation expected.",
-        "nextQuestion": "none"
-      }
-    },
-    "supportingEvidence": [
-      {
-        "finding": "Impact trend shows overall departing motion (3 departing, 1 steady).",
-        "id": "E_IMPACT_TREND"
-      },
-      {
-        "finding": "Re‑approach analyzer confidence high (0.642) indicating a possible later return.",
-        "id": "E_REAPPROACH"
-      },
-      {
-        "finding": "Direct‑depart analyzer confidence 0.115 confirms current outward motion.",
-        "id": "E_DIRECT_DEPART"
-      },
-      {
-        "finding": "Forecast minimum distance 144 km at 2026‑09‑04 00:00 (closest approach).",
-        "id": "E_GEOMETRY"
-      },
-      {
-        "finding": "Threat timeline shows peak threat index 0.677 at +5 h, supporting current TC1.",
-        "id": "E_THREAT_TIMELINE"
-      },
-      {
-        "finding": "Signal feature vector risk indices (T1 0.674, T3 0.610, T8 0.306) provide quantitative threat levels.",
-        "id": "E_SIGNAL_FEATURES"
-      },
-      {
-        "finding": "Signal coverage includes all four agencies, giving a broad consensus.",
-        "id": "E_SIGNAL_COVERAGE"
-      }
-    ],
-    "uncertainties": [
-      {
-        "description": "Impact uncertainty high (distance spread 105 km, time spread 22 h).",
+        "code": "highUncertainty",
+        "description": "Impact uncertainty is high due to large spread in distance and time of closest approach.",
         "evidenceIds": [
           "E_IMPACT_UNCERTAINTY"
         ]
       },
       {
-        "description": "Forecast minimum may be horizon‑limited; actual closest approach could differ.",
+        "code": "missingWindField",
+        "description": "No wind‑field data for the cyclone; risk indices rely solely on distance and representative wind.",
+        "evidenceIds": [
+          "E_TC_WIND_FIELD"
+        ]
+      },
+      {
+        "code": "horizonLimitedForecast",
+        "description": "Forecast minimum may be horizon‑limited; timing windows are left‑censored.",
+        "evidenceIds": [
+          "E_FORECAST_EDGE",
+          "E_V2_T1"
+        ]
+      }
+    ],
+    "nextDecisionWindow": {
+      "earliestTime": "2026-09-04T20:38:34Z",
+      "evidenceIds": [
+        "E_V2_T3"
+      ],
+      "interpretation": "possible escalation to T3",
+      "latestTime": "2026-09-05T13:21:03Z",
+      "question": "escalation",
+      "signalCode": "T3"
+    },
+    "schemaVersion": "hk-situation-analysis-shadow-output/v0.3",
+    "signalInterpretation": {
+      "T1": {
+        "assessment": "supports-maintenance",
+        "evidenceIds": [
+          "E_V2_T1"
+        ],
+        "interpretation": "possible, risk index 0.674, confidence 0.462, timing state left‑censored/horizon‑limited",
+        "nextQuestion": "maintenance",
+        "officialDecisionBasis": "context-supported"
+      },
+      "T3": {
+        "assessment": "supports-escalation",
+        "evidenceIds": [
+          "E_V2_T3"
+        ],
+        "interpretation": "possible, risk index 0.610, confidence 0.393, estimated window 2026‑09‑04T20:38:34Z – 2026‑09‑05T13:21:03Z",
+        "nextQuestion": "escalation",
+        "officialDecisionBasis": "context-supported"
+      },
+      "T8": {
+        "assessment": "supports-cancellation",
+        "evidenceIds": [
+          "E_V2_T8"
+        ],
+        "interpretation": "unlikely, risk index 0.306, confidence 0.375, no estimated window",
+        "nextQuestion": "cancellation",
+        "officialDecisionBasis": "context-supported"
+      }
+    },
+    "supportingEvidence": [
+      {
+        "finding": "Re‑approach analyzer confidence high (0.642)",
+        "id": "E_REAPPROACH"
+      },
+      {
+        "finding": "Impact trend shows departing now but overall re‑approach expected",
+        "id": "E_IMPACT_TREND"
+      },
+      {
+        "finding": "V2 shadow T1 risk high (0.674) with persistence 58 h",
+        "id": "E_V2_T1"
+      },
+      {
+        "finding": "V2 shadow T3 risk moderate (0.610) with estimated window",
+        "id": "E_V2_T3"
+      },
+      {
+        "finding": "Official HKO signal statement (TC1 active, monitoring for possible T3 upgrade)",
+        "id": "E_HKO_SIGNAL_STATEMENT"
+      },
+      {
+        "finding": "Direct‑depart analyzer confidence (0.115) indicates current distance increase",
+        "id": "E_DIRECT_DEPART"
+      },
+      {
+        "finding": "Quasi‑stationary analyzer confidence (0.375) supports a period of limited motion",
+        "id": "E_QUASI_STATIONARY"
+      }
+    ],
+    "uncertainties": [
+      {
+        "description": "Impact uncertainty high (distance spread ≈ 105 km, time spread ≈ 22 h)",
+        "evidenceIds": [
+          "E_IMPACT_UNCERTAINTY"
+        ]
+      },
+      {
+        "description": "No wind‑field data; cyclone wind radii unavailable",
+        "evidenceIds": [
+          "E_TC_WIND_FIELD"
+        ]
+      },
+      {
+        "description": "Forecast minimum may be horizon‑limited; timing windows left‑censored",
         "evidenceIds": [
           "E_FORECAST_EDGE"
         ]
       },
       {
-        "description": "Agency disagreement (confidence 0.619) introduces spread in distance and timing estimates.",
+        "description": "Agency disagreement moderate (confidence ≈ 0.62)",
         "evidenceIds": [
           "E_AGENCY_DISAGREEMENT"
-        ]
-      },
-      {
-        "description": "No wind‑field data; reliance on representative wind (11.9 m/s) adds uncertainty to exposure assessment.",
-        "evidenceIds": [
-          "E_TC_WIND_FIELD"
         ]
       }
     ]
