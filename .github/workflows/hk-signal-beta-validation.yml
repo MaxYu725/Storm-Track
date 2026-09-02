@@ -83,9 +83,9 @@ jobs:
           grep -F 'hk-situation-analysis-evidence-catalog/v1' analysis/hk-situation-analysis-shadow.js
           grep -F 'evidenceReferencesUseCatalogIds: true' analysis/hk-situation-analysis-shadow.js
           grep -F 'semanticCrossFieldConsistencyRequired: true' analysis/hk-situation-analysis-shadow.js
-          grep -F 'hk-situation-analysis-prompt/v0.4' analysis/hk-situation-analysis-prompt.js
+          grep -F 'hk-situation-analysis-prompt/v0.5' analysis/hk-situation-analysis-prompt.js
           grep -F 'currentPhase must be remote' analysis/hk-situation-analysis-prompt.js
-          grep -F 'assessment=not-applicable' analysis/hk-situation-analysis-prompt.js
+          grep -F 'Maintenance and cancellation apply only to the currently active HKO signal tier' analysis/hk-situation-analysis-prompt.js
           grep -F 'use ONLY an ID present in evidenceCatalog.entries' analysis/hk-situation-analysis-prompt.js
           grep -F "type: 'json_schema'" scripts/run-hk-situation-analysis-shadow-openai.mjs
           grep -F 'store: false' scripts/run-hk-situation-analysis-shadow-openai.mjs
@@ -93,6 +93,8 @@ jobs:
           grep -F "type: 'json_schema'" scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
           grep -F '@cf/openai/gpt-oss-120b' scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
           grep -F 'cloudflare-workers-ai-chat-completions' scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
+          grep -F 'MAX_REPAIR_ATTEMPTS = 1' scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
+          grep -F 'repairUsesExactSameEvidencePacket: true' scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
           grep -F "evidenceReferenceMode: 'catalog-id-only'" scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
           grep -F '<script src="./analysis/hk-signal-observation-board.js"></script>' observation.html
           grep -F 'Observation-only · v1' observation.html

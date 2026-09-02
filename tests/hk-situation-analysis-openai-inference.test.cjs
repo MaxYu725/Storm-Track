@@ -47,10 +47,10 @@ function validPacket() {
 (async () => {
   const runner = await import('../scripts/run-hk-situation-analysis-shadow-openai.mjs');
   const packet = validPacket();
-  assert.equal(prompt.VERSION, 'hk-situation-analysis-prompt/v0.4');
+  assert.equal(prompt.VERSION, 'hk-situation-analysis-prompt/v0.5');
   const request = runner.createRequestBody(packet, { model: 'gpt-5.6-terra', reasoningEffort: 'medium' });
   assert.equal(request.text.format.schema.properties.supportingEvidence.items.properties.id.enum[0], 'E_V1_T1');
-  assert.equal(request.metadata.prompt_version, 'hk-situation-analysis-prompt/v0.4');
+  assert.equal(request.metadata.prompt_version, 'hk-situation-analysis-prompt/v0.5');
   assert.ok(request.text.format.schema.properties.nextDecisionWindow.required.includes('signalCode'));
 
   const structured = validOutput();

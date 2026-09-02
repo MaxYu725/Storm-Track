@@ -55,7 +55,7 @@ jobs:
           node --check scripts/run-hk-situation-analysis-shadow-openai.mjs
           node tests/hk-situation-analysis-shadow.test.cjs
           node tests/hk-situation-analysis-openai-inference.test.cjs
-          grep -F 'hk-situation-analysis-prompt/v0.4' analysis/hk-situation-analysis-prompt.js
+          grep -F 'hk-situation-analysis-prompt/v0.5' analysis/hk-situation-analysis-prompt.js
           grep -F "evidenceReferenceMode: 'catalog-id-only'" scripts/run-hk-situation-analysis-shadow-openai.mjs
 
       - name: Load exact immutable packet
@@ -116,7 +116,7 @@ jobs:
             .schemaVersion == "hk-situation-analysis-shadow-inference/v0.1" and
             .input.packetFingerprint == $packet and
             .input.evidenceCatalogSchemaVersion == "hk-situation-analysis-evidence-catalog/v1" and
-            .prompt.version == "hk-situation-analysis-prompt/v0.4" and
+            .prompt.version == "hk-situation-analysis-prompt/v0.5" and
             .prompt.outputSchemaVersion == "hk-situation-analysis-shadow-output/v0.3" and
             (.prompt.requestFingerprint | test("^[0-9a-f]{64}$")) and
             .provider.name == "openai-responses" and

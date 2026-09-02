@@ -44,18 +44,18 @@ function validPacket() {
   };
 }
 
+function chatPayload(output, id = 'chat_test') {
+  return { id, model: '@cf/openai/gpt-oss-120b', choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(output) } }], usage: { total_tokens: 100 } };
+}
+
 (async () => {
   const runner = await import('../scripts/run-hk-situation-analysis-shadow-cloudflare.mjs');
   const packet = validPacket();
-  assert.equal(prompt.VERSION, 'hk-situation-analysis-prompt/v0.4');
+  assert.equal(prompt.VERSION, 'hk-situation-analysis-prompt/v0.5');
   assert.equal(prompt.OUTPUT_SCHEMA_VERSION, 'hk-situation-analysis-shadow-output/v0.3');
   assert.deepEqual(prompt.catalogIds(packet.evidencePacket), IDS);
-  const schema = prompt.outputSchemaForEvidence(packet.evidencePacket);
-  assert.deepEqual(schema.properties.supportingEvidence.items.properties.id.enum, IDS);
-  assert.ok(schema.properties.nextDecisionWindow.required.includes('signalCode'));
-  assert.ok(schema.properties.signalInterpretation.properties.T1.required.includes('officialDecisionBasis'));
-  assert.match(prompt.buildInstructions(), /currentPhase must be remote/);
-  assert.match(prompt.buildInstructions(), /assessment=not-applicable/);
+  assert.equal(runner.MAX_REPAIR_ATTEMPTS, 1);
+  assert.match(prompt.buildInstructions(), /Maintenance and cancellation apply only to the currently active HKO signal tier/);
 
   const request = runner.createRequestBody(packet);
   assert.equal(request.model, '@cf/openai/gpt-oss-120b');
@@ -69,20 +69,21 @@ function validPacket() {
   invented.supportingEvidence[0].id = 'E_INVENTED';
   assert.equal(prompt.validateOutputAgainstEvidence(invented, packet.evidencePacket).valid, false);
 
-  const notApplicableAction = validOutput();
-  notApplicableAction.signalInterpretation.T3.assessment = 'not-applicable';
-  assert.match(prompt.validateOutputAgainstEvidence(notApplicableAction, packet.evidencePacket).errors.join('\n'), /not-applicable requires nextQuestion=none/);
-
-  const decisionMismatch = validOutput();
-  decisionMismatch.nextDecisionWindow.question = 'none';
-  assert.match(prompt.validateOutputAgainstEvidence(decisionMismatch, packet.evidencePacket).errors.join('\n'), /must match signalInterpretation.T3.nextQuestion/);
-
-  const noContextEscalation = validOutput();
-  noContextEscalation.signalInterpretation.T3.nextQuestion = 'escalation';
-  noContextEscalation.signalInterpretation.T3.assessment = 'supports-escalation';
-  noContextEscalation.signalInterpretation.T3.officialDecisionBasis = 'context-supported';
-  noContextEscalation.nextDecisionWindow.question = 'escalation';
-  assert.match(prompt.validateOutputAgainstEvidence(noContextEscalation, packet.evidencePacket).errors.join('\n'), /without contemporaneous HKO context/);
+  const activePacket = validPacket();
+  activePacket.evidencePacket.evidence = {
+    deterministicForecasts: { v1: { impact: { expected: true, likelihood: 'possible' } } },
+    officialHko: { signalStatement: { currentSignalCode: 'TC1', currentSignal: '一號戒備信號' } }
+  };
+  assert.equal(prompt.activeSignalTier(activePacket.evidencePacket), 'T1');
+  const inactiveCancellation = validOutput();
+  inactiveCancellation.signalInterpretation.T1 = {
+    nextQuestion: 'maintenance', assessment: 'supports-maintenance', officialDecisionBasis: 'context-supported', interpretation: 'T1 is active.', evidenceIds: ['E_V1_T1']
+  };
+  inactiveCancellation.signalInterpretation.T3.officialDecisionBasis = 'context-supported';
+  inactiveCancellation.signalInterpretation.T8 = {
+    nextQuestion: 'cancellation', assessment: 'supports-cancellation', officialDecisionBasis: 'context-supported', interpretation: 'Invalid inactive cancellation.', evidenceIds: ['E_V1_T8']
+  };
+  assert.match(prompt.validateOutputAgainstEvidence(inactiveCancellation, activePacket.evidencePacket).errors.join('\n'), /T8.nextQuestion cancellation is not applicable because active HKO signal tier is T1/);
 
   const remotePacket = validPacket();
   remotePacket.evidencePacket.evidence = {
@@ -91,26 +92,67 @@ function validPacket() {
   };
   const remoteWrong = validOutput();
   remoteWrong.currentPhase = 'approaching';
-  assert.match(prompt.validateOutputAgainstEvidence(remoteWrong, remotePacket.evidencePacket).errors.join('\n'), /currentPhase must be remote/);
-  remoteWrong.currentPhase = 'remote';
-  assert.equal(prompt.validateOutputAgainstEvidence(remoteWrong, remotePacket.evidencePacket).valid, true);
+  remoteWrong.signalInterpretation.T1 = { nextQuestion: 'maintenance', assessment: 'supports-maintenance', officialDecisionBasis: 'context-supported', interpretation: 'Invalid.', evidenceIds: ['E_V1_T1'] };
+  remoteWrong.signalInterpretation.T3 = { nextQuestion: 'maintenance', assessment: 'supports-maintenance', officialDecisionBasis: 'context-supported', interpretation: 'Invalid.', evidenceIds: ['E_V1_T3'] };
+  remoteWrong.signalInterpretation.T8 = { nextQuestion: 'maintenance', assessment: 'supports-maintenance', officialDecisionBasis: 'context-supported', interpretation: 'Invalid.', evidenceIds: ['E_V1_T8'] };
+  remoteWrong.nextDecisionWindow = { signalCode: 'T3', question: 'maintenance', earliestTime: null, latestTime: null, interpretation: 'Invalid.', evidenceIds: ['E_V1_T3'] };
+  assert.match(prompt.validateOutputAgainstEvidence(remoteWrong, remotePacket.evidencePacket).errors.join('\n'), /without contemporaneous HKO context/);
 
-  const payload = { id: 'chat_test', model: '@cf/openai/gpt-oss-120b', choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(structured) } }], usage: { total_tokens: 100 } };
-  const mockFetch = async () => ({ ok: true, status: 200, headers: { get: () => 'ray-test' }, text: async () => JSON.stringify(payload) });
-  const result = await runner.runInference(packet, { accountId: 'account_123', apiToken: 'test-token', fetchImpl: mockFetch, now: () => '2026-09-02T04:00:00.000Z' });
-  assert.equal(result.prompt.version, 'hk-situation-analysis-prompt/v0.4');
-  assert.equal(result.prompt.outputSchemaVersion, 'hk-situation-analysis-shadow-output/v0.3');
-  assert.equal(result.input.evidenceCatalogSchemaVersion, 'hk-situation-analysis-evidence-catalog/v1');
-  assert.equal(result.semantics.evidenceReferenceMode, 'catalog-id-only');
-  assert.equal(result.semantics.evidenceCatalogIdsRequired, true);
-  assert.deepEqual(result.output, structured);
+  const remoteFixed = validOutput();
+  remoteFixed.currentPhase = 'remote';
+  remoteFixed.currentPhaseConfidence = 0.91;
+  remoteFixed.futurePhases = [];
+  remoteFixed.currentThreatInterpretation = 'The system remains operationally remote for Hong Kong.';
+  remoteFixed.nextDecisionWindow = { signalCode: 'none', question: 'none', earliestTime: null, latestTime: null, interpretation: 'No operational signal decision is identified.', evidenceIds: ['E_GEOMETRY'] };
+  for (const code of ['T1', 'T3', 'T8']) {
+    remoteFixed.signalInterpretation[code] = { nextQuestion: 'none', assessment: 'not-applicable', officialDecisionBasis: 'not-inferred', interpretation: 'No current operational action.', evidenceIds: [`E_V1_${code}`] };
+  }
+  assert.equal(prompt.validateOutputAgainstEvidence(remoteFixed, remotePacket.evidencePacket).valid, true);
 
-  const invalidPayload = JSON.parse(JSON.stringify(payload));
-  const invalid = validOutput();
-  invalid.supportingEvidence[0].id = 'E_NOT_IN_CATALOG';
-  invalidPayload.choices[0].message.content = JSON.stringify(invalid);
+  let fetchCount = 0;
+  const repairFetch = async (_url, options) => {
+    fetchCount += 1;
+    const body = JSON.parse(options.body);
+    if (fetchCount === 1) {
+      assert.equal(body.messages.length, 2);
+      return { ok: true, status: 200, headers: { get: () => 'ray-initial' }, text: async () => JSON.stringify(chatPayload(remoteWrong, 'chat_initial')) };
+    }
+    assert.equal(body.messages.length, 4);
+    assert.equal(body.messages[2].role, 'assistant');
+    assert.match(body.messages[3].content, /VALIDATION_ERRORS=/);
+    assert.match(body.messages[3].content, /same evidence packet/);
+    return { ok: true, status: 200, headers: { get: () => 'ray-repair' }, text: async () => JSON.stringify(chatPayload(remoteFixed, 'chat_repair')) };
+  };
+
+  const repaired = await runner.runInference(remotePacket, {
+    accountId: 'account_123', apiToken: 'test-token', fetchImpl: repairFetch, now: () => '2026-09-02T04:00:00.000Z'
+  });
+  assert.equal(fetchCount, 2);
+  assert.equal(repaired.prompt.version, 'hk-situation-analysis-prompt/v0.5');
+  assert.equal(repaired.provider.attemptCount, 2);
+  assert.equal(repaired.provider.repairAttempted, true);
+  assert.equal(repaired.repair.attempted, true);
+  assert.ok(repaired.repair.initialValidationErrors.length > 0);
+  assert.equal(repaired.semantics.repairUsesExactSameEvidencePacket, true);
+  assert.equal(repaired.semantics.repairReceivesValidationDiagnosticsOnly, true);
+  assert.equal(repaired.semantics.invalidRepairFailsClosed, true);
+  assert.deepEqual(repaired.output, remoteFixed);
+  assert.notEqual(repaired.prompt.initialRequestFingerprint, repaired.prompt.repairRequestFingerprint);
+
+  let failCount = 0;
+  const alwaysInvalidFetch = async () => {
+    failCount += 1;
+    return { ok: true, status: 200, headers: { get: () => `ray-${failCount}` }, text: async () => JSON.stringify(chatPayload(remoteWrong, `chat_${failCount}`)) };
+  };
+  await assert.rejects(
+    runner.runInference(remotePacket, { accountId: 'account_123', apiToken: 'test-token', fetchImpl: alwaysInvalidFetch }),
+    /failed local validation/
+  );
+  assert.equal(failCount, 2, 'one initial request plus exactly one repair attempt');
+
+  const invalidPayload = chatPayload(invented);
   assert.throws(() => runner.extractStructuredOutput(invalidPayload, packet.evidencePacket), /not present in the supplied evidence catalog/);
+  await assert.rejects(runner.runInference(packet, { accountId: null, apiToken: 'x', fetchImpl: repairFetch }), /ACCOUNT_ID/);
 
-  await assert.rejects(runner.runInference(packet, { accountId: null, apiToken: 'x', fetchImpl: mockFetch }), /ACCOUNT_ID/);
   console.log('hk-situation-analysis-cloudflare-inference tests passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });
