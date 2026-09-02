@@ -6,7 +6,7 @@
   'use strict';
 
   const VERSION = 'hk-situation-analysis-shadow-input/v0.1';
-  const OUTPUT_CONTRACT_VERSION = 'hk-situation-analysis-shadow-output/v0.2';
+  const OUTPUT_CONTRACT_VERSION = 'hk-situation-analysis-shadow-output/v0.3';
   const EVIDENCE_CATALOG_VERSION = 'hk-situation-analysis-evidence-catalog/v1';
 
   function finite(value) {
@@ -206,6 +206,9 @@
         'modelSemanticConcerns', 'uncertainties'
       ],
       signalKeys: ['T1', 'T3', 'T8'],
+      decisionWindowSignalCodeRequired: true,
+      signalOfficialDecisionBasisRequired: true,
+      semanticCrossFieldValidationRequired: true,
       evidenceReferenceRequired: true,
       evidenceReferenceMode: 'catalog-id-only',
       uncertainAnswerAllowed: true
@@ -225,6 +228,7 @@
       underlyingV1V2RiskIndicesImmutable: true,
       officialHkoDecisionMustNotBeInvented: true,
       evidenceCatalogIdsOnly: true,
+      semanticCrossFieldConsistencyRequired: true,
       uncertaintyMayBeExplicit: true
     };
   }
@@ -294,6 +298,7 @@
         caseSpecificRulesForbidden: true,
         localWindAffectsForecast: false,
         evidenceReferencesUseCatalogIds: true,
+        semanticCrossFieldConsistencyRequired: true,
         officialHkoForecast: false,
         officialHkoDecisionInferred: false,
         label: 'Storm Track AI Situation Analysis Shadow evidence packet'
