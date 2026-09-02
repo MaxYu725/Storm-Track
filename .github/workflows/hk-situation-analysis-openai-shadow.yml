@@ -112,7 +112,7 @@ jobs:
           jq --arg packet "$packet_fingerprint" -e '
             .schemaVersion == "hk-situation-analysis-shadow-inference/v0.1" and
             .input.packetFingerprint == $packet and
-            .prompt.version == "hk-situation-analysis-prompt/v0.1" and
+            .prompt.version == "hk-situation-analysis-prompt/v0.2" and
             .prompt.outputSchemaVersion == "hk-situation-analysis-shadow-output/v0.1" and
             (.prompt.requestFingerprint | test("^[0-9a-f]{64}$")) and
             .provider.name == "openai-responses" and
@@ -126,7 +126,9 @@ jobs:
             .semantics.noExternalTools == true and
             .semantics.noWebSearch == true and
             .semantics.inputPacketIsSoleMeteorologicalEvidence == true and
-            .semantics.caseSpecificRulesForbidden == true
+            .semantics.caseSpecificRulesForbidden == true and
+            .semantics.structuredOutputRequired == true and
+            .semantics.exactEvidenceReferencesRequired == true
           ' /tmp/hk-situation-inference.json >/dev/null
           jq '{createdAt,input,prompt,provider:{name:.provider.name,requestedModel:.provider.requestedModel,returnedModel:.provider.returnedModel,responseId:.provider.responseId,requestId:.provider.requestId,status:.provider.status,reasoningEffort:.provider.reasoningEffort,store:.provider.store,toolsEnabled:.provider.toolsEnabled,usage:.provider.usage},output,semantics}' /tmp/hk-situation-inference.json
 

@@ -25,6 +25,14 @@ function sha256(value) {
   return createHash('sha256').update(text).digest('hex');
 }
 
+function hasSafeOfficialContextSemantics(semantics) {
+  if (semantics?.noTruthCorpusRead === true) return true;
+  return semantics?.noTruthCorpusRead === false
+    && semantics?.noFutureTruthFeedback === true
+    && semantics?.contemporaneousOfficialContextOnly === true
+    && semantics?.noFutureOfficialContextJoin === true;
+}
+
 function parsePacket(value) {
   if (!value || typeof value !== 'object') throw new Error('Packet must be an object');
   if (value.schemaVersion !== 'hk-situation-analysis-shadow-packet/v0.1') {
@@ -36,8 +44,8 @@ function parsePacket(value) {
   if (value?.semantics?.shadowOnly !== true
       || value?.semantics?.affectsForecast !== false
       || value?.semantics?.affectsEvaluator !== false
-      || value?.semantics?.noTruthCorpusRead !== true) {
-    throw new Error('Packet does not satisfy shadow/no-truth semantics');
+      || !hasSafeOfficialContextSemantics(value?.semantics)) {
+    throw new Error('Packet does not satisfy shadow/no-future-outcome semantics');
   }
   if (value?.evidencePacket?.schemaVersion !== 'hk-situation-analysis-shadow-input/v0.1') {
     throw new Error('Evidence packet schema mismatch');
@@ -68,14 +76,8 @@ function createRequestBody(packet, {
       prompt_version: promptContract.VERSION
     },
     input: [
-      {
-        role: 'system',
-        content: promptContract.buildInstructions()
-      },
-      {
-        role: 'user',
-        content: JSON.stringify(packet.evidencePacket)
-      }
+      { role: 'system', content: promptContract.buildInstructions() },
+      { role: 'user', content: JSON.stringify(packet.evidencePacket) }
     ],
     text: {
       format: {
@@ -249,6 +251,7 @@ export {
   PROVIDER,
   createRequestBody,
   extractStructuredOutput,
+  hasSafeOfficialContextSemantics,
   parsePacket,
   runInference,
   sha256

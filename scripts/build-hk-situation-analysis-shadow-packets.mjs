@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
@@ -10,6 +10,7 @@ const situationShadow = require('../analysis/hk-situation-analysis-shadow.js');
 const BATCH_SCHEMA_VERSION = 'hk-situation-analysis-shadow-packet-batch/v0.1';
 const PACKET_SCHEMA_VERSION = 'hk-situation-analysis-shadow-packet/v0.1';
 const LOCAL_WIND_LOOKBACK_DAYS = 1;
+const HKO_OPERATIONAL_LOOKBACK_DAYS = 1;
 
 function parseJsonFile(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -55,6 +56,17 @@ function listJsonFiles(path) {
     .filter(file => statSync(file).isFile());
 }
 
+function candidateObservationFiles(corpusRoot, observedAt, lookbackDays) {
+  const files = [];
+  for (let daysBack = 0; daysBack <= lookbackDays; daysBack += 1) {
+    const relativeTime = subtractDays(observedAt, daysBack);
+    const relativeDay = dayPath(relativeTime);
+    if (!relativeDay) continue;
+    files.push(...listJsonFiles(join(corpusRoot, 'observations', relativeDay)));
+  }
+  return files;
+}
+
 function localWindTimestamp(item) {
   return item?.summary?.dataTimestamp ?? item?.dataTimestamp ?? item?.retrievedAt ?? null;
 }
@@ -72,14 +84,7 @@ function selectLocalWindObservation(corpusRoot, observedAt) {
     };
   }
 
-  const candidateFiles = [];
-  for (let daysBack = 0; daysBack <= LOCAL_WIND_LOOKBACK_DAYS; daysBack += 1) {
-    const relativeTime = subtractDays(observedAt, daysBack);
-    const relativeDay = dayPath(relativeTime);
-    if (!relativeDay) continue;
-    candidateFiles.push(...listJsonFiles(join(corpusRoot, 'observations', relativeDay)));
-  }
-
+  const candidateFiles = candidateObservationFiles(corpusRoot, observedAt, LOCAL_WIND_LOOKBACK_DAYS);
   let best = null;
   let futureCandidateCount = 0;
   for (const path of candidateFiles) {
@@ -126,6 +131,158 @@ function selectLocalWindObservation(corpusRoot, observedAt) {
   };
 }
 
+function normalizeIdentityToken(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .toUpperCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function caseIdentityTokens(caseInfo) {
+  const candidates = [caseInfo?.nameTc, caseInfo?.nameEn];
+  const displayParts = String(caseInfo?.displayName ?? '').match(/[\p{L}\p{N}-]{3,}/gu) || [];
+  candidates.push(...displayParts);
+  const generic = new Set([
+    'TROPICALSTORM', 'TROPICALDEPRESSION', 'SEVERETROPICALSTORM',
+    '熱帶風暴', '熱帶低氣壓', '強烈熱帶風暴'
+  ].map(normalizeIdentityToken));
+  return [...new Set(candidates.map(normalizeIdentityToken).filter(token => token.length >= 3 && !generic.has(token)))];
+}
+
+function hkoSnapshotText(item) {
+  const contents = [];
+  const details = Array.isArray(item?.truth?.details) ? item.truth.details : [];
+  for (const detail of details) {
+    if (Array.isArray(detail?.contents)) contents.push(...detail.contents);
+  }
+  if (Array.isArray(item?.context?.specialWeatherTips)) {
+    for (const row of item.context.specialWeatherTips) {
+      if (typeof row === 'string') contents.push(row);
+      else if (row?.contents && Array.isArray(row.contents)) contents.push(...row.contents);
+      else if (row?.text) contents.push(row.text);
+    }
+  }
+  return normalizeIdentityToken(contents.join(' '));
+}
+
+function projectHkoOperationalContext(item) {
+  const truth = item?.truth || {};
+  const details = Array.isArray(truth.details) ? truth.details.map(detail => ({
+    warningStatementCode: detail?.warningStatementCode ?? null,
+    subtype: detail?.subtype ?? null,
+    updateTime: detail?.updateTime ?? null,
+    contents: Array.isArray(detail?.contents) ? [...detail.contents] : []
+  })) : [];
+  return {
+    schemaVersion: 'hko-contemporaneous-operational-context/v1',
+    authority: item?.authority ?? 'Hong Kong Observatory Open Data API',
+    retrievedAt: item?.retrievedAt ?? null,
+    captureFingerprint: item?.captureFingerprint ?? null,
+    present: truth?.present === true,
+    currentSignalCode: truth?.code ?? null,
+    currentSignal: truth?.type ?? null,
+    level: truth?.level ?? null,
+    actionCode: truth?.actionCode ?? null,
+    issueTime: truth?.issueTime ?? null,
+    updateTime: truth?.updateTime ?? details?.[0]?.updateTime ?? null,
+    expireTime: truth?.expireTime ?? null,
+    details,
+    context: {
+      pre8: Array.isArray(item?.context?.pre8) ? item.context.pre8 : [],
+      specialWeatherTips: Array.isArray(item?.context?.specialWeatherTips) ? item.context.specialWeatherTips : []
+    },
+    semantics: {
+      contemporaneousOnly: true,
+      officialOperationalContext: true,
+      futureOutcomeFeedback: false
+    }
+  };
+}
+
+function selectHkoOperationalContext(corpusRoot, observedAt, caseInfo) {
+  const observedMs = timeMs(observedAt);
+  if (!corpusRoot || !Number.isFinite(observedMs)) {
+    return {
+      evidence: null,
+      join: {
+        status: 'unavailable',
+        reason: !corpusRoot ? 'hko-warning-corpus-not-provided' : 'observation-time-invalid',
+        futureEvidenceRejected: true
+      }
+    };
+  }
+
+  const candidateFiles = candidateObservationFiles(corpusRoot, observedAt, HKO_OPERATIONAL_LOOKBACK_DAYS);
+  let latest = null;
+  let futureCandidateCount = 0;
+  for (const path of candidateFiles) {
+    let item;
+    try {
+      item = parseJsonFile(path);
+    } catch {
+      continue;
+    }
+    const candidateTime = item?.retrievedAt ?? null;
+    const candidateMs = timeMs(candidateTime);
+    if (!Number.isFinite(candidateMs)) continue;
+    if (candidateMs > observedMs) {
+      futureCandidateCount += 1;
+      continue;
+    }
+    if (!latest || candidateMs > latest.ms) latest = { path, item, ms: candidateMs, time: candidateTime };
+  }
+
+  if (!latest) {
+    return {
+      evidence: null,
+      join: {
+        status: 'unavailable',
+        reason: 'no-at-or-before-hko-warning-observation',
+        futureEvidenceRejected: true,
+        futureCandidateCount
+      }
+    };
+  }
+
+  const present = latest.item?.truth?.present === true;
+  const tokens = caseIdentityTokens(caseInfo);
+  const text = hkoSnapshotText(latest.item);
+  const matchedToken = present ? tokens.find(token => text.includes(token)) ?? null : null;
+
+  if (present && !matchedToken) {
+    return {
+      evidence: null,
+      join: {
+        status: 'not-matched-to-case',
+        reason: tokens.length ? 'active-hko-warning-text-does-not-match-case-identity' : 'case-has-no-specific-identity-token',
+        retrievedAt: latest.time,
+        ageMinutes: (observedMs - latest.ms) / 60000,
+        captureFingerprint: latest.item?.captureFingerprint ?? null,
+        sourcePath: latest.path.replaceAll('\\', '/'),
+        futureEvidenceRejected: true,
+        futureCandidateCount,
+        activeWarningPresent: true,
+        identityTokensChecked: tokens
+      }
+    };
+  }
+
+  return {
+    evidence: projectHkoOperationalContext(latest.item),
+    join: {
+      status: present ? 'matched-active-warning-at-or-before' : 'matched-global-no-warning-at-or-before',
+      retrievedAt: latest.time,
+      ageMinutes: (observedMs - latest.ms) / 60000,
+      captureFingerprint: latest.item?.captureFingerprint ?? null,
+      sourcePath: latest.path.replaceAll('\\', '/'),
+      futureEvidenceRejected: true,
+      futureCandidateCount,
+      activeWarningPresent: present,
+      matchedIdentityToken: matchedToken
+    }
+  };
+}
+
 function resolveCase(observation, registry) {
   const key = String(observation?.group?.key ?? '').trim();
   const cases = Array.isArray(registry?.cases) ? registry.cases : [];
@@ -138,8 +295,8 @@ function resolveCase(observation, registry) {
       caseInfo: {
         caseId: item.caseId ?? null,
         displayName: observation?.group?.displayName ?? item.displayNames?.at?.(-1) ?? null,
-        nameTc: observation?.group?.nameTc ?? null,
-        nameEn: observation?.group?.nameEn ?? null
+        nameTc: observation?.group?.nameTc ?? item.names?.find?.(name => /[^A-Za-z]/.test(name)) ?? null,
+        nameEn: observation?.group?.nameEn ?? item.names?.find?.(name => /^[A-Za-z-]+$/.test(name)) ?? null
       },
       resolution: {
         status: 'resolved',
@@ -164,9 +321,11 @@ function resolveCase(observation, registry) {
   };
 }
 
-function buildPacket({ observation, betaCapture, registry, localWindCorpusRoot }) {
+function buildPacket({ observation, betaCapture, registry, localWindCorpusRoot, hkoWarningCorpusRoot }) {
   const { caseInfo, resolution } = resolveCase(observation, registry);
-  const localWind = selectLocalWindObservation(localWindCorpusRoot, observation?.observedAt ?? betaCapture?.capturedAt);
+  const observationTime = observation?.observedAt ?? betaCapture?.capturedAt;
+  const localWind = selectLocalWindObservation(localWindCorpusRoot, observationTime);
+  const hkoOperational = selectHkoOperationalContext(hkoWarningCorpusRoot, observationTime, caseInfo);
   const analysis = observation?.analysis || {};
 
   const evidencePacket = situationShadow.buildSituationAnalysisInput({
@@ -177,7 +336,7 @@ function buildPacket({ observation, betaCapture, registry, localWindCorpusRoot }
     threatAssessment: analysis.threatAssessment ?? null,
     basicForecast: analysis.basicForecast ?? null,
     shadowForecastV2: analysis.shadowForecastV2 ?? null,
-    hkoSignalStatement: null,
+    hkoSignalStatement: hkoOperational.evidence,
     localWindShadow: localWind.evidence,
     previousSituation: null
   });
@@ -192,10 +351,7 @@ function buildPacket({ observation, betaCapture, registry, localWindCorpusRoot }
     caseRegistryReconciledThrough: registry?.reconciledThrough ?? null,
     caseResolution: resolution,
     localWindJoin: localWind.join,
-    hkoSignalStatementJoin: {
-      status: 'not-recorded-in-source-corpus',
-      reason: 'no-time-aligned-immutable-statement-corpus-yet'
-    }
+    hkoOperationalContextJoin: hkoOperational.join
   };
 
   const packetFingerprint = fingerprint({ evidencePacket, provenance });
@@ -212,14 +368,17 @@ function buildPacket({ observation, betaCapture, registry, localWindCorpusRoot }
       affectsForecast: false,
       affectsEvaluator: false,
       immutableInputForFutureInference: true,
-      noTruthCorpusRead: true,
+      noTruthCorpusRead: false,
+      noFutureTruthFeedback: true,
+      contemporaneousOfficialContextOnly: true,
+      noFutureOfficialContextJoin: true,
       noFutureLocalWindJoin: true,
       caseSpecificRulesForbidden: true
     }
   };
 }
 
-function buildPacketBatch({ betaCapture, registry, localWindCorpusRoot, builtAt = new Date().toISOString() }) {
+function buildPacketBatch({ betaCapture, registry, localWindCorpusRoot, hkoWarningCorpusRoot, builtAt = new Date().toISOString() }) {
   if (betaCapture?.schemaVersion !== 'beta-prospective-recorder/v2') {
     throw new Error(`Unsupported beta capture schema: ${betaCapture?.schemaVersion ?? 'missing'}`);
   }
@@ -230,7 +389,7 @@ function buildPacketBatch({ betaCapture, registry, localWindCorpusRoot, builtAt 
   const observations = Array.isArray(betaCapture.observations) ? betaCapture.observations : [];
   const packets = observations
     .filter(observation => observation?.analysis?.available === true)
-    .map(observation => buildPacket({ observation, betaCapture, registry, localWindCorpusRoot }))
+    .map(observation => buildPacket({ observation, betaCapture, registry, localWindCorpusRoot, hkoWarningCorpusRoot }))
     .sort((left, right) => String(left.groupKey || '').localeCompare(String(right.groupKey || '')));
 
   const batchFingerprint = fingerprint({
@@ -253,7 +412,11 @@ function buildPacketBatch({ betaCapture, registry, localWindCorpusRoot, builtAt 
       affectsForecast: false,
       affectsEvaluator: false,
       providerInvocationIncluded: false,
-      truthBranchInputIncluded: false,
+      truthBranchInputIncluded: Boolean(hkoWarningCorpusRoot),
+      truthBranchUseRestrictedToContemporaneousOfficialContext: true,
+      futureTruthFeedbackIncluded: false,
+      outcomeEvaluatorInputIncluded: false,
+      officialContextJoinMustBeAtOrBeforeObservation: true,
       localWindJoinMustBeAtOrBeforeObservation: true,
       exactEvidencePacketSavedBeforeInference: true
     }
@@ -261,14 +424,15 @@ function buildPacketBatch({ betaCapture, registry, localWindCorpusRoot, builtAt 
 }
 
 function main(argv = process.argv.slice(2)) {
-  const [betaPath, registryPath, localWindCorpusRoot] = argv;
+  const [betaPath, registryPath, localWindCorpusRoot, hkoWarningCorpusRoot] = argv;
   if (!betaPath || !registryPath) {
-    throw new Error('Usage: node scripts/build-hk-situation-analysis-shadow-packets.mjs <beta-latest.json> <case-registry.json> [local-wind-corpus-root]');
+    throw new Error('Usage: node scripts/build-hk-situation-analysis-shadow-packets.mjs <beta-latest.json> <case-registry.json> [local-wind-corpus-root] [hko-warning-corpus-root]');
   }
   const batch = buildPacketBatch({
     betaCapture: parseJsonFile(resolve(betaPath)),
     registry: parseJsonFile(resolve(registryPath)),
-    localWindCorpusRoot: localWindCorpusRoot ? resolve(localWindCorpusRoot) : null
+    localWindCorpusRoot: localWindCorpusRoot ? resolve(localWindCorpusRoot) : null,
+    hkoWarningCorpusRoot: hkoWarningCorpusRoot ? resolve(hkoWarningCorpusRoot) : null
   });
   process.stdout.write(`${JSON.stringify(batch, null, 2)}\n`);
 }
@@ -288,7 +452,9 @@ export {
   BATCH_SCHEMA_VERSION,
   PACKET_SCHEMA_VERSION,
   buildPacketBatch,
+  caseIdentityTokens,
   fingerprint,
   resolveCase,
+  selectHkoOperationalContext,
   selectLocalWindObservation
 };
