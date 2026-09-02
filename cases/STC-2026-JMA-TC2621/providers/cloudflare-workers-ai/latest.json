@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "hk-situation-analysis-prospective-audit/v0.1",
+  "createdAt": "2026-09-02T06:49:05.541Z",
+  "status": "review",
+  "input": {
+    "caseId": "STC-2026-JMA-TC2621",
+    "groupKey": "SAUDEL",
+    "packetFingerprint": "ef21b9fb23daafe1f602d835e885cb7e939e1251c147796a9f38e1ae55998bac",
+    "sourceObservationObservedAt": "2026-09-02T06:14:46.417Z",
+    "inferenceCreatedAt": "2026-09-02T06:26:45.266Z",
+    "inferenceRequestFingerprint": "69d528b7f22f2970e8cb9436841ad3f6498a1b8d21c19a217fa941ef76d981e4",
+    "promptVersion": "hk-situation-analysis-prompt/v0.5",
+    "outputSchemaVersion": "hk-situation-analysis-shadow-output/v0.3",
+    "provider": "cloudflare-workers-ai-chat-completions",
+    "model": "@cf/openai/gpt-oss-120b",
+    "attemptCount": 1,
+    "repairAttempted": false
+  },
+  "automaticChecks": {
+    "packetFingerprintMatch": true,
+    "shadowIsolation": true,
+    "promptEvidenceValidation": true
+  },
+  "errors": [],
+  "reviewFlags": [
+    {
+      "code": "CURRENT_THREAT_METRIC_MISMATCH",
+      "severity": "review",
+      "field": "currentThreatInterpretation",
+      "detail": "Stated threat index 0.68 does not match deterministic impact threat index values in the supplied packet."
+    },
+    {
+      "code": "NULL_TIMING_ACTION_CAUSALITY_REVIEW",
+      "severity": "review",
+      "field": "signalInterpretation.T1.interpretation",
+      "detail": "The interpretation appears to use absence of a deterministic estimated window as support for an operational action. Null timing is absence of guidance, not action evidence."
+    }
+  ],
+  "semantics": {
+    "prospectiveOnly": true,
+    "noOutcomeTruthUsed": true,
+    "affectsForecast": false,
+    "affectsEvaluator": false,
+    "doesNotRetunePrompt": true,
+    "reviewFlagsAreNotAutomaticModelFailures": true
+  }
+}
