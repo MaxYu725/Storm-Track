@@ -37,6 +37,7 @@ jobs:
           node --check analysis/hk-threat-assessment.js
           node --check analysis/basic-hk-signal-forecast.js
           node --check analysis/frontend-hk-threat-ui.js
+          node --check analysis/hk-situation-analysis-shadow.js
           node --check analysis/hko-signal-statement.js
           node --check analysis/settings-panel-ui.js
           node --check analysis/wind-field-overlay.js
@@ -67,6 +68,8 @@ jobs:
           grep -F 'V2 shadow' analysis/frontend-hk-threat-ui.js
           grep -F 'v1RemainsEvaluationBaseline: true' analysis/frontend-hk-threat-ui.js
           grep -F '非香港天文台官方風球預測' analysis/frontend-hk-threat-ui.js
+          grep -F 'ai-situation-analysis-shadow-input' analysis/hk-situation-analysis-shadow.js
+          grep -F 'caseSpecificRulesForbidden: true' analysis/hk-situation-analysis-shadow.js
           grep -F '<script src="./analysis/hk-signal-observation-board.js"></script>' observation.html
           grep -F 'Observation-only · v1' observation.html
           grep -F '不評分、不校準、不修改 forecast' observation.html
@@ -107,6 +110,7 @@ jobs:
             tests/hk-wind-field-freshness-escalation-invariants.test.cjs
             tests/basic-hk-signal-forecast.test.cjs
             tests/hk-signal-v2-shadow.test.cjs
+            tests/hk-situation-analysis-shadow.test.cjs
             tests/frontend-hk-threat-ui.test.cjs
             tests/frontend-beta-prospective-observation.test.cjs
             tests/frontend-hk-signal-beta-gate.test.cjs
