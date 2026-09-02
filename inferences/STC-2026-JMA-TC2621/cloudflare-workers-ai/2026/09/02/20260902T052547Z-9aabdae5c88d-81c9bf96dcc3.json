@@ -1,0 +1,227 @@
+{
+  "schemaVersion": "hk-situation-analysis-shadow-inference/v0.1",
+  "createdAt": "2026-09-02T05:25:47.731Z",
+  "input": {
+    "packetFingerprint": "9aabdae5c88d9f07967e52b72203e3fcc944d178e659204fa318f3fbb4e8e825",
+    "packetSchemaVersion": "hk-situation-analysis-shadow-packet/v0.1",
+    "evidencePacketSchemaVersion": "hk-situation-analysis-shadow-input/v0.1",
+    "caseId": "STC-2026-JMA-TC2621",
+    "groupKey": "SAUDEL",
+    "sourceObservationObservedAt": "2026-09-02T04:16:46.680Z"
+  },
+  "prompt": {
+    "version": "hk-situation-analysis-prompt/v0.1",
+    "outputSchemaVersion": "hk-situation-analysis-shadow-output/v0.1",
+    "requestFingerprint": "81c9bf96dcc347d5366da63ee153e8a7649c07e1e8512c205becd52af156948d"
+  },
+  "provider": {
+    "name": "cloudflare-workers-ai-chat-completions",
+    "endpoint": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions",
+    "requestedModel": "@cf/openai/gpt-oss-120b",
+    "returnedModel": "@cf/openai/gpt-oss-120b",
+    "responseId": "id-1788326747700",
+    "requestId": "a34a176fec656f97-LAX",
+    "status": "completed",
+    "reasoningControl": "provider-default",
+    "temperature": 0.2,
+    "seed": 725,
+    "maxTokens": 6000,
+    "store": false,
+    "toolsEnabled": false,
+    "usage": {
+      "prompt_tokens": 20642,
+      "completion_tokens": 2996,
+      "total_tokens": 23638,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "neurons": 861.0597534179688
+    }
+  },
+  "output": {
+    "contradictingEvidence": [
+      {
+        "finding": "High agency disagreement reduces confidence in threat magnitude",
+        "ref": "$.evidence.lifecycleAnalyzers.agencyDisagreement.confidence"
+      },
+      {
+        "finding": "Forecast edge confidence indicates the forecast minimum may be near the edge of reliable data",
+        "ref": "$.evidence.lifecycleAnalyzers.forecastEdge.confidence"
+      },
+      {
+        "finding": "No wind‑field data intersecting Hong Kong (wind‑field‑any = 0)",
+        "ref": "$.evidence.deterministicForecasts.v1.signals.T1.basis[?(@ contains 'wind-field-any:0.000')]"
+      },
+      {
+        "finding": "Local wind observations are below strong‑wind (41 km/h) and gale (63 km/h) thresholds; only gusts reach 48 km/h at Tate’s Cairn",
+        "ref": "$.evidence.localWind.summary.maximumGust.valueKmh"
+      },
+      {
+        "finding": "T8 signal marked unlikely with zero persistence and low evidence",
+        "ref": "$.evidence.deterministicForecasts.v1.signals.T8.likelihood"
+      },
+      {
+        "finding": "Impact uncertainty flagged as high (spread 100 km, time spread 22 h)",
+        "ref": "$.evidence.impactUncertainty.level"
+      }
+    ],
+    "currentPhase": "departing",
+    "currentPhaseConfidence": 0.46,
+    "currentThreatInterpretation": "Moderate threat (threatIndex ≈ 0.43) with a forecast minimum distance of ~145 km in ~44 h and representative wind ≈ 12 m/s. High uncertainty due to large distance and time spreads and lack of wind‑field data.",
+    "futurePhases": [
+      {
+        "earliestTime": "2026-09-03T15:16:10.797Z",
+        "evidenceRefs": [
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T1.estimatedWindow.start",
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T1.estimatedWindow.end"
+        ],
+        "interpretation": "Potential T1 signal (likely) lasting ~62 h",
+        "latestTime": "2026-09-05T12:10:21.254Z",
+        "phase": "re-approaching"
+      },
+      {
+        "earliestTime": "2026-09-04T19:27:52.135Z",
+        "evidenceRefs": [
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T3.estimatedWindow.start",
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T3.estimatedWindow.end"
+        ],
+        "interpretation": "Possible T3 signal (possible) lasting ~55 h",
+        "latestTime": "2026-09-05T12:10:21.254Z",
+        "phase": "re-approaching"
+      }
+    ],
+    "modelSemanticConcerns": [
+      {
+        "code": "windFieldAbsent",
+        "description": "Risk indices are driven primarily by proximity and re‑approach confidence despite zero wind‑field evidence for Hong Kong exposure.",
+        "evidenceRefs": [
+          "$.evidence.deterministicForecasts.v1.signals.T1.basis[?(@ contains 'wind-field-any:0.000')]",
+          "$.evidence.lifecycleAnalyzers.windField.confidence"
+        ]
+      },
+      {
+        "code": "highUncertainty",
+        "description": "Impact uncertainty is high (large distance and time spreads) which lowers confidence in the forecast minimum and timing.",
+        "evidenceRefs": [
+          "$.evidence.impactUncertainty.level",
+          "$.evidence.impactUncertainty.reasons"
+        ]
+      },
+      {
+        "code": "horizonLimitedForecastMinimum",
+        "description": "Forecast minimum may be horizon‑limited, reducing reliability of the 144 km minimum distance.",
+        "evidenceRefs": [
+          "$.evidence.deterministicForecasts.v1.impact.forecastMinimumMayBeHorizonLimited"
+        ]
+      }
+    ],
+    "nextDecisionWindow": {
+      "earliestTime": "2026-09-03T15:16:10.797Z",
+      "evidenceRefs": [
+        "$.evidence.deterministicForecasts.v2Shadow.signals.T1.estimatedWindow.start"
+      ],
+      "interpretation": "Window to consider issuing a T1 signal (likely) before the forecast minimum at 00:00 UTC 04 Sep.",
+      "latestTime": "2026-09-04T05:55:57.354Z",
+      "question": "maintenance"
+    },
+    "schemaVersion": "hk-situation-analysis-shadow-output/v0.1",
+    "signalInterpretation": {
+      "T1": {
+        "assessment": "supports-escalation",
+        "evidenceRefs": [
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T1.likelihood",
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T1.riskIndex",
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T1.confidenceIndex"
+        ],
+        "interpretation": "Likely (risk 0.687) with moderate confidence (0.464); persistence ~62 h.",
+        "nextQuestion": "escalation"
+      },
+      "T3": {
+        "assessment": "supports-escalation",
+        "evidenceRefs": [
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T3.likelihood",
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T3.riskIndex",
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T3.confidenceIndex"
+        ],
+        "interpretation": "Possible (risk 0.607) with lower confidence (0.394); persistence ~55 h.",
+        "nextQuestion": "escalation"
+      },
+      "T8": {
+        "assessment": "not-applicable",
+        "evidenceRefs": [
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T8.likelihood",
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T8.riskIndex",
+          "$.evidence.deterministicForecasts.v2Shadow.signals.T8.confidenceIndex"
+        ],
+        "interpretation": "Unlikely (risk 0.314) with low confidence; no estimated window.",
+        "nextQuestion": "none"
+      }
+    },
+    "supportingEvidence": [
+      {
+        "finding": "Forecast minimum distance 144.7 km at 00:00 UTC 04 Sep (closest approach)",
+        "ref": "$.evidence.deterministicForecasts.v1.impact.closestApproach.distanceKm"
+      },
+      {
+        "finding": "Re‑approach confidence high (0.73) indicating possible later approach after initial departure",
+        "ref": "$.evidence.lifecycleAnalyzers.reApproach.confidence"
+      },
+      {
+        "finding": "Current distance 287 km, trending away (departing) with median approach rate –5.5 km/h over last 6 h",
+        "ref": "$.evidence.impactTrend.agencies[?(@.agency=='HKO')].approachRateKmh"
+      },
+      {
+        "finding": "Representative wind 11.8 m/s (~23 kt) from forecast, below strong‑wind threshold",
+        "ref": "$.evidence.deterministicForecasts.v1.signals.T1.basis[?(@ contains 'representative-wind:11.8m/s')]"
+      },
+      {
+        "finding": "Local wind observations show mean speeds up to 39 km/h and gusts up to 48 km/h, still below strong‑wind (41 km/h) threshold for mean but gusts exceed it at three stations",
+        "ref": "$.evidence.localWind.summary.maximumGust.valueKmh"
+      },
+      {
+        "finding": "Strongest timeline threat at +1.9 h (2026‑09‑02 06:00 UTC) with threatIndex 0.701",
+        "ref": "$.evidence.threatTimeline[?(@.label=='+1.9h')].threatIndex"
+      }
+    ],
+    "uncertainties": [
+      {
+        "description": "High impact uncertainty (distance spread ≈ 100 km, time spread ≈ 22 h)",
+        "evidenceRefs": [
+          "$.evidence.impactUncertainty.level",
+          "$.evidence.impactUncertainty.reasons"
+        ]
+      },
+      {
+        "description": "Wind‑field data absent for all agencies; risk relies on proximity only",
+        "evidenceRefs": [
+          "$.evidence.lifecycleAnalyzers.windField.confidence"
+        ]
+      },
+      {
+        "description": "Forecast minimum may be horizon‑limited, reducing reliability of the 144 km minimum distance",
+        "evidenceRefs": [
+          "$.evidence.deterministicForecasts.v1.impact.forecastMinimumMayBeHorizonLimited"
+        ]
+      },
+      {
+        "description": "Local wind observations are near but generally below signal thresholds; gusts exceed strong‑wind threshold at only three stations, insufficient for signal issuance",
+        "evidenceRefs": [
+          "$.evidence.localWind.summary.gustStrongStationCount"
+        ]
+      }
+    ]
+  },
+  "semantics": {
+    "shadowOnly": true,
+    "affectsForecast": false,
+    "affectsEvaluator": false,
+    "providerOutputCannotMutateInput": true,
+    "noTruthFeedback": true,
+    "noExternalTools": true,
+    "noWebSearch": true,
+    "inputPacketIsSoleMeteorologicalEvidence": true,
+    "caseSpecificRulesForbidden": true,
+    "structuredOutputRequired": true,
+    "localValidationRequired": true
+  }
+}
