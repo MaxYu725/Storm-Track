@@ -9,6 +9,7 @@ on:
       - docs/CONSENSUS_TRACK_ROADMAP.md
       - docs/HK_SIGNAL_V2_SHADOW.md
       - docs/HK_SIGNAL_AI_SITUATION_CLOUDFLARE_SHADOW.md
+      - docs/HK_SIGNAL_AI_SITUATION_PROSPECTIVE_AUDIT.md
       - index.html
       - observation.html
       - sw.js
@@ -18,11 +19,13 @@ on:
       - scripts/build-hk-situation-analysis-shadow-packets.mjs
       - scripts/run-hk-situation-analysis-shadow-openai.mjs
       - scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
+      - scripts/audit-hk-situation-analysis-shadow-inference.mjs
       - tests/**
       - .github/workflows/hk-signal-beta-validation.yml
       - .github/workflows/hk-situation-analysis-shadow-recorder.yml
       - .github/workflows/hk-situation-analysis-openai-shadow.yml
       - .github/workflows/hk-situation-analysis-cloudflare-shadow.yml
+      - .github/workflows/hk-situation-analysis-prospective-audit.yml
 
 permissions:
   contents: read
@@ -46,6 +49,7 @@ jobs:
           node --check analysis/frontend-hk-threat-ui.js
           node --check analysis/hk-situation-analysis-shadow.js
           node --check analysis/hk-situation-analysis-prompt.js
+          node --check analysis/hk-situation-analysis-prospective-audit.js
           node --check analysis/hko-signal-statement.js
           node --check analysis/settings-panel-ui.js
           node --check analysis/wind-field-overlay.js
@@ -58,6 +62,7 @@ jobs:
           node --check scripts/build-hk-situation-analysis-shadow-packets.mjs
           node --check scripts/run-hk-situation-analysis-shadow-openai.mjs
           node --check scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
+          node --check scripts/audit-hk-situation-analysis-shadow-inference.mjs
 
       - name: Verify Beta integration surface
         run: |
@@ -87,6 +92,9 @@ jobs:
           grep -F 'currentPhase must be remote' analysis/hk-situation-analysis-prompt.js
           grep -F 'Maintenance and cancellation apply only to the currently active HKO signal tier' analysis/hk-situation-analysis-prompt.js
           grep -F 'use ONLY an ID present in evidenceCatalog.entries' analysis/hk-situation-analysis-prompt.js
+          grep -F 'hk-situation-analysis-prospective-audit/v0.1' analysis/hk-situation-analysis-prospective-audit.js
+          grep -F 'noOutcomeTruthUsed: true' analysis/hk-situation-analysis-prospective-audit.js
+          grep -F 'reviewFlagsAreNotAutomaticModelFailures: true' analysis/hk-situation-analysis-prospective-audit.js
           grep -F "type: 'json_schema'" scripts/run-hk-situation-analysis-shadow-openai.mjs
           grep -F 'store: false' scripts/run-hk-situation-analysis-shadow-openai.mjs
           grep -F "evidenceReferenceMode: 'catalog-id-only'" scripts/run-hk-situation-analysis-shadow-openai.mjs
@@ -140,6 +148,7 @@ jobs:
             tests/hk-situation-analysis-shadow-recorder.test.cjs
             tests/hk-situation-analysis-openai-inference.test.cjs
             tests/hk-situation-analysis-cloudflare-inference.test.cjs
+            tests/hk-situation-analysis-prospective-audit.test.cjs
             tests/frontend-hk-threat-ui.test.cjs
             tests/frontend-beta-prospective-observation.test.cjs
             tests/frontend-hk-signal-beta-gate.test.cjs
