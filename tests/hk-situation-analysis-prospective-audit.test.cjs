@@ -30,7 +30,11 @@ function baseInference() {
   return {
     createdAt: '2026-09-02T06:01:00.000Z',
     input: { packetFingerprint: 'a'.repeat(64), caseId: 'STC-TEST', groupKey: 'TEST' },
-    prompt: { version: 'hk-situation-analysis-prompt/v0.5' },
+    prompt: {
+      version: 'hk-situation-analysis-prompt/v0.5',
+      outputSchemaVersion: 'hk-situation-analysis-shadow-output/v0.3',
+      requestFingerprint: 'c'.repeat(64)
+    },
     provider: { name: 'cloudflare-workers-ai-chat-completions', requestedModel: '@cf/openai/gpt-oss-120b', attemptCount: 1, repairAttempted: false },
     output: {
       currentPhase: 'departing',
@@ -53,6 +57,8 @@ const alwaysValid = () => ({ valid: true, errors: [] });
   assert.equal(result.status, 'pass');
   assert.equal(result.reviewFlags.length, 0);
   assert.equal(result.semantics.noOutcomeTruthUsed, true);
+  assert.equal(result.input.inferenceRequestFingerprint, 'c'.repeat(64));
+  assert.equal(result.input.outputSchemaVersion, 'hk-situation-analysis-shadow-output/v0.3');
 }
 
 {
