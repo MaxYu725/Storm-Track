@@ -65,14 +65,15 @@ jobs:
           test "${#latest_paths[@]}" -gt 0
 
           for inference_path in "${latest_paths[@]}"; do
-            case_id="$(basename "$(dirname "$(dirname "$(dirname "$inference_path")")")")"
+            case_id="${inference_path#cases/}"
+            case_id="${case_id%%/*}"
             inference_file="/tmp/hk-situation-audit/${case_id}-inference.json"
             packet_file="/tmp/hk-situation-audit/${case_id}-packet.json"
             audit_file="/tmp/hk-situation-audit/${case_id}-audit.json"
             git show "${inference_ref}:${inference_path}" > "$inference_file"
             packet_fingerprint="$(jq -r '.input.packetFingerprint' "$inference_file")"
             packet_short="${packet_fingerprint:0:12}"
-            mapfile -t packet_paths < <(git ls-tree -r --name-only "$packet_ref" "packets/${case_id}" | grep -E "-${packet_short}\\.json$" || true)
+            mapfile -t packet_paths < <(git ls-tree -r --name-only "$packet_ref" "packets/${case_id}" | grep -E -- "${packet_short}\\.json$" || true)
             if [[ "${#packet_paths[@]}" -ne 1 ]]; then
               echo "Expected exactly one immutable packet for ${case_id} ${packet_short}; found ${#packet_paths[@]}" >&2
               exit 3
