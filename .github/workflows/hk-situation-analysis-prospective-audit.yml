@@ -176,4 +176,5 @@ jobs:
           echo "HK_SITUATION_PROSPECTIVE_AUDIT_NEW_COUNT=$new_count"
 
       - name: Check whitespace
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main')
         run: git diff --check origin/main...HEAD
