@@ -1,0 +1,157 @@
+name: Fourth controlled Cloudflare AI situation pilot
+
+on:
+  push:
+    branches:
+      - pilot/cloudflare-ai-situation-v04-20260902
+    paths:
+      - .github/workflows/hk-situation-analysis-cloudflare-v04-pilot.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hk-situation-cloudflare-v04-pilot
+  cancel-in-progress: false
+
+env:
+  INPUT_DATA_BRANCH: data/hk-situation-analysis-shadow-packets
+  OUTPUT_DATA_BRANCH: data/hk-situation-analysis-shadow-inferences
+  MODEL: '@cf/openai/gpt-oss-120b'
+
+jobs:
+  pilot:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - case_id: STC-2026-JMA-TC2621
+            label: SAUDEL
+          - case_id: STC-2026-JMA-TC2628
+            label: KROVANH
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Verify semantic-consistency inference adapter
+        run: |
+          set -euo pipefail
+          node --check analysis/hk-situation-analysis-shadow.js
+          node --check analysis/hk-situation-analysis-prompt.js
+          node --check scripts/run-hk-situation-analysis-shadow-cloudflare.mjs
+          node tests/hk-situation-analysis-shadow.test.cjs
+          node tests/hk-situation-analysis-cloudflare-inference.test.cjs
+          grep -F "hk-situation-analysis-prompt/v0.4" analysis/hk-situation-analysis-prompt.js
+          grep -F "hk-situation-analysis-shadow-output/v0.3" analysis/hk-situation-analysis-prompt.js
+          grep -F "semanticCrossFieldConsistencyRequired: true" analysis/hk-situation-analysis-shadow.js
+
+      - name: Resolve Workers AI credentials
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          account_id="${CLOUDFLARE_ACCOUNT_ID:-${CF_ACCOUNT_ID:-}}"
+          api_token="${CLOUDFLARE_API_TOKEN:-${CF_API_TOKEN:-}}"
+          test -n "$account_id" || { echo "Cloudflare account ID missing" >&2; exit 2; }
+          test -n "$api_token" || { echo "Cloudflare API token missing" >&2; exit 2; }
+          echo "CLOUDFLARE_ACCOUNT_ID=$account_id" >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_API_TOKEN=$api_token" >> "$GITHUB_ENV"
+
+      - name: Load latest immutable packet
+        shell: bash
+        env:
+          CASE_ID: ${{ matrix.case_id }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/${INPUT_DATA_BRANCH}:refs/remotes/origin/${INPUT_DATA_BRANCH}"
+          git show "refs/remotes/origin/${INPUT_DATA_BRANCH}:latest.json" > /tmp/hk-situation-packet-batch.json
+          jq --arg case_id "$CASE_ID" -e '
+            [.packets[] | select(.caseId == $case_id)]
+            | if length == 1 then .[0]
+              elif length == 0 then error("case ID unavailable")
+              else error("case ID ambiguous") end
+          ' /tmp/hk-situation-packet-batch.json > /tmp/hk-situation-packet.json
+          jq -e '
+            .semantics.noFutureTruthFeedback == true and
+            .semantics.contemporaneousOfficialContextOnly == true and
+            .semantics.noFutureOfficialContextJoin == true and
+            .evidencePacket.evidenceCatalog.schemaVersion == "hk-situation-analysis-evidence-catalog/v1" and
+            .evidencePacket.aiTask.targetOutput.schemaVersion == "hk-situation-analysis-shadow-output/v0.3" and
+            .evidencePacket.aiTask.constraints.semanticCrossFieldConsistencyRequired == true
+          ' /tmp/hk-situation-packet.json >/dev/null
+          jq '{caseId,groupKey,packetFingerprint,sourceObservationObservedAt,currentOfficialSignal:.evidencePacket.evidence.officialHko.signalStatement.currentSignal,v1Impact:.evidencePacket.evidence.deterministicForecasts.v1.impact,evidenceCatalogCount:(.evidencePacket.evidenceCatalog.entries|length)}' /tmp/hk-situation-packet.json
+
+      - name: Run semantic-consistency closed-book Workers AI inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/run-hk-situation-analysis-shadow-cloudflare.mjs \
+            /tmp/hk-situation-packet.json \
+            "$MODEL" \
+            > /tmp/hk-situation-inference.json
+          test -s /tmp/hk-situation-inference.json
+
+      - name: Validate v0.4 semantic inference contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          packet_fingerprint="$(jq -r '.packetFingerprint' /tmp/hk-situation-packet.json)"
+          jq --arg packet "$packet_fingerprint" -e '
+            .schemaVersion == "hk-situation-analysis-shadow-inference/v0.1" and
+            .input.packetFingerprint == $packet and
+            .input.evidenceCatalogSchemaVersion == "hk-situation-analysis-evidence-catalog/v1" and
+            .prompt.version == "hk-situation-analysis-prompt/v0.4" and
+            .prompt.outputSchemaVersion == "hk-situation-analysis-shadow-output/v0.3" and
+            .provider.name == "cloudflare-workers-ai-chat-completions" and
+            .provider.requestedModel == "@cf/openai/gpt-oss-120b" and
+            .output.schemaVersion == "hk-situation-analysis-shadow-output/v0.3" and
+            (.output.nextDecisionWindow.signalCode | IN("T1","T3","T8","all","none")) and
+            all(.output.signalInterpretation[]; (.officialDecisionBasis | IN("context-supported","not-inferred"))) and
+            .semantics.shadowOnly == true and
+            .semantics.affectsForecast == false and
+            .semantics.affectsEvaluator == false and
+            .semantics.noExternalTools == true and
+            .semantics.evidenceReferenceMode == "catalog-id-only" and
+            .semantics.evidenceCatalogIdsRequired == true
+          ' /tmp/hk-situation-inference.json >/dev/null
+          jq '{input,prompt,provider:{requestedModel,returnedModel,usage},output,semantics}' /tmp/hk-situation-inference.json
+
+      - name: Persist immutable v0.4 pilot output
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags origin "$OUTPUT_DATA_BRANCH"
+          git switch -C "$OUTPUT_DATA_BRANCH" FETCH_HEAD
+
+          provider_slug='cloudflare-workers-ai'
+          case_id="$(jq -r '.input.caseId' /tmp/hk-situation-inference.json)"
+          case_slug="$(printf '%s' "$case_id" | sed -E 's/[^A-Za-z0-9._-]+/_/g')"
+          packet_fingerprint="$(jq -r '.input.packetFingerprint' /tmp/hk-situation-inference.json)"
+          request_fingerprint="$(jq -r '.prompt.requestFingerprint' /tmp/hk-situation-inference.json)"
+          created_at="$(jq -r '.createdAt' /tmp/hk-situation-inference.json)"
+          day_path="$(date -u -d "$created_at" +'%Y/%m/%d')"
+          stamp="$(date -u -d "$created_at" +'%Y%m%dT%H%M%SZ')"
+          destination="inferences/${case_slug}/${provider_slug}/${day_path}/${stamp}-${packet_fingerprint:0:12}-${request_fingerprint:0:12}.json"
+          provider_latest="cases/${case_slug}/providers/${provider_slug}/latest.json"
+          mkdir -p "$(dirname "$destination")" "$(dirname "$provider_latest")" "providers/${provider_slug}"
+          cp /tmp/hk-situation-inference.json "$destination"
+          cp /tmp/hk-situation-inference.json "$provider_latest"
+          cp /tmp/hk-situation-inference.json "providers/${provider_slug}/latest.json"
+          jq -c '{schemaVersion,createdAt,input,prompt,provider:{name:.provider.name,requestedModel:.provider.requestedModel,returnedModel:.provider.returnedModel,status:.provider.status,usage:.provider.usage},summary:{currentPhase:.output.currentPhase,currentPhaseConfidence:.output.currentPhaseConfidence,nextDecisionSignal:.output.nextDecisionWindow.signalCode,nextDecisionQuestion:.output.nextDecisionWindow.question},semantics}' /tmp/hk-situation-inference.json >> index.ndjson
+          git add "$destination" "$provider_latest" "providers/${provider_slug}/latest.json" index.ndjson
+          git commit -m "Record Workers AI v0.4 pilot ${case_slug} ${stamp}"
+          git push origin "HEAD:${OUTPUT_DATA_BRANCH}"
