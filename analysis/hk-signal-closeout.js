@@ -8,6 +8,7 @@
   const VERSION = 'hk-signal-closeout/v1';
   const POLICY_VERSION = 'hk-signal-closeout-policy/v1';
   const INACTIVE_GRACE_HOURS = 24;
+  const TERMINAL_STALE_HOURS = 12;
   const SIGNALS = Object.freeze(['T1', 'T3', 'T8']);
   const POSITIVE_STATES = new Set(['possible', 'likely']);
   const HEALTHY_SOURCE_STATES = new Set(['ok', 'empty']);
@@ -18,7 +19,7 @@
     noSignalCase: 'A case that has carried an HKO source may close without TC1 only after it disappears from a healthy settled prospective capture and remains absent for at least 24 hours.',
     warnedCase: 'Once an HKO warning episode has started, missing higher signals close only on HKO CANCEL or CLEAR_DETECTED.',
     unresolvedTruthGuard: 'Any unresolved or ambiguous eligible HKO signal event in the relevant interval blocks automatic negative closeout.',
-    negativeScoring: 'Not-issued signals receive no A/B/C/D timing grade; forecast evidence is retained as correct-negative, transient-false-alarm, or stable-false-alarm.',
+    negativeScoring: 'Not-issued signals receive no A/B/C/D timing grade; forecast evidence retains backward-compatible correct-negative/transient-false-alarm/stable-false-alarm classification plus separate possible/likely severity and terminal lifecycle diagnostics.',
     immutableEvidence: 'Closeout is derived from trusted beta-prospective-recorder/v2 observations and HKO truth events; raw corpora are never rewritten.'
   });
 
@@ -52,6 +53,73 @@
     };
   }
 
+  function sourceDiagnostics(row) {
+    const observation = row?.observation || null;
+    const capturedMs = parseTimeMs(row?.capturedAt);
+    const sources = observation?.sources && typeof observation.sources === 'object'
+      ? observation.sources
+      : {};
+    const sourceAgencies = Array.isArray(observation?.sourceAgencies) && observation.sourceAgencies.length
+      ? [...new Set(observation.sourceAgencies.map(String))]
+      : Object.keys(sources);
+    const bulletinAgeHoursByAgency = {};
+    const currentIntensityByAgency = {};
+    let forecastPointAgencyCount = 0;
+    let forecastPointTotal = 0;
+
+    for (const agency of sourceAgencies) {
+      const source = sources[agency] || {};
+      const bulletinMs = parseTimeMs(source.bulletinTime || source?.current?.time || '');
+      if (Number.isFinite(capturedMs) && Number.isFinite(bulletinMs)) {
+        const ageHours = (capturedMs - bulletinMs) / 3600000;
+        if (Number.isFinite(ageHours) && ageHours >= 0) bulletinAgeHoursByAgency[agency] = ageHours;
+      }
+      const intensity = source?.current?.intensity;
+      if (intensity !== null && intensity !== undefined && String(intensity).trim()) {
+        currentIntensityByAgency[agency] = String(intensity);
+      }
+      const forecastCount = Number(source?.forecastCount);
+      const count = Number.isFinite(forecastCount) && forecastCount >= 0
+        ? forecastCount
+        : (source?.forecastEnd ? 1 : 0);
+      if (count > 0) forecastPointAgencyCount += 1;
+      forecastPointTotal += count;
+    }
+
+    const ages = Object.values(bulletinAgeHoursByAgency).filter(Number.isFinite);
+    const representativeMinimumTime = observation?.analysis?.threatAssessment?.summary?.representativeMinimum?.time || null;
+    const representativeMinimumMs = parseTimeMs(representativeMinimumTime);
+    const representativeMinimumInPast = Number.isFinite(capturedMs) && Number.isFinite(representativeMinimumMs)
+      ? representativeMinimumMs < capturedMs
+      : null;
+    const freshestBulletinAgeHours = ages.length ? Math.min(...ages) : null;
+    const stalestBulletinAgeHours = ages.length ? Math.max(...ages) : null;
+    const allSourcesStale = sourceAgencies.length > 0
+      && ages.length === sourceAgencies.length
+      && ages.every(age => age >= TERMINAL_STALE_HOURS);
+    const terminalResidualCandidate = sourceAgencies.length <= 1
+      && forecastPointAgencyCount === 0
+      && representativeMinimumInPast === true
+      && Number.isFinite(freshestBulletinAgeHours)
+      && freshestBulletinAgeHours >= TERMINAL_STALE_HOURS;
+
+    return {
+      sourceAgencyCount: sourceAgencies.length,
+      sourceAgencies,
+      forecastPointAgencyCount,
+      forecastPointTotal,
+      bulletinAgeHoursByAgency,
+      freshestBulletinAgeHours,
+      stalestBulletinAgeHours,
+      allSourcesStale,
+      terminalStaleThresholdHours: TERMINAL_STALE_HOURS,
+      representativeMinimumTime,
+      representativeMinimumInPast,
+      currentIntensityByAgency,
+      terminalResidualCandidate
+    };
+  }
+
   function stablePositiveStart(timeline, signal) {
     for (let index = 0; index < timeline.length; index += 1) {
       if (!isPositive(signalPrediction(timeline[index].observation, signal).likelihood)) continue;
@@ -73,33 +141,80 @@
     if (!rows.length) {
       return {
         classification: 'insufficient-forecast-evidence',
+        severityClassification: 'insufficient-forecast-evidence',
         snapshotCount: 0,
         positiveSnapshotCount: 0,
+        possibleSnapshotCount: 0,
+        likelySnapshotCount: 0,
+        likelihoodCounts: { unlikely: 0, possible: 0, likely: 0, unknown: 0 },
         firstPositiveAt: null,
+        lastPositiveAt: null,
+        firstPossibleAt: null,
+        lastPossibleAt: null,
+        firstLikelyAt: null,
+        lastLikelyAt: null,
         firstStablePositiveAt: null,
         maxRiskIndex: null,
+        maxRiskIndexByLikelihood: { possible: null, likely: null },
+        terminalResidualSnapshotCount: 0,
+        firstTerminalResidualAt: null,
+        lastTerminalResidualAt: null,
         finalPreClose: null
       };
     }
 
-    const predictions = rows.map(row => ({ row, prediction: signalPrediction(row.observation, key) }));
+    const predictions = rows.map(row => ({
+      row,
+      prediction: signalPrediction(row.observation, key),
+      diagnostics: sourceDiagnostics(row)
+    }));
     const positive = predictions.filter(item => isPositive(item.prediction.likelihood));
+    const possible = predictions.filter(item => item.prediction.likelihood === 'possible');
+    const likely = predictions.filter(item => item.prediction.likelihood === 'likely');
     const firstPositive = positive[0]?.row || null;
     const stable = stablePositiveStart(rows, key);
     const final = predictions[predictions.length - 1];
     const risks = predictions.map(item => item.prediction.riskIndex).filter(Number.isFinite);
+    const possibleRisks = possible.map(item => item.prediction.riskIndex).filter(Number.isFinite);
+    const likelyRisks = likely.map(item => item.prediction.riskIndex).filter(Number.isFinite);
+    const terminalResidual = positive.filter(item => item.diagnostics.terminalResidualCandidate);
+    const likelihoodCounts = { unlikely: 0, possible: 0, likely: 0, unknown: 0 };
+    for (const item of predictions) {
+      const likelihood = item.prediction.likelihood;
+      if (Object.prototype.hasOwnProperty.call(likelihoodCounts, likelihood)) likelihoodCounts[likelihood] += 1;
+      else likelihoodCounts.unknown += 1;
+    }
     const stableAtClose = Boolean(stable && isPositive(final.prediction.likelihood));
     const classification = positive.length === 0
       ? 'correct-negative'
       : (stableAtClose ? 'stable-false-alarm' : 'transient-false-alarm');
+    const severityClassification = positive.length === 0
+      ? 'correct-negative'
+      : (likely.length ? 'likely-involved-false-alarm' : 'possible-only-false-alarm');
 
     return {
       classification,
+      severityClassification,
       snapshotCount: rows.length,
       positiveSnapshotCount: positive.length,
+      possibleSnapshotCount: possible.length,
+      likelySnapshotCount: likely.length,
+      likelihoodCounts,
       firstPositiveAt: firstPositive?.capturedAt || null,
+      lastPositiveAt: positive.at(-1)?.row?.capturedAt || null,
+      firstPossibleAt: possible[0]?.row?.capturedAt || null,
+      lastPossibleAt: possible.at(-1)?.row?.capturedAt || null,
+      firstLikelyAt: likely[0]?.row?.capturedAt || null,
+      lastLikelyAt: likely.at(-1)?.row?.capturedAt || null,
       firstStablePositiveAt: stable?.capturedAt || null,
       maxRiskIndex: risks.length ? Math.max(...risks) : null,
+      maxRiskIndexByLikelihood: {
+        possible: possibleRisks.length ? Math.max(...possibleRisks) : null,
+        likely: likelyRisks.length ? Math.max(...likelyRisks) : null
+      },
+      terminalResidualSnapshotCount: terminalResidual.length,
+      firstTerminalResidualAt: terminalResidual[0]?.row?.capturedAt || null,
+      lastTerminalResidualAt: terminalResidual.at(-1)?.row?.capturedAt || null,
       finalPreClose: {
         capturedAt: final.row.capturedAt,
         captureFingerprint: final.row.captureFingerprint || null,
@@ -107,7 +222,8 @@
         riskIndex: final.prediction.riskIndex,
         confidenceIndex: final.prediction.confidenceIndex,
         persistenceHours: final.prediction.persistenceHours,
-        estimatedWindow: final.prediction.estimatedWindow
+        estimatedWindow: final.prediction.estimatedWindow,
+        diagnostics: final.diagnostics
       }
     };
   }
@@ -331,8 +447,10 @@
     POLICY_VERSION,
     POLICY,
     INACTIVE_GRACE_HOURS,
+    TERMINAL_STALE_HOURS,
     SIGNALS,
     signalPrediction,
+    sourceDiagnostics,
     summarizeNegativeForecast,
     recordHealthy,
     deriveCloseouts
