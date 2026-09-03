@@ -64,7 +64,9 @@ function inputs(usableAgencyCount) {
 }
 
 assert.equal(typeof ui.buildShadowV2Forecast, 'function');
-assert.equal(ui.SHADOW_V2_VERSION, 'hk-signal-shadow-v2/0.1');
+assert.equal(typeof ui.buildSourceLifecycleContext, 'function');
+assert.equal(ui.SHADOW_V2_VERSION, 'hk-signal-shadow-v2/0.2');
+assert.equal(ui.TERMINAL_STALE_HOURS, 12);
 
 // SAUDEL-style long-horizon support concentration: a T3 possible state driven by a
 // lone +119h checkpoint is continuously discounted, not hard-gated. T1 is not given
@@ -136,6 +138,97 @@ assert.equal(ui.SHADOW_V2_VERSION, 'hk-signal-shadow-v2/0.1');
   assert.ok(v2.signals.T1.riskIndex < v1.signals.T1.riskIndex);
   assert.equal(v2.signals.T1.likelihood, 'unlikely');
   assert.equal(v2.signals.T1.timingState, 'not-applicable');
+}
+
+// Exact NARRA terminal pattern: the remaining HKO bulletin is stale, the system has
+// degraded to a low-pressure area, no forecast points remain, and the minimum is in
+// the past. This is a V2-only continuous decay, not a v1 gate or case-specific rule.
+{
+  const observedAt = '2026-08-27T03:31:15.090Z';
+  const lifecycle = ui.buildSourceLifecycleContext({
+    sources: {
+      HKO: {
+        bulletinTime: '2026-08-26T15:30:35+08:00',
+        positions: [{ time: '2026-08-26T06:00:00Z', intensity: 'Low Pressure Area' }],
+        forecast: []
+      }
+    }
+  }, observedAt);
+
+  assert.equal(lifecycle.sourceAgencyCount, 1);
+  assert.equal(lifecycle.forecastPointTotal, 0);
+  assert.ok(lifecycle.freshestBulletinAgeHours > 20 && lifecycle.freshestBulletinAgeHours < 20.1);
+  assert.equal(lifecycle.allSourcesStale, true);
+  assert.equal(lifecycle.terminalIntensityAgencyCount, 1);
+  assert.equal(lifecycle.terminalStateCandidate, true);
+
+  const v1 = baseForecast({
+    generatedAt: '2026-08-26T07:30:35.000Z',
+    impact: {
+      likelihood: 'unlikely',
+      closestApproach: { time: '2026-08-26T06:00:00.000Z', distanceKm: 321.7491390847886 },
+      forecastMinimumMayBeHorizonLimited: false
+    }
+  });
+  v1.signals.T1.riskIndex = 0.4394138319059165;
+  v1.signals.T1.likelihood = 'possible';
+  v1.signals.T1.strongestCheckpoint = null;
+
+  const v2 = ui.buildShadowV2Forecast({
+    basicForecast: v1,
+    signalInputs: inputs(1),
+    threatAssessment: {
+      analyzers: { directDepart: { confidence: 0 } },
+      timeline: []
+    },
+    generatedAt: v1.generatedAt,
+    sourceLifecycle: lifecycle
+  });
+
+  assert.equal(v2.shadow.diagnostics.lifecyclePenalty, 0, 'no departure evidence exists in the frozen NARRA snapshot');
+  assert.ok(v2.shadow.diagnostics.terminalLifecyclePenalty >= 0.22);
+  assert.ok(v2.signals.T1.riskIndex < 0.35);
+  assert.equal(v2.signals.T1.likelihood, 'unlikely');
+  assert.equal(v2.signals.T1.timingState, 'not-applicable');
+  assert.ok(v2.shadow.adjustments.some(item => item.code === 'terminal-stale-lifecycle-decay'));
+}
+
+// Stale data alone is not enough to suppress an active tropical cyclone. The terminal
+// decay requires a generic terminal intensity hint as well as single-source/no-forecast.
+{
+  const lifecycle = ui.buildSourceLifecycleContext({
+    sources: {
+      HKO: {
+        bulletinTime: '2026-08-26T07:30:00Z',
+        positions: [{ time: '2026-08-26T06:00:00Z', intensity: 'Tropical Storm' }],
+        forecast: []
+      }
+    }
+  }, '2026-08-27T03:31:15Z');
+  assert.equal(lifecycle.allSourcesStale, true);
+  assert.equal(lifecycle.terminalIntensityAgencyCount, 0);
+  assert.equal(lifecycle.terminalStateCandidate, false);
+
+  const v1 = baseForecast({
+    generatedAt: '2026-08-26T07:30:00Z',
+    impact: {
+      likelihood: 'possible',
+      closestApproach: { time: '2026-08-26T06:00:00Z', distanceKm: 320 },
+      forecastMinimumMayBeHorizonLimited: false
+    }
+  });
+  v1.signals.T1.riskIndex = 0.439;
+  v1.signals.T1.strongestCheckpoint = null;
+  const v2 = ui.buildShadowV2Forecast({
+    basicForecast: v1,
+    signalInputs: inputs(1),
+    threatAssessment: { analyzers: { directDepart: { confidence: 0 } }, timeline: [] },
+    generatedAt: v1.generatedAt,
+    sourceLifecycle: lifecycle
+  });
+  assert.equal(v2.shadow.diagnostics.terminalLifecyclePenalty, 0);
+  assert.equal(v2.signals.T1.riskIndex, v1.signals.T1.riskIndex);
+  assert.equal(v2.signals.T1.likelihood, v1.signals.T1.likelihood);
 }
 
 // Positive risk with no observable threshold crossing remains positive but is explicitly
