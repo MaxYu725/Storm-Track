@@ -19,12 +19,17 @@ function replaceSection(startMarker, endMarker, replacement, label) {
   source = source.slice(0, start) + replacement.trimEnd() + '\n\n' + source.slice(end);
 }
 
-replaceOnce("const VERSION = '3.3.0-alpha.3';", "const VERSION = '3.3.0-alpha.4';", 'version');
+if (source.includes("const VERSION = '3.3.0-alpha.3';")) {
+  replaceOnce("const VERSION = '3.3.0-alpha.3';", "const VERSION = '3.3.0-alpha.4';", 'version');
+} else if (!source.includes("const VERSION = '3.3.0-alpha.4';")) {
+  throw new Error('Expected production Worker v3.3.0-alpha.3 or alpha.4');
+}
 
-replaceSection(
-  'function makeCollectedStorm(data) {',
-  'function parseCycloneList(xmlText) {',
-  `function makeCollectedStorm(data) {
+if (!source.includes('const latestAnalysis = normalizedAnalysis.reduce')) {
+  replaceSection(
+    'function makeCollectedStorm(data) {',
+    'function parseCycloneList(xmlText) {',
+    `function makeCollectedStorm(data) {
   const normalizedAnalysis = asArray(data.positions)
     .map((point, index) => normalizePoint(point, 'analysis', index))
     .filter(Boolean);
@@ -70,13 +75,28 @@ replaceSection(
     rawExtension: data.rawExtension || 'txt'
   };
 }`,
-  'makeCollectedStorm'
-);
+    'makeCollectedStorm'
+  );
+}
 
-replaceSection(
-  'async function historyAdvisoryDetail(advisoryId, env) {',
-  'async function historyLatest(incoming, env) {',
-  `async function historyAdvisoryDetail(advisoryId, env) {
+const oldAdvisoryQuality = `function advisoryQuality(row) {
+  return (row?.ingest_status === 'complete' ? 1000000 : 0) + Number(row?.point_count || 0) * 1000 + new Date(row?.updated_at || 0).getTime() / 1e13;
+}`;
+const newAdvisoryQuality = `function advisoryQuality(row) {
+  const currentParser = row?.parser_version === VERSION ? 1 : 0;
+  return (row?.ingest_status === 'complete' ? 1000000 : 0) + currentParser * 10000 + new Date(row?.updated_at || 0).getTime() / 1e13;
+}`;
+if (source.includes(oldAdvisoryQuality)) {
+  replaceOnce(oldAdvisoryQuality, newAdvisoryQuality, 'advisoryQuality');
+} else if (!source.includes('const currentParser = row?.parser_version === VERSION ? 1 : 0;')) {
+  throw new Error('Unexpected advisoryQuality implementation');
+}
+
+if (!source.includes('const seenAnalysisTimes = new Set();')) {
+  replaceSection(
+    'async function historyAdvisoryDetail(advisoryId, env) {',
+    'async function historyLatest(incoming, env) {',
+    `async function historyAdvisoryDetail(advisoryId, env) {
   const advisory = await env.DB.prepare(\`
     SELECT id, storm_id, agency, issued_at, fetched_at, source_code, source_url,
            raw_object_key, parser_version, point_count
@@ -145,13 +165,15 @@ replaceSection(
 
   return jsonResponse({ version: VERSION, advisory, points });
 }`,
-  'historyAdvisoryDetail'
-);
+    'historyAdvisoryDetail'
+  );
+}
 
 const requiredChecks = [
   "const VERSION = '3.3.0-alpha.4';",
   'const normalizedAnalysis = asArray(data.positions)',
   'const latestAnalysis = normalizedAnalysis.reduce',
+  'const currentParser = row?.parser_version === VERSION ? 1 : 0;',
   'AND a.issued_at<=? AND p.point_type=\'analysis\'',
   'const seenAnalysisTimes = new Set();',
   'const forecastPoints = (currentPointResult.results || [])'
