@@ -30,7 +30,7 @@ storm-analysis-core
   → hk-threat-assessment
   → basic-hk-signal-forecast/v1
       ├─ frozen V1 benchmark / evaluator baseline
-      └─ HK Signal V2 Shadow 0.1
+      └─ HK Signal V2 Shadow 0.2
 ```
 
 V1 仍維持 frozen：現行 evaluator、HKO truth attribution、closeout、歷史 prospective 成績全部繼續以 V1 為準，不因 live storm 即時改 threshold / weighting。
@@ -39,16 +39,19 @@ V1 仍維持 frozen：現行 evaluator、HKO truth attribution、closeout、歷�
 
 HK Signal V2 Shadow 已開始與 frozen V1 **同步計算、同步顯示、同步保存**，但目前只作 parallel shadow comparison，暫不進 evaluator / scoring，也不回饋或改寫 V1。
 
-V2 Shadow 0.1 只針對已由多宗 prospective case 暴露的有限問題：
+V2 Shadow 0.2 只針對已由 completed / prospective case 暴露的有限問題：
 
 - source membership 減少時，numeric confidence 不應因 disagreement 消失而看似更高；
 - T3 / T8 在 +72h 以後若 strongest checkpoint 集中於少數 agency，採連續折減而非 hard gate；
 - 最近點已過、明顯離港且 future timeline 已空時，殘留 risk 可連續衰減；
+- NARRA R2 後新增 terminal lifecycle decay：只有在單一來源、來源至少 12h stale、已無 forecast points、最近點已過、future timeline 已空，且來源明確標為 Low Pressure Area / LPA / dissipating / remnant low 等 terminal state 時才連續折減殘留 risk；stale 本身不會觸發；
 - positive risk 但沒有 observable threshold crossing 時，明確標記 left-censored / horizon-limited timing，而不是捏造精確 window。
+
+**NARRA (`STC-2026-JMA-TC2622`) R2 已正式結案。** 真實 replay 將 136 個 T1 positive 拆成 110 個 `possible`、26 個 `likely`，並只識別最後 2 個為 terminal residual。Evaluator 已分開 possible/likely severity；V1 維持 frozen，不因 NARRA 單例調 coefficient。V2 Shadow 0.2 已加入 generic terminal lifecycle decay，但 NARRA 沒有 contemporaneous V2 corpus，因此不得把這宗 case 宣稱為 prospective V2 勝出。完整交接：`docs/HK_SIGNAL_NARRA_R2.md`。
 
 **SAUDEL (`STC-2026-JMA-TC2621`) 是首個重點 live V1/V2 comparison case。** 它曾出現約 +119h 的 T3 `possible`，strongest checkpoint 主要由 CMA 單一 120h endpoint 支持，非常適合觀察 V2 能否減少 long-horizon support concentration，又不犧牲真正的 early warning。
 
-在香港附近仍有活躍風暴期間，V1 與 V2 Shadow 0.1 都暫時 freeze；correctness bug 可修，但不因 SAUDEL 或任何單一新 snapshot 再調參。待這一輪香港附近風暴全部消散／完成可用 closeout 後，再做一次統一 V1/V2 cross-case review 及架構整理。
+在香港附近仍有活躍風暴期間，V1 與 V2 Shadow 0.2 都暫時 freeze；correctness bug 可修，但不因 SAUDEL 或任何單一新 snapshot 再調參。待這一輪香港附近風暴全部消散／完成可用 closeout 後，再做一次統一 V1/V2 cross-case review 及架構整理。
 
 詳細 contract、公式、SAUDEL 觀察問題及 post-storm 整理清單：`docs/HK_SIGNAL_V2_SHADOW.md`。
 
@@ -191,6 +194,8 @@ docs/CONSENSUS_TRACK_VERIFICATION_READINESS.md
                            CT-1B Archive join audit / CT-2 gate evidence
 docs/HK_SIGNAL_POST_CASE_REVIEW.md
                            HK Signal 結案備查與統一 review checklist
+docs/HK_SIGNAL_NARRA_R2.md
+                           NARRA R2 closeout、evaluator severity breakdown、V2 0.2 terminal lifecycle learning
 docs/WEATHER_APP_INTEGRATION.md
                            Weather App integration contract
 ```
@@ -230,7 +235,7 @@ PR #35 已正式 withdrawn，不應合併。
 1. **先用現有能力。** 不因新問題立即建立新的 AI 編號或平行框架。
 2. **遇到同一路線反覆失敗就換方法。** 不在同一位置不斷增加例外規則、fallback 與限制。
 3. **Correctness bug 可以立即修。** Parser、identity、timezone、future leakage、recorder 等資料問題不需要等待模型驗證完成。
-4. **Active live case 期間保持版本穩定。** V1 frozen；V2 Shadow 0.1 上線後亦 freeze。新 snapshot 用來比較，不用來逐輪追著 truth 調參。
+4. **Active live case 期間保持版本穩定。** V1 frozen；V2 Shadow 0.2 上線後亦 freeze。新 snapshot 用來比較，不用來逐輪追著 truth 調參。
 5. **保持 agency independence。** 缺來源就是缺來源，不以其他機構靜默代替。
 6. **Forecast 與 truth 分離。** Official outcome 只能用於 verification，不能回餵較早 forecast snapshot。
 7. **Backend source integrity 優先。** 未確認 authoritative backend source 前，不從舊 Git history 猜測或恢復 production backend。
@@ -239,11 +244,13 @@ PR #35 已正式 withdrawn，不應合併。
 
 ## 下一步
 
-目前 HK Signal 主線改為 **frozen V1 + V2 Shadow 0.1 parallel prospective comparison**：
+目前 HK Signal 主線改為 **frozen V1 + V2 Shadow 0.2 parallel prospective comparison**：
 
 - 持續收集 HK Signal live prospective evidence，同一 capture 保存 V1 + V2 Shadow
+- NARRA R2 已 CLOSED：保留 26 個 T1 `likely` no-signal snapshots 作跨案例 calibration evidence；不再增加 NARRA-specific rule，只有獨立完成案例重複相同模式才重開 T1 calibration
+- V2 Shadow 0.2 已加入 generic terminal lifecycle decay；下一步只作 prospective cross-case observation，確認其他案例是否重現 single stale terminal source + no forecast + post-minimum residual T1
 - 以 SAUDEL 為首個重點 V1/V2 comparison case，特別觀察 T3 long-horizon single-agency support、後續多機構收斂、source membership、withdrawal 及 timing semantics
-- 活躍風暴期間不再調 V2 0.1 coefficient；只修 correctness bug
+- 活躍風暴期間不再調 V2 0.2 coefficient；只修 correctness bug
 - HKO truth / evaluator / closeout 繼續只評 frozen V1，避免改變已建立的 prospective grading contract
 - 香港附近這一輪風暴全部消散／完成足夠 closeout 後，按 `docs/HK_SIGNAL_V2_SHADOW.md` + `docs/HK_SIGNAL_POST_CASE_REVIEW.md` 做一次全面 V1/V2 cross-case review
 - 全面 review 才決定：KEEP V1、保留／修改 V2、正式 evaluator candidate、或 write-off；同時整理臨時 V1/V2 UI / module / recorder 結構
