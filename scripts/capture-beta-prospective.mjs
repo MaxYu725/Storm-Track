@@ -1,12 +1,16 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { chromium } from 'playwright-core';
 
+const require = createRequire(import.meta.url);
+const localThreatUi = require('../analysis/frontend-hk-threat-ui.js');
 const RECORDER_VERSION = 'beta-prospective-recorder/v2';
 const DEFAULT_URL = 'https://maxyu725.github.io/Storm-Track/?beta=hk-signal';
 const targetUrl = process.env.STORM_BETA_URL || DEFAULT_URL;
 const sourceCommit = process.env.SOURCE_COMMIT || null;
 const settleTimeoutMs = Number(process.env.SETTLE_TIMEOUT_MS || 90000);
+const expectedShadowV2Version = localThreatUi?.SHADOW_V2_VERSION ?? null;
 
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
@@ -64,6 +68,7 @@ function fingerprintBasis(record) {
 const executablePath = findChrome();
 console.error(`RECORDER_CHROME=${executablePath}`);
 console.error(`RECORDER_TARGET=${targetUrl}`);
+console.error(`RECORDER_EXPECTED_SHADOW_V2=${expectedShadowV2Version || 'unknown'}`);
 
 const browser = await chromium.launch({
   executablePath,
@@ -125,6 +130,7 @@ try {
       pageTitle: document.title,
       betaEnabled: ui?.isBetaEnabled?.() === true,
       prospectiveSchemaVersion: ui?.PROSPECTIVE_SCHEMA_VERSION ?? null,
+      loadedShadowV2Version: ui?.SHADOW_V2_VERSION ?? null,
       observationApiAvailable: typeof ui?.readProspectiveObservations === 'function',
       sourceStates,
       visibleGroupKeys,
@@ -137,6 +143,11 @@ try {
   if (!pagePayload.observationApiAvailable) throw new Error('Prospective observation API is unavailable in the loaded frontend');
   if (pagePayload.prospectiveSchemaVersion !== 'hk-beta-prospective-observation/v1') {
     throw new Error(`Unexpected prospective schema: ${pagePayload.prospectiveSchemaVersion}`);
+  }
+  if (expectedShadowV2Version && pagePayload.loadedShadowV2Version !== expectedShadowV2Version) {
+    throw new Error(
+      `Loaded frontend shadow version ${pagePayload.loadedShadowV2Version || 'missing'} does not match checkout ${expectedShadowV2Version}; production deployment may be stale`
+    );
   }
   if (pagePayload.observations.length !== pagePayload.visibleGroupKeys.length) {
     throw new Error(`Final UI/observation mismatch: ${pagePayload.visibleGroupKeys.length} visible groups but ${pagePayload.observations.length} observations`);
