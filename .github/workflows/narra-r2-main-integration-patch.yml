@@ -38,7 +38,6 @@ jobs:
 
           python - <<'PY'
           from pathlib import Path
-
           p = Path('README.md')
           s = p.read_text()
           replacements = {
@@ -55,9 +54,8 @@ jobs:
               s = s.replace(old, new)
 
           anchor = '- 最近點已過、明顯離港且 future timeline 已空時，殘留 risk 可連續衰減；\n'
-          extra = anchor + '- NARRA R2 後新增 terminal lifecycle decay：只有在單一來源、來源至少 12h stale、已無 forecast points、最近點已過、future timeline 已空，且來源明確標為 Low Pressure Area / LPA / dissipating / remnant low 等 terminal state 時才連續折減殘留 risk；stale 本身不會觸發；\n'
           if anchor not in s: raise SystemExit('missing V2 README bullet anchor')
-          s = s.replace(anchor, extra, 1)
+          s = s.replace(anchor, anchor + '- NARRA R2 後新增 terminal lifecycle decay：只有在單一來源、來源至少 12h stale、已無 forecast points、最近點已過、future timeline 已空，且來源明確標為 Low Pressure Area / LPA / dissipating / remnant low 等 terminal state 時才連續折減殘留 risk；stale 本身不會觸發；\n', 1)
 
           saudel = '**SAUDEL (`STC-2026-JMA-TC2621`) 是首個重點 live V1/V2 comparison case。**'
           narra = ('**NARRA (`STC-2026-JMA-TC2622`) R2 已正式結案。** 真實 replay 將 136 個 T1 positive 拆成 110 個 `possible`、26 個 `likely`，並只識別最後 2 個為 terminal residual。'
@@ -67,24 +65,15 @@ jobs:
           s = s.replace(saudel, narra + saudel, 1)
 
           map_anchor = 'docs/HK_SIGNAL_POST_CASE_REVIEW.md\n                           HK Signal 結案備查與統一 review checklist\n'
-          map_extra = map_anchor + 'docs/HK_SIGNAL_NARRA_R2.md\n                           NARRA R2 closeout、evaluator severity breakdown、V2 0.2 terminal lifecycle learning\n'
           if map_anchor not in s: raise SystemExit('missing README repository map anchor')
-          s = s.replace(map_anchor, map_extra, 1)
+          s = s.replace(map_anchor, map_anchor + 'docs/HK_SIGNAL_NARRA_R2.md\n                           NARRA R2 closeout、evaluator severity breakdown、V2 0.2 terminal lifecycle learning\n', 1)
 
           next_anchor = '- 以 SAUDEL 為首個重點 V1/V2 comparison case，特別觀察 T3 long-horizon single-agency support、後續多機構收斂、source membership、withdrawal 及 timing semantics\n'
-          next_extra = ('- NARRA R2 已 CLOSED：保留 26 個 T1 `likely` no-signal snapshots 作跨案例 calibration evidence；不再增加 NARRA-specific rule，只有獨立完成案例重複相同模式才重開 T1 calibration\n'
-                        '- V2 Shadow 0.2 已加入 generic terminal lifecycle decay；下一步只作 prospective cross-case observation，確認其他案例是否重現 single stale terminal source + no forecast + post-minimum residual T1\n'
-                        + next_anchor)
           if next_anchor not in s: raise SystemExit('missing README next-step anchor')
-          s = s.replace(next_anchor, next_extra, 1)
-          p.write_text(s)
-
-          p = Path('.github/workflows/hk-signal-evaluator.yml')
-          s = p.read_text()
-          anchor = '      - tests/hk-signal-closeout.test.cjs\n'
-          if s.count(anchor) != 2:
-              raise SystemExit(f'expected evaluator path anchor twice, got {s.count(anchor)}')
-          s = s.replace(anchor, anchor + '      - tests/hk-signal-closeout-diagnostics.test.cjs\n')
+          s = s.replace(next_anchor,
+                        '- NARRA R2 已 CLOSED：保留 26 個 T1 `likely` no-signal snapshots 作跨案例 calibration evidence；不再增加 NARRA-specific rule，只有獨立完成案例重複相同模式才重開 T1 calibration\n'
+                        '- V2 Shadow 0.2 已加入 generic terminal lifecycle decay；下一步只作 prospective cross-case observation，確認其他案例是否重現 single stale terminal source + no forecast + post-minimum residual T1\n'
+                        + next_anchor, 1)
           p.write_text(s)
           PY
 
@@ -101,6 +90,6 @@ jobs:
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add README.md docs/HK_SIGNAL_NARRA_R2.md analysis/frontend-hk-threat-ui.js analysis/hk-signal-closeout.js tests/hk-signal-v2-shadow.test.cjs tests/hk-signal-closeout.test.cjs tests/hk-signal-closeout-diagnostics.test.cjs .github/workflows/hk-signal-evaluator.yml
+          git add README.md docs/HK_SIGNAL_NARRA_R2.md analysis/frontend-hk-threat-ui.js analysis/hk-signal-closeout.js tests/hk-signal-v2-shadow.test.cjs tests/hk-signal-closeout.test.cjs tests/hk-signal-closeout-diagnostics.test.cjs
           git commit -m 'Integrate NARRA R2 evaluator and V2 0.2 on latest main [skip ci]'
           git push origin HEAD:beta/narra-r2-v2-02-integration
