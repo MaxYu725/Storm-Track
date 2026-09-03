@@ -19,6 +19,8 @@ assert.match(patched, /const VERSION = '3\.3\.0-alpha\.4';/);
 assert.match(patched, /const normalizedAnalysis = asArray\(data\.positions\)/);
 assert.match(patched, /const latestAnalysis = normalizedAnalysis\.reduce/);
 assert.match(patched, /latestAnalysis \? \[\{ \.\.\.latestAnalysis, sourceOrder: 0 \}\] : \[\]/);
+assert.match(patched, /const currentParser = row\?\.parser_version === VERSION \? 1 : 0;/);
+assert.doesNotMatch(patched, /Number\(row\?\.point_count \|\| 0\) \* 1000/);
 assert.match(patched, /a\.issued_at<=\? AND p\.point_type='analysis'/);
 assert.match(patched, /const seenAnalysisTimes = new Set\(\);/);
 assert.match(patched, /const forecastPoints = \(currentPointResult\.results \|\| \[\]\)/);
