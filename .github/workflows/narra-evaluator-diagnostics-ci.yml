@@ -1,0 +1,25 @@
+name: NARRA evaluator diagnostics CI
+
+on:
+  push:
+    branches:
+      - fix/narra-evaluator-diagnostics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Validate closeout diagnostics
+        run: |
+          set -euo pipefail
+          node --check analysis/hk-signal-closeout.js
+          node tests/hk-signal-closeout.test.cjs
+          node tests/hk-signal-closeout-diagnostics.test.cjs
