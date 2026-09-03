@@ -12,11 +12,32 @@
   "forecastOutcome": "transient-false-alarm",
   "forecastEvidence": {
     "classification": "transient-false-alarm",
+    "severityClassification": "possible-only-false-alarm",
     "snapshotCount": 102,
     "positiveSnapshotCount": 70,
+    "possibleSnapshotCount": 70,
+    "likelySnapshotCount": 0,
+    "likelihoodCounts": {
+      "unlikely": 32,
+      "possible": 70,
+      "likely": 0,
+      "unknown": 0
+    },
     "firstPositiveAt": "2026-08-22T13:02:59.101Z",
+    "lastPositiveAt": "2026-08-25T04:56:54.898Z",
+    "firstPossibleAt": "2026-08-22T13:02:59.101Z",
+    "lastPossibleAt": "2026-08-25T04:56:54.898Z",
+    "firstLikelyAt": null,
+    "lastLikelyAt": null,
     "firstStablePositiveAt": null,
     "maxRiskIndex": 0.6100819927730694,
+    "maxRiskIndexByLikelihood": {
+      "possible": 0.6100819927730694,
+      "likely": null
+    },
+    "terminalResidualSnapshotCount": 0,
+    "firstTerminalResidualAt": null,
+    "lastTerminalResidualAt": null,
     "finalPreClose": {
       "capturedAt": "2026-08-25T13:02:39.098Z",
       "captureFingerprint": "a97524e447b83b9c5960f170e87099df9b66a8d0fdac266402764f6a4e4a7e8f",
@@ -24,7 +45,28 @@
       "riskIndex": 0.3496440177199197,
       "confidenceIndex": 0.6326250000000001,
       "persistenceHours": 0,
-      "estimatedWindow": null
+      "estimatedWindow": null,
+      "diagnostics": {
+        "sourceAgencyCount": 1,
+        "sourceAgencies": [
+          "HKO"
+        ],
+        "forecastPointAgencyCount": 0,
+        "forecastPointTotal": 0,
+        "bulletinAgeHoursByAgency": {
+          "HKO": 23.532805
+        },
+        "freshestBulletinAgeHours": 23.532805,
+        "stalestBulletinAgeHours": 23.532805,
+        "allSourcesStale": true,
+        "terminalStaleThresholdHours": 12,
+        "representativeMinimumTime": "2026-08-24T12:00:00.000Z",
+        "representativeMinimumInPast": true,
+        "currentIntensityByAgency": {
+          "HKO": "Low Pressure Area"
+        },
+        "terminalResidualCandidate": true
+      }
     }
   },
   "timingGrade": null,
