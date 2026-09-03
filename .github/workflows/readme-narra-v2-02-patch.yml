@@ -1,0 +1,81 @@
+name: Patch README for NARRA R2 and V2 0.2
+
+on:
+  push:
+    branches:
+      - docs/readme-narra-v2-02
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: docs/readme-narra-v2-02
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Patch README
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('README.md')
+          s = p.read_text()
+          replacements = {
+            'HK Signal V2 Shadow 0.1': 'HK Signal V2 Shadow 0.2',
+            'V2 Shadow 0.1 只針對已由多宗 prospective case 暴露的有限問題：': 'V2 Shadow 0.2 只針對已由 completed / prospective case 暴露的有限問題：',
+            '在香港附近仍有活躍風暴期間，V1 與 V2 Shadow 0.1 都暫時 freeze；': '在香港附近仍有活躍風暴期間，V1 與 V2 Shadow 0.2 都暫時 freeze；',
+            'V2 Shadow 0.1 上線後亦 freeze。': 'V2 Shadow 0.2 上線後亦 freeze。',
+            '目前 HK Signal 主線改為 **frozen V1 + V2 Shadow 0.1 parallel prospective comparison**：': '目前 HK Signal 主線改為 **frozen V1 + V2 Shadow 0.2 parallel prospective comparison**：',
+            '活躍風暴期間不再調 V2 0.1 coefficient；只修 correctness bug': '活躍風暴期間不再調 V2 0.2 coefficient；只修 correctness bug',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'missing expected README text: {old}')
+              s = s.replace(old, new)
+
+          anchor = '- 最近點已過、明顯離港且 future timeline 已空時，殘留 risk 可連續衰減；\n'
+          addition = anchor + '- NARRA R2 後新增 terminal lifecycle decay：只有在單一來源、來源至少 12h stale、已無 forecast points、最近點已過、future timeline 已空，且來源明確標為 Low Pressure Area / LPA / dissipating / remnant low 等 terminal state 時才連續折減殘留 risk；stale 本身不會觸發；\n'
+          if anchor not in s:
+              raise SystemExit('missing V2 bullet anchor')
+          s = s.replace(anchor, addition, 1)
+
+          saudel = '**SAUDEL (`STC-2026-JMA-TC2621`) 是首個重點 live V1/V2 comparison case。**'
+          narra = ('**NARRA (`STC-2026-JMA-TC2622`) R2 已正式結案。** 真實 replay 將 136 個 T1 positive 拆成 110 個 `possible`、26 個 `likely`，並只識別最後 2 個為 terminal residual。'
+                   'Evaluator 已分開 possible/likely severity；V1 維持 frozen，不因 NARRA 單例調 coefficient。V2 Shadow 0.2 已加入 generic terminal lifecycle decay，但 NARRA 沒有 contemporaneous V2 corpus，因此不得把這宗 case 宣稱為 prospective V2 勝出。'
+                   '完整交接：`docs/HK_SIGNAL_NARRA_R2.md`。\n\n')
+          if saudel not in s:
+              raise SystemExit('missing SAUDEL paragraph anchor')
+          s = s.replace(saudel, narra + saudel, 1)
+
+          map_anchor = 'docs/HK_SIGNAL_POST_CASE_REVIEW.md\n                           HK Signal 結案備查與統一 review checklist\n'
+          map_add = map_anchor + 'docs/HK_SIGNAL_NARRA_R2.md\n                           NARRA R2 closeout、evaluator severity breakdown、V2 0.2 terminal lifecycle learning\n'
+          if map_anchor not in s:
+              raise SystemExit('missing repository map anchor')
+          s = s.replace(map_anchor, map_add, 1)
+
+          next_anchor = '- 以 SAUDEL 為首個重點 V1/V2 comparison case，特別觀察 T3 long-horizon single-agency support、後續多機構收斂、source membership、withdrawal 及 timing semantics\n'
+          next_add = ('- NARRA R2 已 CLOSED：保留 26 個 T1 `likely` no-signal snapshots 作跨案例 calibration evidence；不再增加 NARRA-specific rule，只有獨立完成案例重複相同模式才重開 T1 calibration\n'
+                      '- V2 Shadow 0.2 已加入 generic terminal lifecycle decay；下一步只作 prospective cross-case observation，確認其他案例是否重現 single stale terminal source + no forecast + post-minimum residual T1\n'
+                      + next_anchor)
+          if next_anchor not in s:
+              raise SystemExit('missing next-step SAUDEL anchor')
+          s = s.replace(next_anchor, next_add, 1)
+
+          p.write_text(s)
+          PY
+          git diff --check
+          git diff -- README.md
+      - name: Commit README
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add README.md
+          git commit -m 'Update README for NARRA R2 and V2 0.2 [skip ci]'
+          git push origin HEAD:docs/readme-narra-v2-02
