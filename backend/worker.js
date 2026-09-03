@@ -14,7 +14,7 @@
  * - ADMIN_TOKEN       (Secret)
  */
 
-const VERSION = '3.3.0-alpha.3';
+const VERSION = '3.3.0-alpha.4';
 const PARSER_VERSION = VERSION;
 const EXPECTED_TABLES = [
   'schema_migrations', 'storms', 'storm_aliases', 'advisories',
@@ -373,8 +373,25 @@ function normalizePoint(point, type, order) {
   };
 }
 function makeCollectedStorm(data) {
-  const analysis = asArray(data.positions).map((point, index) => normalizePoint(point, 'analysis', index)).filter(Boolean);
-  const forecast = asArray(data.forecast).map((point, index) => normalizePoint(point, 'forecast', analysis.length + index)).filter(Boolean);
+  const normalizedAnalysis = asArray(data.positions)
+    .map((point, index) => normalizePoint(point, 'analysis', index))
+    .filter(Boolean);
+
+  // Upstream HKO/CMA/CWA payloads can include the full observed history on
+  // every new bulletin. Persist only the latest analysis fix for this
+  // advisory; earlier analysis fixes already exist in earlier advisories and
+  // can be reconstructed read-only by the history API. This turns the archive
+  // from O(n²) repeated analysis storage into O(n) while keeping raw source
+  // documents immutable in R2.
+  const latestAnalysis = normalizedAnalysis.reduce((latest, point) => {
+    if (!latest) return point;
+    return new Date(point.validAt).getTime() >= new Date(latest.validAt).getTime() ? point : latest;
+  }, null);
+  const analysis = latestAnalysis ? [{ ...latestAnalysis, sourceOrder: 0 }] : [];
+
+  const forecast = asArray(data.forecast)
+    .map((point, index) => normalizePoint(point, 'forecast', analysis.length + index))
+    .filter(Boolean);
   if (!analysis.length && !forecast.length) return null;
   const issuedAt = normalizeIsoTime(data.bulletinTime || forecast[0]?.validAt || analysis.at(-1)?.validAt, true);
   if (!issuedAt) return null;
@@ -1596,20 +1613,66 @@ async function historyAdvisoryDetail(advisoryId, env) {
     FROM advisories WHERE id=? AND ingest_status='complete' LIMIT 1
   `).bind(advisoryId).first();
   if (!advisory) return jsonResponse({ error: 'Advisory not found' }, 404);
-  const [pointResult, radiusResult] = await env.DB.batch([
+
+  const [currentPointResult, currentRadiusResult, analysisPointResult, analysisRadiusResult] = await env.DB.batch([
     env.DB.prepare('SELECT * FROM track_points WHERE advisory_id=? ORDER BY source_order').bind(advisoryId),
     env.DB.prepare(`
       SELECT wr.* FROM wind_radii wr
       JOIN track_points tp ON tp.id=wr.track_point_id
       WHERE tp.advisory_id=? ORDER BY tp.source_order, wr.threshold_code
-    `).bind(advisoryId)
+    `).bind(advisoryId),
+    env.DB.prepare(`
+      SELECT p.*, a.issued_at AS advisory_issued_at
+      FROM track_points p
+      JOIN advisories a ON a.id=p.advisory_id
+      WHERE a.storm_id=? AND a.agency=? AND a.ingest_status='complete'
+        AND a.issued_at<=? AND p.point_type='analysis'
+      ORDER BY p.valid_at ASC, a.issued_at DESC, p.source_order DESC
+    `).bind(advisory.storm_id, advisory.agency, advisory.issued_at),
+    env.DB.prepare(`
+      SELECT wr.*
+      FROM wind_radii wr
+      JOIN track_points tp ON tp.id=wr.track_point_id
+      JOIN advisories a ON a.id=tp.advisory_id
+      WHERE a.storm_id=? AND a.agency=? AND a.ingest_status='complete'
+        AND a.issued_at<=? AND tp.point_type='analysis'
+      ORDER BY tp.valid_at ASC, a.issued_at DESC, tp.source_order DESC, wr.threshold_code
+    `).bind(advisory.storm_id, advisory.agency, advisory.issued_at)
   ]);
-  const radiiByPoint = new Map();
-  for (const radius of radiusResult.results || []) {
-    if (!radiiByPoint.has(radius.track_point_id)) radiiByPoint.set(radius.track_point_id, []);
-    radiiByPoint.get(radius.track_point_id).push(radius);
+
+  const currentRadiiByPoint = new Map();
+  for (const radius of currentRadiusResult.results || []) {
+    if (!currentRadiiByPoint.has(radius.track_point_id)) currentRadiiByPoint.set(radius.track_point_id, []);
+    currentRadiiByPoint.get(radius.track_point_id).push(radius);
   }
-  const points = (pointResult.results || []).map(point => ({ ...point, windRadii: radiiByPoint.get(point.id) || [] }));
+
+  const analysisRadiiByPoint = new Map();
+  for (const radius of analysisRadiusResult.results || []) {
+    if (!analysisRadiiByPoint.has(radius.track_point_id)) analysisRadiiByPoint.set(radius.track_point_id, []);
+    analysisRadiiByPoint.get(radius.track_point_id).push(radius);
+  }
+
+  // Legacy advisories may contain the same analysis fix repeatedly. For each
+  // valid time, keep the newest version that existed at or before the selected
+  // bulletin. The issued_at cutoff prevents future leakage during replay.
+  const seenAnalysisTimes = new Set();
+  const analysisPoints = [];
+  for (const point of analysisPointResult.results || []) {
+    const key = String(point.valid_at || '');
+    if (!key || seenAnalysisTimes.has(key)) continue;
+    seenAnalysisTimes.add(key);
+    const { advisory_issued_at, ...cleanPoint } = point;
+    analysisPoints.push({ ...cleanPoint, windRadii: analysisRadiiByPoint.get(point.id) || [] });
+  }
+
+  const forecastPoints = (currentPointResult.results || [])
+    .filter(point => point.point_type === 'forecast')
+    .map(point => ({ ...point, windRadii: currentRadiiByPoint.get(point.id) || [] }));
+
+  const normalizedAnalysis = analysisPoints.map((point, index) => ({ ...point, source_order: index }));
+  const normalizedForecast = forecastPoints.map((point, index) => ({ ...point, source_order: normalizedAnalysis.length + index }));
+  const points = [...normalizedAnalysis, ...normalizedForecast];
+
   return jsonResponse({ version: VERSION, advisory, points });
 }
 
