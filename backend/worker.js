@@ -985,7 +985,8 @@ async function deleteAdvisoryTree(db, advisoryId) {
 }
 
 function advisoryQuality(row) {
-  return (row?.ingest_status === 'complete' ? 1000000 : 0) + Number(row?.point_count || 0) * 1000 + new Date(row?.updated_at || 0).getTime() / 1e13;
+  const currentParser = row?.parser_version === VERSION ? 1 : 0;
+  return (row?.ingest_status === 'complete' ? 1000000 : 0) + currentParser * 10000 + new Date(row?.updated_at || 0).getTime() / 1e13;
 }
 
 async function recordIdentityMerge(db, fromId, toId, reason, confidence, details = {}) {
