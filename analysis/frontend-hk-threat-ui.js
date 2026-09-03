@@ -64,8 +64,9 @@
   'use strict';
 
   const VERSION = 'frontend-hk-threat-ui/v2';
-  const SHADOW_V2_VERSION = 'hk-signal-shadow-v2/0.1';
+  const SHADOW_V2_VERSION = 'hk-signal-shadow-v2/0.2';
   const PROSPECTIVE_SCHEMA_VERSION = 'hk-beta-prospective-observation/v1';
+  const TERMINAL_STALE_HOURS = 12;
   const prospectiveObservations = new Map();
   const SIGNAL_THRESHOLDS = Object.freeze({
     T1: Object.freeze({ possible: 0.35, likely: 0.58 }),
@@ -112,6 +113,63 @@
         .map(timeMs).filter(Number.isFinite).forEach(value => times.push(value));
     });
     return times.length ? new Date(Math.max(...times)).toISOString() : new Date().toISOString();
+  }
+
+  function terminalIntensityHint(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text) return false;
+    return /low pressure area|\blpa\b|低壓區|低压区|dissipat|remnant low/.test(text);
+  }
+
+  function buildSourceLifecycleContext(group, observedAt) {
+    const observedMs = timeMs(observedAt);
+    const sourceEntries = Object.entries(group?.sources || {})
+      .filter(([, source]) => source && typeof source === 'object');
+    const sourceAges = [];
+    const intensities = {};
+    let forecastPointTotal = 0;
+
+    for (const [agency, source] of sourceEntries) {
+      const positions = Array.isArray(source?.positions) ? source.positions : [];
+      const forecast = Array.isArray(source?.forecast) ? source.forecast : [];
+      const current = positions[positions.length - 1] || null;
+      forecastPointTotal += forecast.length;
+      if (current?.intensity != null && String(current.intensity).trim()) {
+        intensities[agency] = String(current.intensity);
+      }
+      const evidenceMs = timeMs(source?.bulletinTime) ?? timeMs(current?.time);
+      if (Number.isFinite(observedMs) && Number.isFinite(evidenceMs) && observedMs >= evidenceMs) {
+        sourceAges.push({ agency, ageHours: (observedMs - evidenceMs) / 3600000 });
+      }
+    }
+
+    const ages = sourceAges.map(item => item.ageHours).filter(Number.isFinite);
+    const sourceAgencyCount = sourceEntries.length;
+    const freshestBulletinAgeHours = ages.length ? Math.min(...ages) : null;
+    const stalestBulletinAgeHours = ages.length ? Math.max(...ages) : null;
+    const terminalIntensityAgencyCount = Object.values(intensities).filter(terminalIntensityHint).length;
+    const allSourcesStale = sourceAgencyCount > 0
+      && ages.length === sourceAgencyCount
+      && ages.every(age => age >= TERMINAL_STALE_HOURS);
+    const terminalStateCandidate = sourceAgencyCount === 1
+      && forecastPointTotal === 0
+      && allSourcesStale
+      && terminalIntensityAgencyCount === 1;
+
+    return {
+      observedAt: Number.isFinite(observedMs) ? new Date(observedMs).toISOString() : null,
+      sourceAgencyCount,
+      sourceAgencies: sourceEntries.map(([agency]) => agency),
+      forecastPointTotal,
+      sourceAgeHoursByAgency: Object.fromEntries(sourceAges.map(item => [item.agency, item.ageHours])),
+      freshestBulletinAgeHours,
+      stalestBulletinAgeHours,
+      allSourcesStale,
+      terminalStaleThresholdHours: TERMINAL_STALE_HOURS,
+      currentIntensityByAgency: intensities,
+      terminalIntensityAgencyCount,
+      terminalStateCandidate
+    };
   }
 
   function engines() {
@@ -243,7 +301,7 @@
     return original;
   }
 
-  function buildShadowV2Forecast({ basicForecast, signalInputs, threatAssessment, generatedAt } = {}) {
+  function buildShadowV2Forecast({ basicForecast, signalInputs, threatAssessment, generatedAt, sourceLifecycle } = {}) {
     if (basicForecast?.available !== true) {
       return {
         schemaVersion: SHADOW_V2_VERSION,
@@ -275,6 +333,16 @@
     const lifecyclePenalty = futureTimeline.length === 0 && hoursAfterMinimum > 0
       ? clamp(directDepart * (hoursAfterMinimum / (hoursAfterMinimum + 12)) * 0.40, 0, 0.40)
       : 0;
+    const terminalCandidate = sourceLifecycle?.terminalStateCandidate === true
+      && futureTimeline.length === 0
+      && hoursAfterMinimum > 0;
+    const terminalAgeHours = finite(sourceLifecycle?.freshestBulletinAgeHours);
+    const terminalAgeBlend = terminalCandidate && Number.isFinite(terminalAgeHours)
+      ? clamp((terminalAgeHours - TERMINAL_STALE_HOURS) / TERMINAL_STALE_HOURS)
+      : 0;
+    const terminalLifecyclePenalty = terminalCandidate
+      ? clamp(0.22 + terminalAgeBlend * 0.10, 0, 0.32)
+      : 0;
     const adjustments = [];
 
     if (confidenceCoverageFactor < 0.999) adjustments.push({
@@ -290,13 +358,22 @@
       hoursAfterMinimum,
       directDepart
     });
+    if (terminalLifecyclePenalty >= 0.01) adjustments.push({
+      code: 'terminal-stale-lifecycle-decay',
+      label: '退化後陳舊資料殘留衰減',
+      penalty: terminalLifecyclePenalty,
+      freshestBulletinAgeHours: terminalAgeHours,
+      sourceAgencyCount: sourceLifecycle?.sourceAgencyCount ?? null,
+      forecastPointTotal: sourceLifecycle?.forecastPointTotal ?? null,
+      currentIntensityByAgency: cloneSerializable(sourceLifecycle?.currentIntensityByAgency ?? {})
+    });
 
     for (const code of ['T1', 'T3', 'T8']) {
       const baselineSignal = basicForecast?.signals?.[code];
       const signal = output?.signals?.[code];
       if (!baselineSignal || !signal) continue;
       const baselineRisk = finite(baselineSignal.riskIndex);
-      let riskFactor = 1 - lifecyclePenalty;
+      let riskFactor = (1 - lifecyclePenalty) * (1 - terminalLifecyclePenalty);
       let supportFactor = 1;
       let supportCoverage = 1;
       let strongestLeadHours = null;
@@ -354,7 +431,9 @@
         supportFactor,
         supportCoverage,
         strongestLeadHours,
-        lifecyclePenalty
+        lifecyclePenalty,
+        terminalLifecyclePenalty,
+        terminalStateCandidate: terminalCandidate
       };
     }
 
@@ -368,7 +447,9 @@
         hoursAfterMinimum,
         directDepart,
         futureTimelineCount: futureTimeline.length,
-        lifecyclePenalty
+        lifecyclePenalty,
+        terminalLifecyclePenalty,
+        sourceLifecycle: cloneSerializable(sourceLifecycle ?? null)
       }
     };
     output.semantics = {
@@ -379,6 +460,7 @@
       sourceCoverageAffectsNumericConfidence: true,
       longHorizonStrongSignalSupportIsContinuouslyDiscounted: true,
       postMinimumDepartureResidualRiskCanDecay: true,
+      staleTerminalLifecycleEvidenceCanDecayResidualRisk: true,
       missingPositiveWindowCarriesExplicitTimingState: true,
       noNewProbabilityOutput: true,
       officialHkoForecast: false,
@@ -395,7 +477,9 @@
       return { available: false, reason: 'frontend-analysis-engine-unavailable', schemaVersion: VERSION };
     }
     try {
+      const observedAt = options.observedAt || new Date().toISOString();
       const generatedAt = options.generatedAt || latestDataTime(group);
+      const sourceLifecycle = buildSourceLifecycleContext(group, observedAt);
       const snapshot = available.snapshot.buildStormAnalysisSnapshot(group, { generatedAt });
       const impact = available.impact.buildHongKongImpact(snapshot, options.impactOptions || {});
       const signalInputs = available.signal.buildHkoSignalRiskInputs(snapshot, impact, group, options.signalOptions || {});
@@ -417,7 +501,8 @@
         basicForecast,
         signalInputs,
         threatAssessment,
-        generatedAt: snapshot.generatedAt
+        generatedAt: snapshot.generatedAt,
+        sourceLifecycle
       });
       return {
         schemaVersion: VERSION,
@@ -553,9 +638,11 @@
     VERSION,
     SHADOW_V2_VERSION,
     PROSPECTIVE_SCHEMA_VERSION,
+    TERMINAL_STALE_HOURS,
     readProspectiveObservations,
     isBetaEnabled,
     analyzeGroup,
+    buildSourceLifecycleContext,
     buildShadowV2Forecast,
     renderGroupSummary,
     likelihoodLabel,

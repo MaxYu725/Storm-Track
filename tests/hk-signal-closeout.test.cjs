@@ -195,6 +195,10 @@ assert.equal(closeout.deriveCloseouts({
   asOf: '2026-08-22T21:00:00Z'
 }).closeouts.length, 0, 'already evaluated/skipped signals must not be duplicated at clear');
 
+execFileSync(process.execPath, [require.resolve('./hk-signal-closeout-diagnostics.test.cjs')], {
+  stdio: 'inherit'
+});
+
 execFileSync(process.execPath, [require.resolve('./hk-signal-closeout-awaiting-reconcile.test.mjs')], {
   stdio: 'inherit'
 });
