@@ -7,13 +7,19 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+env:
+  PROSPECTIVE_BRANCH: data/beta-prospective-observations
+  TRUTH_BRANCH: data/hko-warning-truth
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
@@ -23,3 +29,59 @@ jobs:
           node --check analysis/hk-signal-closeout.js
           node tests/hk-signal-closeout.test.cjs
           node tests/hk-signal-closeout-diagnostics.test.cjs
+      - name: Replay real NARRA corpus
+        shell: bash
+        env:
+          CLOSEOUT_AS_OF: '2026-09-03T01:23:27.926Z'
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/narra-prospective /tmp/narra-truth
+          mkdir -p /tmp/narra-prospective /tmp/narra-truth
+          git fetch --no-tags origin "$PROSPECTIVE_BRANCH" "$TRUTH_BRANCH"
+          git archive "origin/$PROSPECTIVE_BRANCH" | tar -x -C /tmp/narra-prospective
+          git archive "origin/$TRUTH_BRANCH" | tar -x -C /tmp/narra-truth
+          node scripts/evaluate-hk-signal.mjs /tmp/narra-prospective /tmp/narra-truth > /tmp/narra-raw.json
+          node scripts/apply-hk-signal-closeouts.mjs /tmp/narra-raw.json /tmp/narra-prospective /tmp/narra-truth > /tmp/narra-evaluation.json
+          mkdir -p tmp
+          jq '
+            .closeouts[]
+            | select(.caseId == "STC-2026-JMA-TC2622" and .signal == "T1")
+            | {
+                caseId,
+                signal,
+                forecastOutcome,
+                forecastEvidence: {
+                  classification: .forecastEvidence.classification,
+                  severityClassification: .forecastEvidence.severityClassification,
+                  snapshotCount: .forecastEvidence.snapshotCount,
+                  positiveSnapshotCount: .forecastEvidence.positiveSnapshotCount,
+                  possibleSnapshotCount: .forecastEvidence.possibleSnapshotCount,
+                  likelySnapshotCount: .forecastEvidence.likelySnapshotCount,
+                  likelihoodCounts: .forecastEvidence.likelihoodCounts,
+                  firstPositiveAt: .forecastEvidence.firstPositiveAt,
+                  firstLikelyAt: .forecastEvidence.firstLikelyAt,
+                  lastLikelyAt: .forecastEvidence.lastLikelyAt,
+                  maxRiskIndex: .forecastEvidence.maxRiskIndex,
+                  maxRiskIndexByLikelihood: .forecastEvidence.maxRiskIndexByLikelihood,
+                  terminalResidualSnapshotCount: .forecastEvidence.terminalResidualSnapshotCount,
+                  firstTerminalResidualAt: .forecastEvidence.firstTerminalResidualAt,
+                  lastTerminalResidualAt: .forecastEvidence.lastTerminalResidualAt,
+                  finalPreClose: .forecastEvidence.finalPreClose
+                }
+              }
+          ' /tmp/narra-evaluation.json > tmp/narra-evaluator-diagnostics.json
+          jq -e '.forecastEvidence.snapshotCount == 136' tmp/narra-evaluator-diagnostics.json
+          jq -e '.forecastEvidence.positiveSnapshotCount == (.forecastEvidence.possibleSnapshotCount + .forecastEvidence.likelySnapshotCount)' tmp/narra-evaluator-diagnostics.json
+          jq -e '.forecastEvidence.likelySnapshotCount > 0' tmp/narra-evaluator-diagnostics.json
+          jq -e '.forecastEvidence.terminalResidualSnapshotCount > 0' tmp/narra-evaluator-diagnostics.json
+          jq -e '.forecastEvidence.finalPreClose.diagnostics.terminalResidualCandidate == true' tmp/narra-evaluator-diagnostics.json
+      - name: Publish replay result for review
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tmp/narra-evaluator-diagnostics.json
+          git commit -m 'Record NARRA diagnostics replay [skip ci]'
+          git push origin HEAD:fix/narra-evaluator-diagnostics
