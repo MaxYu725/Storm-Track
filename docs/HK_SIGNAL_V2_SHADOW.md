@@ -1,19 +1,24 @@
 # HK Signal V2 Shadow
 
-Status: **ACTIVE PARALLEL SHADOW — V1 remains frozen evaluation baseline**
+Status: **ACTIVE PARALLEL SHADOW 0.2 — V1 remains frozen evaluation baseline**
 
-HK Signal V2 Shadow 是在現行 frozen V1 旁邊同步計算、同步顯示及同步保存的候選版本。它的目的不是立即取代 V1，而是在仍有活躍風暴期間，用同一批 as-issued input 做公平的逐輪比較。
+HK Signal V2 Shadow 是在現行 frozen V1 旁邊同步計算、同步顯示及同步保存的候選版本。它的目的不是立即取代 V1，而是用同一批 as-issued input 做公平的逐輪比較。
 
 V2 Shadow 不使用 HKO 事後 outcome 回餵當前預測，不改寫 raw prospective evidence，不改 evaluator rubric，也不把結果包裝成概率或官方風球預測。
 
-## 為何現在開始 V2
+目前 frontend 暴露的版本為：
 
-現有 prospective cases 已累積足夠明確的重複問題，適合由單純記錄 hypothesis 進入 parallel shadow comparison：
+`hk-signal-shadow-v2/0.2`
+
+## 為何現在保留 V2 Shadow
+
+現有 prospective cases 已累積數類可重複或具一般性的問題，適合維持 parallel shadow comparison：
 
 - **GAENARI / MB-01**：來源數量和 forecast horizon 收縮時，V1 numeric confidence 有機會反而上升；最後 T1 withdrawal 亦與 source membership 收縮高度同步。
 - **GAENARI / MS-02**：T1 可以長時間保持 positive，但 `estimatedWindow=null`；實際較像 first-visible-above-threshold / left-censored timing，而不是「沒有時間風險」。
 - **NARRA / MS-01**：最近點已過、已有離港證據後，global forecast-edge / horizon semantics 仍可能令 positive state 延後撤回。
-- **SAUDEL / MB-02**：T3 曾由約 +119h 的遠期 checkpoint 推至 `possible`，當時 strongest checkpoint 主要只有 CMA 單一 120h endpoint 支持。這是觀察 V2 能否改善 long-horizon support concentration 的高價值 live case。
+- **NARRA terminal residual**：最後只餘一個 stale HKO source、已降為 Low Pressure Area、沒有 forecast point、最近點已過且 future timeline 為空，V1 仍保留 T1 `possible`。
+- **SAUDEL / MB-02 stress observation**：T3 曾由約 +119h 的遠期 checkpoint 推至 `possible`，當時 checkpoint participation 很低。這只保留作特殊路徑壓力案例，不作一般模型 calibration 證據。
 
 這些不是用單一案例直接校準成答案，而是把已知問題轉成一組有限、可解釋、可回退的 V2 shadow hypotheses，再用之後每一輪 live evidence 比較。
 
@@ -24,7 +29,7 @@ V2 Shadow 不使用 HKO 事後 outcome 回餵當前預測，不改寫 raw prospe
   → 現行 analysis chain
   → frozen basic-hk-signal-forecast/v1
       ├─ V1 顯示 / prospective evidence / evaluator baseline
-      └─ V2 Shadow 0.1 deterministic adjustment
+      └─ V2 Shadow 0.2 deterministic adjustment
            → 並排顯示
            → 同一 prospective observation 內額外保存
            → 暫不進 evaluator / scoring
@@ -32,7 +37,7 @@ V2 Shadow 不使用 HKO 事後 outcome 回餵當前預測，不改寫 raw prospe
 
 V1 的 threshold、weighting、forecast semantics、truth attribution、closeout 和 evaluator 均不修改。V2 只能在 V1 之後建立 shadow output，因此這個階段可以直接比較兩個版本，而不破壞已累積的 V1 prospective sequence。
 
-## V2 Shadow 0.1 改動
+## V2 Shadow 0.2 改動
 
 ### 1. Source coverage 影響 numeric confidence
 
@@ -43,27 +48,38 @@ agencyCoverage = usableAgencyCount / 4
 confidenceCoverageFactor = 0.55 + 0.45 × agencyCoverage
 ```
 
-各 signal 的 V2 confidence 會乘上這個 factor。這不是 hard gate：一個 agency 仍可以提供 forecast evidence，但不再讓「分歧消失」被誤讀成與四機構完整支持相若的信心。
+各 signal 的 V2 confidence 會乘上這個 factor。這不是 hard gate：一個 agency 仍可以提供 forecast evidence，但不再讓「分歧消失」被誤讀成與四機構完整 evidence 相若的信心。
 
-### 2. T3 / T8 遠期少數機構支援折減
+這個 shadow hypothesis 目前仍把四個 agency 當作完整 coverage denominator，因此「expected-but-missing」與「legitimately unavailable/not applicable」仍未分開；在 promotion 前需要再驗證。
+
+### 2. T3 / T8 遠期 checkpoint agency-participation 折減
 
 只處理 **T3 / T8**，不套用到 T1。若 strongest checkpoint：
 
 - lead time > 72h；而且
-- 該 checkpoint 的實際 agency count 少於整宗 case 當輪 usable agency count，
+- 該 checkpoint 的 `totalAgencyCount` 少於整宗 case 當輪 `usableAgencyCount`，
 
 V2 會連續折減 risk，而不是設定「至少 N 個機構」的硬門檻：
 
 ```text
-supportCoverage = checkpointAgencyCount / usableAgencyCount
+checkpointParticipation = strongestCheckpoint.totalAgencyCount / usableAgencyCount
 horizonBlend = clamp((leadHours - 72) / 48, 0, 1)
-supportFactor = 1 - horizonBlend × (1 - supportCoverage) × 0.45
-V2 risk = V1 risk × supportFactor
+participationFactor = 1 - horizonBlend × (1 - checkpointParticipation) × 0.45
+V2 risk = V1 risk × participationFactor
 ```
 
-因此 +72h 附近幾乎不變；越接近 +120h、而同時越集中於少數 agency，折減越明顯。
+實作欄位仍沿用：
 
-這項改動直接針對 SAUDEL MB-02，但仍保留少數機構 scenario 作早期提示，不會直接把它刪除。
+```text
+supportCoverage
+supportFactor
+```
+
+但它們在 Shadow 0.2 的實際意思是 **checkpoint participation/availability**。公式並沒有直接使用 `strongestCheckpoint.supportAgencyCount` 作 risk discount。
+
+因此 +72h 附近幾乎不變；越接近 +120h、而同時可提供該 checkpoint 的 agency 越少，折減越明顯。
+
+這項改動最初受 SAUDEL MB-02 啟發，現階段仍屬 SAUDEL-heavy hypothesis。它必須保持 shadow-only，直到獨立 normal-path cases 證明這個 participation discount 有一般價值。未來亦應另外研究「checkpoint participation」與「threshold-positive support fraction」是否需要分拆，而不是把兩者混稱為同一件事。
 
 ### 3. 最近點已過且離港時，殘留 risk 可連續衰減
 
@@ -85,9 +101,35 @@ V2 risk = V1 risk × (1 - lifecyclePenalty)
 
 目的是測試 NARRA / GAENARI 類 post-minimum delayed withdrawal 是否能更自然，而不是一看到最近點過去便強制變成 `unlikely`。
 
-### 4. Positive-but-no-window 改為明確 timing state
+### 4. Terminal stale lifecycle decay（0.2 新增）
 
-V2 0.1 **不捏造精確時間窗口**。當 likelihood 仍 positive 而 window 為 null 時，額外標示：
+NARRA R2 顯示，普通 departure decay 不足以處理一種已結束 forecast lifecycle 的 residual risk：真實 final snapshot 的 `directDepart=0`，因此第 3 項規則不會啟動。
+
+Shadow 0.2 加入另一個保守、generic 的 terminal lifecycle decay。只有全部條件同時成立才可啟動：
+
+1. exactly one remaining source；
+2. no forecast points；
+3. 所有 remaining source evidence 已 stale 至少 12 小時；
+4. 有明確 terminal intensity hint，例如 `Low Pressure Area`、`LPA`、`remnant low` 或 `dissipating`；
+5. representative closest 已在過去；
+6. future threat timeline 為空。
+
+基礎 terminal penalty 為 22%，並按超過 12 小時 stale threshold 的程度連續增加，最高 32%。它和普通 departure penalty 可乘法疊加，但條件不同。
+
+重要 counterexample：**stale alone 不足夠**。如果 remaining source 仍明確標示 active `Tropical Storm`，terminal decay 必須保持 0。
+
+NARRA frozen regression fixture 中：
+
+- V1 保留 T1 `possible`，risk 約 `0.4394`；
+- ordinary departure penalty 為 0；
+- terminal lifecycle penalty 啟動；
+- V2 T1 降至 `unlikely`。
+
+這只證明 generic fixture 行為符合設計，**不代表 NARRA 是 prospective V2 0.2 勝利**，因為 NARRA 當時沒有 contemporaneous 0.2 sequence。
+
+### 5. Positive-but-no-window 改為明確 timing state
+
+V2 0.2 **不捏造精確時間窗口**。當 likelihood 仍 positive 而 window 為 null 時，額外標示：
 
 - `left-censored-or-horizon-limited` — 尚有 future timeline，但未看到 threshold crossing / 預報長度限制；
 - `post-minimum-no-future` — 最近點已過且沒有 future timeline；
@@ -97,7 +139,7 @@ V2 0.1 **不捏造精確時間窗口**。當 likelihood 仍 positive 而 window 
 
 UI 會把這些狀態轉成簡短中文，例如「窗：起點不可見/受預報長度限制」。這先解決 MS-02 的解讀問題，而不是用假設時間補空值。
 
-## V2 0.1 明確不做的事
+## V2 0.2 明確不做的事
 
 - 不修改 `basic-hk-signal-forecast/v1`。
 - 不修改 HKO truth / evaluator / closeout。
@@ -105,8 +147,9 @@ UI 會把這些狀態轉成簡短中文，例如「窗：起點不可見/受預�
 - 不使用事後 HKO outcome 調整 live V2。
 - 不新增 probability / ML。
 - 不把 Consensus Track 當成第五個 agency vote。
-- 不因 SAUDEL 下一輪結果立即再調參。
-- 不加入大量 case-specific exception。
+- 不把 HKO Local Wind observations 直接轉成 T1/T3/T8 risk。
+- 不因 SAUDEL 的單一 snapshot 或特殊多段路徑立即再調參。
+- 不加入 case-specific exception。
 
 ## Prospective evidence
 
@@ -125,59 +168,76 @@ analysis.basicForecast
 
 因此同一 capture 可以做逐輪 V1 / V2 對照，而既有 evaluator 繼續只讀 V1。
 
-## SAUDEL live comparison
+## Case interpretation policy
 
-SAUDEL (`STC-2026-JMA-TC2621`) 是 V2 Shadow 0.1 的首個重點 prospective comparison case，原因不是預先認定 V2 應該較低，而是它同時具備：
+### GAENARI
 
-- 很長 forecast horizon；
-- 遠期 T3 escalation 曾集中於單一 CMA endpoint；
-- forecast-edge 高；
-- 後續不同 agency 有機會逐步加入、收斂、退出或改變 horizon；
-- 最終可能出現 official signal，也可能自然 withdrawal。
+用作 source-membership confidence 和 timing left-censoring 的一般性證據。GAENARI 是 possible-only transient false alarm，不應與 NARRA 26 個 `likely` false-positive snapshots 混為同一嚴重度。
 
-逐輪主要看：
+### NARRA
 
-1. V1 T3 若因單一 +100–120h agency endpoint 升高，V2 是否只做適量折減，而不是完全失去 early warning。
-2. 當 HKO / JMA / CWA 後續真正收斂至同一高威脅時段，V2 的折減是否自然減少。
-3. 若 SAUDEL 最終真的需要 T3，V2 是否仍保留足夠 lead time。
-4. 若最終不發 T3，V2 是否比 V1 減少 transient long-horizon false positive / persistence。
-5. T1 不受 long-horizon strong-signal support discount，確認 V2 不因處理 T3 問題而犧牲廣義早期接近提示。
-6. source membership 減少時，V2 numeric confidence 是否比 V1 更符合 evidence completeness。
-7. 最近點過後，V2 withdrawal 是否比 V1 更符合實際 departure evidence，同時沒有過早撤回。
+R2 已完成。NARRA 提供：
 
-## Active-storm freeze policy
+- 26 個 genuine T1 `likely` false-positive snapshots；
+- 兩個 terminal residual snapshots；
+- T3/T8 correct-negative evidence。
 
-V2 Shadow 0.1 上線後，在香港附近仍有活躍風暴期間：
+NARRA 仍是 `OBSERVE MORE`，不單獨修改 V1 calibration。Terminal fixture 可測試 V2 0.2，但沒有 contemporaneous 0.2 corpus，不能回溯宣稱 V2 勝出。
+
+### SAUDEL
+
+SAUDEL 是 extreme-path / multi-phase stress case。其資料可用於：
+
+- 觀察 phase semantics；
+- 檢查 long-horizon participation hypothesis；
+- 比較 forecast geometry、local wind、official signal state 與 AI situation interpretation。
+
+但它不納入目前一般 V1/V2 calibration 結論，也不應再衍生 SAUDEL-shaped deterministic clauses。正常期間只保留 evidence；待 case 完整 closeout 後再作獨立 stress-case 總結。
+
+## Freeze policy
+
+在 cross-case evidence 未成熟前：
 
 - V1 frozen；
-- V2 0.1 亦暫時 freeze；
+- V2 0.2 frozen；
 - correctness bug 可修；
-- 不因單一新 snapshot 再調公式或 coefficient；
+- documentation / instrumentation correctness 可修；
+- 不因單一 snapshot 再調公式或 coefficient；
 - 所有 V1 / V2 差異先保存 evidence。
 
-這樣 SAUDEL 及同時期其他風暴才能提供真正 prospective 的 A/B sequence，而不是每一輪都改模型後再比較。
+## 下一次全面 V1/V2 decision gate
 
-## 香港附近風暴全部消散後的全面整理
+下一輪正式 promotion / modify / write-off review，應至少具備更多 **normal-path** completed cases，並最好包含 ordinary HKO-issued positive case。統一比較：
 
-當這一輪香港附近熱帶氣旋全部離開 lifecycle / 完成可用 closeout 後，做一次統一 review，而不是邊看邊繼續新增 patch：
+1. T1/T3/T8 first-positive / first-likely lead；
+2. max risk；
+3. positive persistence；
+4. withdrawal timing；
+5. window / timing-state；
+6. numeric confidence；
+7. checkpoint participation 與真正 threshold-positive agency support；
+8. false-negative cost；
+9. false-positive severity；
+10. 同一 immutable capture 下的 V1/V2 paired difference。
 
-1. 對 GAENARI、NARRA、SAUDEL 及同期其他完成 case 建立完整 V1 / V2 timeline comparison。
-2. 比較 T1/T3/T8 first-positive、max risk、positive persistence、withdrawal、window/timing-state、numeric confidence、agency support。
-3. 只以當時已保存的 prospective evidence + official truth 做 verification，禁止 future leakage。
-4. 判斷四個 V2 hypothesis 各自是：保留、調整、移除或 evidence insufficient。
-5. 檢查 V2 是否真的整體優於 V1，而不是只修好 SAUDEL。
-6. 若 V2 值得保留，再把目前為降低 live deployment 風險而暫放在 `frontend-hk-threat-ui.js` 的 shadow logic 抽成獨立 analysis module。
-7. 統一整理 UI、Observation Board、recorder schema/evaluator strategy 和文件，避免 V1/V2 臨時比較結構永久累積。
-8. 再決定 V2 是否進入正式 evaluator candidate；未達到足夠 cross-case improvement 就保持 shadow 或 write-off。
+只以當時已保存的 prospective evidence + official truth 做 verification，禁止 future leakage。
+
+在這個 gate 之前：
+
+- 不 promotion V2；
+- 不重調 V1；
+- 不把 SAUDEL 當一般 calibration sample；
+- 不因 NARRA 單一 false-positive case 改 T1 coefficients；
+- 不因 NARRA 改 T3/T8。
 
 ## Implementation note
 
-V2 Shadow 0.1 暫時實作在 `analysis/frontend-hk-threat-ui.js`，原因是 active-storm 期間要最小化部署面：
+V2 Shadow 0.2 暫時實作在 `analysis/frontend-hk-threat-ui.js`，原因是 live/shadow 階段要最小化部署面：
 
 - 不新增 production Worker / D1 依賴；
-- 不修改 authoritative backend；
+- 不修改 authoritative backend forecast contract；
 - 不修改 V1 core；
 - 不需要改 `index.html` script stack；
-- 現有 service worker 對 same-origin JavaScript 已採 network-first，可讓 shadow logic 更新而保留 offline fallback。
+- 現有 service worker 對 same-origin JavaScript 採 network-first，可讓 shadow logic 更新而保留 offline fallback。
 
-若 post-storm review 決定保留 V2，才進行模組抽離和正式架構整理。
+如果未來 cross-case review 決定保留 V2，才把 shadow logic 抽成獨立 analysis module、建立獨立 schema/version contract，並讓 evaluator 能在同一 immutable capture 上公平 score V1/V2。
