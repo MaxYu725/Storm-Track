@@ -1,0 +1,33 @@
+name: Probe HKO warning history
+
+on:
+  push:
+    branches:
+      - fix/hko-truth-gap-history-audit
+    paths:
+      - scripts/probe-hko-warning-history.mjs
+      - .github/workflows/hko-warning-history-probe.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/probe-hko-warning-history.mjs
+      - .github/workflows/hko-warning-history-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Probe August 2026 No.1-or-higher history
+        env:
+          HKO_WARNDB_MONTH: '202608'
+        run: node scripts/probe-hko-warning-history.mjs
