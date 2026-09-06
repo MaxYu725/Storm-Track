@@ -6,6 +6,7 @@ on:
     paths:
       - analysis/hk-signal-forecast-v2.js
       - scripts/diagnose-hk-signal-t1-likely.mjs
+      - scripts/diagnose-hk-signal-t1-context.mjs
       - .github/workflows/hk-signal-v2-t1-diagnostic.yml
   workflow_dispatch:
 
@@ -47,9 +48,35 @@ jobs:
             ].join(' | '));
           }
           NODE
+      - name: Diagnose T1 environmental and forecast context
+        run: |
+          node --check scripts/diagnose-hk-signal-t1-context.mjs
+          node scripts/diagnose-hk-signal-t1-context.mjs /tmp/storm-beta-corpus > /tmp/hk-signal-t1-context.json
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const r = JSON.parse(fs.readFileSync('/tmp/hk-signal-t1-context.json','utf8'));
+          for (const c of r.cases) {
+            const s = c.allLikelyStats;
+            console.log([
+              c.displayName,
+              c.caseId,
+              `V1/V2 likely=${c.v1LikelyCount}/${c.v2LikelyCount}`,
+              `wind current/closest median=${s.currentMaximumWindMedianMs.median}/${s.closestMaximumWindMedianMs.median}`,
+              `motion median=${s.derivedMotionSpeedMedianKmh.median}`,
+              `spread km median=${s.comparisonSpreadKm.median}`,
+              `closest span km median=${s.closestDistanceSpanKm.median}`,
+              `time spread h median=${s.closestTimeSpreadHours.median}`,
+              `wind-field conf median=${s.windFieldConfidence.median}`,
+              `forecast-edge median=${s.forecastEdge.median}`,
+              `agency-disagreement median=${s.agencyDisagreement.median}`
+            ].join(' | '));
+          }
+          NODE
       - uses: actions/upload-artifact@v4
         with:
           name: hk-signal-t1-likely-diagnostic
-          path: /tmp/hk-signal-t1-likely.json
+          path: |
+            /tmp/hk-signal-t1-likely.json
+            /tmp/hk-signal-t1-context.json
           retention-days: 7
           if-no-files-found: error
