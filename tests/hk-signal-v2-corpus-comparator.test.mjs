@@ -40,7 +40,7 @@ fs.writeFileSync(path.join(dir,'capture.json'),`${JSON.stringify(record,null,2)}
 try {
   const stdout=execFileSync(process.execPath,[path.resolve('scripts/compare-hk-signal-v2-corpus.mjs'),root],{encoding:'utf8'});
   const report=JSON.parse(stdout);
-  assert.equal(report.v2Version,'hk-signal-shadow-v2/0.4');
+  assert.equal(report.v2Version,'hk-signal-shadow-v2/0.5');
   assert.equal(report.recordCount,1);
   assert.equal(report.observationCount,1);
   assert.equal(report.caseCount,1);
