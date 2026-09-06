@@ -53,8 +53,9 @@ function build(v1, assessment, usable=4, lifecycle={ sourceAgencyCount:4, termin
   });
 }
 
-assert.equal(v2.VERSION, 'hk-signal-shadow-v2/0.4');
+assert.equal(v2.VERSION, 'hk-signal-shadow-v2/0.5');
 assert.equal(v2.T1_LIKELY_READINESS_FLOOR, .58);
+assert.equal(v2.T1_PERSISTENCE_FACTOR_FLOOR, .85);
 
 // A real outward-then-inward turn is a separate operational phase.
 {
@@ -132,7 +133,27 @@ assert.equal(v2.T1_LIKELY_READINESS_FLOOR, .58);
   assert.equal(JSON.stringify(v1),before,'V2 must not mutate frozen V1');
 }
 
-// SAUDEL-like mature geometry keeps a strong T1 likely state.
+// Persistence is part of likely maturity rather than a diagnostic-only value.
+// A newly emerged likely state with mature-looking geometry must stay possible until
+// the evidence has persisted long enough; there is no hard hour gate.
+{
+  const v1=forecast();
+  v1.signals.T1={
+    likelihood:'likely',riskIndex:.72,confidenceIndex:.50,persistenceHours:1,estimatedWindow:null,
+    strongestCheckpoint:{validTime:'2026-08-31T06:00:00Z',supportAgencyCount:4,totalAgencyCount:4}
+  };
+  const out=build(v1,threat({
+    approach:.5,depart:.02,currentDistanceKm:400,forecastMinimumKm:250,
+    timeline:[{leadHours:6,distanceMedianKm:250}]
+  }));
+  const readiness=out.signals.T1.shadowDiagnostics.decisionReadiness;
+  assert.ok(readiness.persistenceCredibility<.1);
+  assert.ok(readiness.persistenceFactor>.85 && readiness.persistenceFactor<.87);
+  assert.equal(out.signals.T1.likelihood,'possible');
+  assert.ok(out.signals.T1.decisionReadinessIndex<.58);
+}
+
+// SAUDEL-like mature geometry and sustained evidence keeps a strong T1 likely state.
 {
   const v1=forecast();
   v1.signals.T1={
@@ -145,6 +166,7 @@ assert.equal(v2.T1_LIKELY_READINESS_FLOOR, .58);
   }));
   assert.equal(out.signals.T1.likelihood,'likely');
   assert.ok(out.signals.T1.decisionReadinessIndex>=.58);
+  assert.ok(out.signals.T1.shadowDiagnostics.decisionReadiness.persistenceFactor>.99);
 }
 
 // V1 possible is never deleted solely because likely-readiness is immature.
@@ -201,4 +223,4 @@ assert.equal(v2.T1_LIKELY_READINESS_FLOOR, .58);
   assert.equal(out.semantics.riskWindowIsNotIssuanceTime,true);
 }
 
-console.log('HK Signal V2 quiet-window 0.4 tests: OK');
+console.log('HK Signal V2 quiet-window 0.5 tests: OK');
