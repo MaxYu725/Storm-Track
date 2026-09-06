@@ -1,10 +1,25 @@
 (function attachStormHkThreatUi(root, factory) {
+  installV2Engine(root);
   installSettingsPanelUi(root);
   installHkoSignalStatementUi(root);
   installOptionalWindLayer(root);
   const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.StormHkThreatUi = api;
+
+  function installV2Engine(browserRoot) {
+    if (!browserRoot?.document || browserRoot.StormHkSignalForecastV2) return;
+    if (browserRoot.document.querySelector('script[data-storm-hk-signal-v2]')) return;
+    if (browserRoot.document.readyState === 'loading' && typeof browserRoot.document.write === 'function') {
+      browserRoot.document.write('<script src="./analysis/hk-signal-forecast-v2.js" data-storm-hk-signal-v2="true"><\/script>');
+      return;
+    }
+    const script = browserRoot.document.createElement('script');
+    script.src = './analysis/hk-signal-forecast-v2.js';
+    script.async = false;
+    script.dataset.stormHkSignalV2 = 'true';
+    browserRoot.document.head.appendChild(script);
+  }
 
   function installSettingsPanelUi(browserRoot) {
     if (!browserRoot?.document) return;
@@ -63,38 +78,42 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormHkThreatUi(root) {
   'use strict';
 
-  const VERSION = 'frontend-hk-threat-ui/v2';
-  const SHADOW_V2_VERSION = 'hk-signal-shadow-v2/0.2';
+  const VERSION = 'frontend-hk-threat-ui/v3';
+  const SHADOW_V2_VERSION = 'hk-signal-shadow-v2/0.5';
   const PROSPECTIVE_SCHEMA_VERSION = 'hk-beta-prospective-observation/v1';
-  const TERMINAL_STALE_HOURS = 12;
   const prospectiveObservations = new Map();
-  const SIGNAL_THRESHOLDS = Object.freeze({
-    T1: Object.freeze({ possible: 0.35, likely: 0.58 }),
-    T3: Object.freeze({ possible: 0.38, likely: 0.65 }),
-    T8: Object.freeze({ possible: 0.40, likely: 0.70 })
-  });
 
   function finite(value) {
+    if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
   }
 
-  function clamp(value, min = 0, max = 1) {
-    return Math.max(min, Math.min(max, value));
-  }
-
   function timeMs(value) {
-    if (!value) return null;
+    if (value == null || value === '') return null;
     const ms = Date.parse(value);
     return Number.isFinite(ms) ? ms : null;
   }
 
-  function leadHours(reference, target) {
-    const referenceMs = timeMs(reference);
-    const targetMs = timeMs(target);
-    if (!Number.isFinite(referenceMs) || !Number.isFinite(targetMs)) return null;
-    return (targetMs - referenceMs) / (60 * 60 * 1000);
+  function cloneSerializable(value) {
+    if (value == null) return value;
+    try { return JSON.parse(JSON.stringify(value)); }
+    catch { return null; }
   }
+
+  function resolveV2Engine() {
+    if (root?.StormHkSignalForecastV2?.buildForecast) return root.StormHkSignalForecastV2;
+    if (typeof require === 'function') {
+      try {
+        const candidate = require('./hk-signal-forecast-v2.js');
+        if (candidate?.buildForecast) return candidate;
+      } catch {}
+    }
+    return null;
+  }
+
+  const initialV2Engine = resolveV2Engine();
+  const TERMINAL_STALE_HOURS = initialV2Engine?.TERMINAL_STALE_HOURS ?? 12;
 
   function isBetaEnabled() {
     if (!root?.location) return true;
@@ -115,60 +134,17 @@
     return times.length ? new Date(Math.max(...times)).toISOString() : new Date().toISOString();
   }
 
-  function terminalIntensityHint(value) {
-    const text = String(value || '').trim().toLowerCase();
-    if (!text) return false;
-    return /low pressure area|\blpa\b|低壓區|低压区|dissipat|remnant low/.test(text);
-  }
-
   function buildSourceLifecycleContext(group, observedAt) {
-    const observedMs = timeMs(observedAt);
-    const sourceEntries = Object.entries(group?.sources || {})
-      .filter(([, source]) => source && typeof source === 'object');
-    const sourceAges = [];
-    const intensities = {};
-    let forecastPointTotal = 0;
-
-    for (const [agency, source] of sourceEntries) {
-      const positions = Array.isArray(source?.positions) ? source.positions : [];
-      const forecast = Array.isArray(source?.forecast) ? source.forecast : [];
-      const current = positions[positions.length - 1] || null;
-      forecastPointTotal += forecast.length;
-      if (current?.intensity != null && String(current.intensity).trim()) {
-        intensities[agency] = String(current.intensity);
-      }
-      const evidenceMs = timeMs(source?.bulletinTime) ?? timeMs(current?.time);
-      if (Number.isFinite(observedMs) && Number.isFinite(evidenceMs) && observedMs >= evidenceMs) {
-        sourceAges.push({ agency, ageHours: (observedMs - evidenceMs) / 3600000 });
-      }
+    const engine = resolveV2Engine();
+    if (typeof engine?.buildSourceLifecycleContext === 'function') {
+      return engine.buildSourceLifecycleContext(group, observedAt);
     }
-
-    const ages = sourceAges.map(item => item.ageHours).filter(Number.isFinite);
-    const sourceAgencyCount = sourceEntries.length;
-    const freshestBulletinAgeHours = ages.length ? Math.min(...ages) : null;
-    const stalestBulletinAgeHours = ages.length ? Math.max(...ages) : null;
-    const terminalIntensityAgencyCount = Object.values(intensities).filter(terminalIntensityHint).length;
-    const allSourcesStale = sourceAgencyCount > 0
-      && ages.length === sourceAgencyCount
-      && ages.every(age => age >= TERMINAL_STALE_HOURS);
-    const terminalStateCandidate = sourceAgencyCount === 1
-      && forecastPointTotal === 0
-      && allSourcesStale
-      && terminalIntensityAgencyCount === 1;
-
     return {
-      observedAt: Number.isFinite(observedMs) ? new Date(observedMs).toISOString() : null,
-      sourceAgencyCount,
-      sourceAgencies: sourceEntries.map(([agency]) => agency),
-      forecastPointTotal,
-      sourceAgeHoursByAgency: Object.fromEntries(sourceAges.map(item => [item.agency, item.ageHours])),
-      freshestBulletinAgeHours,
-      stalestBulletinAgeHours,
-      allSourcesStale,
-      terminalStaleThresholdHours: TERMINAL_STALE_HOURS,
-      currentIntensityByAgency: intensities,
-      terminalIntensityAgencyCount,
-      terminalStateCandidate
+      observedAt: Number.isFinite(timeMs(observedAt)) ? new Date(timeMs(observedAt)).toISOString() : null,
+      sourceAgencyCount: Object.keys(group?.sources || {}).length,
+      sourceAgencies: Object.keys(group?.sources || {}).sort(),
+      forecastPointTotal: Object.values(group?.sources || {}).reduce((sum, source) => sum + (Array.isArray(source?.forecast) ? source.forecast.length : 0), 0),
+      terminalStateCandidate: false
     };
   }
 
@@ -178,18 +154,13 @@
     const signal = root?.StormHkoSignalRiskInputs;
     const threat = root?.StormHkThreatAssessment;
     const forecast = root?.StormBasicHkSignalForecast;
+    const shadow = resolveV2Engine();
     if (typeof snapshot?.buildStormAnalysisSnapshot !== 'function'
         || typeof impact?.buildHongKongImpact !== 'function'
         || typeof signal?.buildHkoSignalRiskInputs !== 'function'
         || typeof threat?.buildHkThreatAssessment !== 'function'
         || typeof forecast?.buildBasicHkSignalForecast !== 'function') return null;
-    return { snapshot, impact, signal, threat, forecast };
-  }
-
-  function cloneSerializable(value) {
-    if (value == null) return value;
-    try { return JSON.parse(JSON.stringify(value)); }
-    catch { return null; }
+    return { snapshot, impact, signal, threat, forecast, shadow };
   }
 
   function pointSummary(point) {
@@ -230,7 +201,7 @@
       signalInputs: root?.StormHkoSignalRiskInputs?.VERSION ?? root?.StormHkoSignalRiskInputs?.INPUT_VERSION ?? null,
       threatAssessment: root?.StormHkThreatAssessment?.VERSION ?? null,
       basicForecast: root?.StormBasicHkSignalForecast?.VERSION ?? null,
-      shadowForecastV2: SHADOW_V2_VERSION
+      shadowForecastV2: resolveV2Engine()?.VERSION ?? SHADOW_V2_VERSION
     };
   }
 
@@ -293,182 +264,22 @@
       .sort((left, right) => String(left?.group?.key || '').localeCompare(String(right?.group?.key || '')))) || [];
   }
 
-  function degradedLikelihood(original, riskIndex, code) {
-    const thresholds = SIGNAL_THRESHOLDS[code];
-    if (!thresholds || original === 'unlikely' || !Number.isFinite(riskIndex)) return original;
-    if (riskIndex < thresholds.possible) return 'unlikely';
-    if (original === 'likely' && riskIndex < thresholds.likely) return 'possible';
-    return original;
-  }
-
   function buildShadowV2Forecast({ basicForecast, signalInputs, threatAssessment, generatedAt, sourceLifecycle } = {}) {
-    if (basicForecast?.available !== true) {
-      return {
-        schemaVersion: SHADOW_V2_VERSION,
-        available: false,
-        reason: basicForecast?.reason || 'v1-unavailable',
-        semantics: { shadowOnly: true, officialHkoForecast: false, aiGenerated: false }
-      };
+    const engine = resolveV2Engine();
+    if (typeof engine?.buildForecast === 'function') {
+      return engine.buildForecast({ basicForecast, signalInputs, threatAssessment, generatedAt, sourceLifecycle });
     }
-
-    const output = cloneSerializable(basicForecast);
-    output.schemaVersion = SHADOW_V2_VERSION;
-    output.baseForecastSchemaVersion = basicForecast.schemaVersion ?? null;
-    output.generatedAt = generatedAt ?? basicForecast.generatedAt ?? null;
-
-    const usableAgencyCount = Math.max(0, finite(signalInputs?.featureVector?.usableAgencyCount)
-      ?? finite(signalInputs?.coverage?.usableAgencyCount)
-      ?? 0);
-    const agencyCoverage = clamp(usableAgencyCount / 4);
-    const confidenceCoverageFactor = 0.55 + 0.45 * agencyCoverage;
-    const closestTime = basicForecast?.impact?.closestApproach?.time ?? null;
-    const minimumLeadHours = leadHours(output.generatedAt, closestTime);
-    const hoursAfterMinimum = Number.isFinite(minimumLeadHours) ? Math.max(0, -minimumLeadHours) : 0;
-    const directDepart = clamp(finite(threatAssessment?.analyzers?.directDepart?.confidence) ?? 0);
-    const futureTimeline = (Array.isArray(threatAssessment?.timeline) ? threatAssessment.timeline : [])
-      .filter(item => {
-        const lead = finite(item?.leadHours) ?? leadHours(output.generatedAt, item?.validTime ?? item?.time);
-        return Number.isFinite(lead) && lead > 1e-6;
-      });
-    const lifecyclePenalty = futureTimeline.length === 0 && hoursAfterMinimum > 0
-      ? clamp(directDepart * (hoursAfterMinimum / (hoursAfterMinimum + 12)) * 0.40, 0, 0.40)
-      : 0;
-    const terminalCandidate = sourceLifecycle?.terminalStateCandidate === true
-      && futureTimeline.length === 0
-      && hoursAfterMinimum > 0;
-    const terminalAgeHours = finite(sourceLifecycle?.freshestBulletinAgeHours);
-    const terminalAgeBlend = terminalCandidate && Number.isFinite(terminalAgeHours)
-      ? clamp((terminalAgeHours - TERMINAL_STALE_HOURS) / TERMINAL_STALE_HOURS)
-      : 0;
-    const terminalLifecyclePenalty = terminalCandidate
-      ? clamp(0.22 + terminalAgeBlend * 0.10, 0, 0.32)
-      : 0;
-    const adjustments = [];
-
-    if (confidenceCoverageFactor < 0.999) adjustments.push({
-      code: 'source-coverage-confidence',
-      label: '來源完整度信心修正',
-      factor: confidenceCoverageFactor,
-      usableAgencyCount
-    });
-    if (lifecyclePenalty >= 0.01) adjustments.push({
-      code: 'post-minimum-departure-decay',
-      label: '最近點後離港殘留衰減',
-      penalty: lifecyclePenalty,
-      hoursAfterMinimum,
-      directDepart
-    });
-    if (terminalLifecyclePenalty >= 0.01) adjustments.push({
-      code: 'terminal-stale-lifecycle-decay',
-      label: '退化後陳舊資料殘留衰減',
-      penalty: terminalLifecyclePenalty,
-      freshestBulletinAgeHours: terminalAgeHours,
-      sourceAgencyCount: sourceLifecycle?.sourceAgencyCount ?? null,
-      forecastPointTotal: sourceLifecycle?.forecastPointTotal ?? null,
-      currentIntensityByAgency: cloneSerializable(sourceLifecycle?.currentIntensityByAgency ?? {})
-    });
-
-    for (const code of ['T1', 'T3', 'T8']) {
-      const baselineSignal = basicForecast?.signals?.[code];
-      const signal = output?.signals?.[code];
-      if (!baselineSignal || !signal) continue;
-      const baselineRisk = finite(baselineSignal.riskIndex);
-      let riskFactor = (1 - lifecyclePenalty) * (1 - terminalLifecyclePenalty);
-      let supportFactor = 1;
-      let supportCoverage = 1;
-      let strongestLeadHours = null;
-      const strongest = baselineSignal.strongestCheckpoint || null;
-      const checkpointTotal = Math.max(0, finite(strongest?.totalAgencyCount) ?? 0);
-      if (strongest?.validTime) strongestLeadHours = leadHours(output.generatedAt, strongest.validTime);
-
-      if (code !== 'T1'
-          && Number.isFinite(strongestLeadHours)
-          && strongestLeadHours > 72
-          && usableAgencyCount > 0
-          && checkpointTotal > 0
-          && checkpointTotal < usableAgencyCount) {
-        supportCoverage = clamp(checkpointTotal / usableAgencyCount);
-        const horizonBlend = clamp((strongestLeadHours - 72) / 48);
-        supportFactor = 1 - horizonBlend * (1 - supportCoverage) * 0.45;
-        riskFactor *= supportFactor;
-        adjustments.push({
-          code: `${code.toLowerCase()}-long-horizon-support`,
-          label: `${code} 遠期少數機構支援折減`,
-          factor: supportFactor,
-          strongestLeadHours,
-          checkpointAgencyCount: checkpointTotal,
-          usableAgencyCount
-        });
-      }
-
-      signal.baselineRiskIndex = baselineRisk;
-      signal.adjustmentFactor = riskFactor;
-      if (Number.isFinite(baselineRisk)) signal.riskIndex = clamp(baselineRisk * riskFactor);
-      signal.likelihood = degradedLikelihood(baselineSignal.likelihood, finite(signal.riskIndex), code);
-
-      const baselineConfidence = finite(baselineSignal.confidenceIndex);
-      const supportConfidenceFactor = code === 'T1' ? 1 : (0.70 + 0.30 * supportCoverage);
-      signal.confidenceIndex = Number.isFinite(baselineConfidence)
-        ? clamp(baselineConfidence * confidenceCoverageFactor * supportConfidenceFactor)
-        : baselineSignal.confidenceIndex;
-
-      if (signal.likelihood === 'unlikely') {
-        signal.timingState = 'not-applicable';
-        signal.estimatedWindow = null;
-      } else if (signal.estimatedWindow?.start && signal.estimatedWindow?.end) {
-        signal.timingState = 'estimated';
-      } else if (futureTimeline.length > 0) {
-        signal.timingState = 'left-censored-or-horizon-limited';
-      } else if (hoursAfterMinimum > 0) {
-        signal.timingState = 'post-minimum-no-future';
-      } else {
-        signal.timingState = 'unresolved';
-      }
-
-      signal.shadowDiagnostics = {
-        baselineLikelihood: baselineSignal.likelihood,
-        confidenceCoverageFactor,
-        supportFactor,
-        supportCoverage,
-        strongestLeadHours,
-        lifecyclePenalty,
-        terminalLifecyclePenalty,
-        terminalStateCandidate: terminalCandidate
-      };
-    }
-
-    output.shadow = {
-      version: SHADOW_V2_VERSION,
-      mode: 'parallel-shadow',
-      adjustments,
-      diagnostics: {
-        usableAgencyCount,
-        confidenceCoverageFactor,
-        hoursAfterMinimum,
-        directDepart,
-        futureTimelineCount: futureTimeline.length,
-        lifecyclePenalty,
-        terminalLifecyclePenalty,
-        sourceLifecycle: cloneSerializable(sourceLifecycle ?? null)
+    return {
+      schemaVersion: SHADOW_V2_VERSION,
+      available: false,
+      reason: 'v2-development-engine-unavailable',
+      semantics: {
+        shadowOnly: true,
+        v1RemainsEvaluationBaseline: true,
+        officialHkoForecast: false,
+        aiGenerated: false
       }
     };
-    output.semantics = {
-      ...(output.semantics || {}),
-      shadowOnly: true,
-      v1RemainsEvaluationBaseline: true,
-      noTruthFeedback: true,
-      sourceCoverageAffectsNumericConfidence: true,
-      longHorizonStrongSignalSupportIsContinuouslyDiscounted: true,
-      postMinimumDepartureResidualRiskCanDecay: true,
-      staleTerminalLifecycleEvidenceCanDecayResidualRisk: true,
-      missingPositiveWindowCarriesExplicitTimingState: true,
-      noNewProbabilityOutput: true,
-      officialHkoForecast: false,
-      officialHkoDecisionInferred: false,
-      aiGenerated: false,
-      label: 'Storm Track warning signal risk estimate V2 shadow'
-    };
-    return output;
   }
 
   function analyzeGroup(group, options = {}) {
@@ -514,6 +325,7 @@
         threatAssessment,
         basicForecast,
         shadowForecastV2,
+        sourceLifecycle,
         reason: basicForecast?.available === true ? null : (basicForecast?.reason || threatAssessment?.reason || 'analysis-unavailable')
       };
     } catch (error) {
@@ -557,6 +369,7 @@
   function timingHint(signal) {
     if (signal?.likelihood === 'unlikely' || signal?.estimatedWindow) return null;
     if (signal?.timingState === 'left-censored-or-horizon-limited') return '窗：起點不可見/受預報長度限制';
+    if (signal?.timingState === 'multi-phase-left-censored-or-horizon-limited') return '窗：多階段，起點不可見/受預報長度限制';
     if (signal?.timingState === 'post-minimum-no-future') return '窗：最近點已過且無後續預報';
     if (signal?.timingState === 'unresolved') return '窗：暫未能定位';
     return null;
@@ -581,6 +394,17 @@
     }
     if (!details.length) return null;
     return `${fastest.label || ''} ${details.join(' · ')}`.trim();
+  }
+
+  function phaseNote(shadow) {
+    const phase = shadow?.impact?.phaseContext;
+    if (!phase?.multiPhase) return null;
+    const current = phase?.currentPhaseMinimum?.distanceKm;
+    const later = phase?.laterPhaseMinimum?.distanceKm;
+    if (Number.isFinite(finite(current)) && Number.isFinite(finite(later))) {
+      return `多階段：目前階段最近約 ${Math.round(finite(current))} km · 後段約 ${Math.round(finite(later))} km`;
+    }
+    return '多階段接近/離港情境';
   }
 
   function renderGroupSummary(group, options = {}) {
@@ -615,6 +439,8 @@
       notes.push(`較高威脅點 ${strongest.label}（${formatHkt(strongest.validTime)}）`);
     }
     const shadowNotes = [...new Set((shadow?.shadow?.adjustments || []).map(item => item?.label).filter(Boolean))];
+    const phases = phaseNote(shadow);
+    const v2Label = shadow?.schemaVersion || resolveV2Engine()?.VERSION || SHADOW_V2_VERSION;
 
     return `<div class="hk-threat-summary" style="margin-top:9px;padding-top:8px;border-top:1px solid #353535;font-size:.73rem;line-height:1.5">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="color:#8f8f8f">香港影響 Beta · V1 / V2</span><strong style="color:#fff;font-size:.82rem">${escapeHtml(impactLabel)}</strong></div>
@@ -623,14 +449,15 @@
       <div style="color:#ddd">${escapeHtml(t1)}</div>
       <div style="color:#ddd">${escapeHtml(t3)}</div>
       <div style="color:#ddd">${escapeHtml(t8)}</div>
-      <div style="margin-top:5px;color:#9fdfff;font-size:.67rem">V2 shadow</div>
+      <div style="margin-top:5px;color:#9fdfff;font-size:.67rem">V2 shadow · ${escapeHtml(v2Label)}</div>
       <div style="color:#e6f7ff">${escapeHtml(v2t1)}</div>
       <div style="color:#e6f7ff">${escapeHtml(v2t3)}</div>
       <div style="color:#e6f7ff">${escapeHtml(v2t8)}</div>
       ${shadowNotes.length ? `<div style="margin-top:3px;color:#6f9aaa">V2：${escapeHtml(shadowNotes.join(' · '))}</div>` : ''}
+      ${phases ? `<div style="margin-top:3px;color:#76b8ca">${escapeHtml(phases)}</div>` : ''}
       ${evolution ? `<div style="margin-top:5px;color:#aaa">最快演變：${escapeHtml(evolution)}</div>` : ''}
       ${notes.length ? `<div style="margin-top:3px;color:#777">${escapeHtml(notes.join(' · '))}</div>` : ''}
-      <div style="margin-top:5px;color:#5f5f5f;font-size:.66rem">Storm Track 估算 · V2 為同步影子版本 · 非香港天文台官方風球預測</div>
+      <div style="margin-top:5px;color:#5f5f5f;font-size:.66rem">Storm Track 估算 · V2 為同步影子版本 · 時窗為風險證據窗，非掛球時刻 · 非香港天文台官方風球預測</div>
     </div>`;
   }
 

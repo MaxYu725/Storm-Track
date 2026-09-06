@@ -6,7 +6,9 @@ const path = require('node:path');
 
 const source = fs.readFileSync(path.resolve(__dirname, '..', 'sw.js'), 'utf8');
 
-assert.match(source, /const VERSION = '3\.3\.11';/);
+assert.match(source, /const VERSION = '3\.3\.12';/);
+assert.match(source, /'\.\/analysis\/hk-signal-forecast-v2\.js'/);
+assert.match(source, /'\.\/analysis\/frontend-hk-threat-ui\.js'/);
 assert.match(source, /'\.\/analysis\/hko-signal-statement\.js'/);
 assert.match(source, /'\.\/analysis\/settings-panel-ui\.js'/);
 assert.match(source, /'\.\/analysis\/consensus-track-overlay\.js'/);
