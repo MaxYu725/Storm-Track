@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - analysis/hk-signal-forecast-v2.js
       - scripts/diagnose-hk-signal-t1-likely.mjs
       - .github/workflows/hk-signal-v2-t1-diagnostic.yml
   workflow_dispatch:
@@ -22,16 +23,28 @@ jobs:
         run: |
           git fetch origin data/beta-prospective-observations
           git worktree add /tmp/storm-beta-corpus FETCH_HEAD
-      - name: Diagnose V1 T1 likely snapshots
+      - name: Diagnose V1 likely snapshots against V2 readiness
         run: |
           node --check scripts/diagnose-hk-signal-t1-likely.mjs
           node scripts/diagnose-hk-signal-t1-likely.mjs /tmp/storm-beta-corpus > /tmp/hk-signal-t1-likely.json
           node - <<'NODE'
           const fs = require('node:fs');
           const r = JSON.parse(fs.readFileSync('/tmp/hk-signal-t1-likely.json','utf8'));
+          console.log(`v2=${r.v2Version} records=${r.recordCount}`);
           for (const c of r.cases) {
             const s = c.stats;
-            console.log(`${c.displayName} | ${c.caseId} | likely=${c.likelyCount} | risk median=${s.risk.median} | lead median=${s.strongestLeadHours.median} | support median=${s.supportFraction.median} | depart median=${s.directDepart.median} | current km median=${s.currentDistanceKm.median}`);
+            console.log([
+              c.displayName,
+              c.caseId,
+              `V1 likely=${c.likelyCount}`,
+              `V2 likely/possible/unlikely=${c.v2.likelyCount}/${c.v2.possibleCount}/${c.v2.unlikelyCount}`,
+              `V2 first likely=${c.v2.firstLikelyAt}`,
+              `V2 likely readiness median=${c.v2.likelyReadiness.median}`,
+              `V2 downgraded readiness median=${c.v2.downgradedReadiness.median}`,
+              `V2 likely current km median=${c.v2.likelyCurrentDistanceKm.median}`,
+              `V2 likely minimum km median=${c.v2.likelyForecastMinimumKm.median}`,
+              `all current km median=${s.currentDistanceKm.median}`
+            ].join(' | '));
           }
           NODE
       - uses: actions/upload-artifact@v4
