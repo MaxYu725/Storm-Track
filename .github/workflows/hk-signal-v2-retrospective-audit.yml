@@ -31,7 +31,7 @@ jobs:
           node --check tests/hk-signal-v2-quiet-window.test.cjs
           node --check tests/hk-signal-v2-corpus-comparator.test.mjs
 
-      - name: Run V2 0.4 deterministic regression suite
+      - name: Run V2 0.5 deterministic regression suite
         run: |
           node tests/hk-signal-v2-quiet-window.test.cjs
           node tests/hk-signal-v2-corpus-comparator.test.mjs
@@ -43,13 +43,13 @@ jobs:
           git fetch origin data/beta-prospective-observations
           git worktree add /tmp/storm-beta-corpus FETCH_HEAD
 
-      - name: Recompute V2 0.4 over existing prospective captures
+      - name: Recompute V2 0.5 over existing prospective captures
         run: |
           node scripts/compare-hk-signal-v2-corpus.mjs /tmp/storm-beta-corpus > /tmp/hk-signal-v2-corpus.json
           node - <<'NODE'
           const fs = require('node:fs');
           const report = JSON.parse(fs.readFileSync('/tmp/hk-signal-v2-corpus.json', 'utf8'));
-          if (report.v2Version !== 'hk-signal-shadow-v2/0.4') throw new Error(`unexpected V2 version ${report.v2Version}`);
+          if (report.v2Version !== 'hk-signal-shadow-v2/0.5') throw new Error(`unexpected V2 version ${report.v2Version}`);
           if (!(report.recordCount > 0) || !(report.observationCount > 0)) throw new Error('prospective corpus replay is empty');
           console.log(`records=${report.recordCount} observations=${report.observationCount} cases=${report.caseCount}`);
           for (const item of report.cases) {
@@ -83,7 +83,7 @@ jobs:
           node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
           const fs = require('node:fs');
           const report = JSON.parse(fs.readFileSync('/tmp/hk-signal-v2-corpus.json', 'utf8'));
-          console.log('# HK Signal V2 0.4 retrospective shadow audit');
+          console.log('# HK Signal V2 0.5 retrospective shadow audit');
           console.log('');
           console.log(`Immutable recorder files: **${report.recordCount}** · replayed observations: **${report.observationCount}** · cases: **${report.caseCount}**`);
           console.log('');
