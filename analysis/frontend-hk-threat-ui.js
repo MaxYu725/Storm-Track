@@ -1,10 +1,25 @@
 (function attachStormHkThreatUi(root, factory) {
+  installV2Engine(root);
   installSettingsPanelUi(root);
   installHkoSignalStatementUi(root);
   installOptionalWindLayer(root);
   const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.StormHkThreatUi = api;
+
+  function installV2Engine(browserRoot) {
+    if (!browserRoot?.document || browserRoot.StormHkSignalForecastV2) return;
+    if (browserRoot.document.querySelector('script[data-storm-hk-signal-v2]')) return;
+    if (browserRoot.document.readyState === 'loading' && typeof browserRoot.document.write === 'function') {
+      browserRoot.document.write('<script src="./analysis/hk-signal-forecast-v2.js" data-storm-hk-signal-v2="true"><\/script>');
+      return;
+    }
+    const script = browserRoot.document.createElement('script');
+    script.src = './analysis/hk-signal-forecast-v2.js';
+    script.async = false;
+    script.dataset.stormHkSignalV2 = 'true';
+    browserRoot.document.head.appendChild(script);
+  }
 
   function installSettingsPanelUi(browserRoot) {
     if (!browserRoot?.document) return;
@@ -64,6 +79,7 @@
   'use strict';
 
   const VERSION = 'frontend-hk-threat-ui/v3';
+  const SHADOW_V2_VERSION = 'hk-signal-shadow-v2/0.5';
   const PROSPECTIVE_SCHEMA_VERSION = 'hk-beta-prospective-observation/v1';
   const prospectiveObservations = new Map();
 
@@ -97,7 +113,6 @@
   }
 
   const initialV2Engine = resolveV2Engine();
-  const SHADOW_V2_VERSION = initialV2Engine?.VERSION || 'hk-signal-shadow-v2/unavailable';
   const TERMINAL_STALE_HOURS = initialV2Engine?.TERMINAL_STALE_HOURS ?? 12;
 
   function isBetaEnabled() {
@@ -186,7 +201,7 @@
       signalInputs: root?.StormHkoSignalRiskInputs?.VERSION ?? root?.StormHkoSignalRiskInputs?.INPUT_VERSION ?? null,
       threatAssessment: root?.StormHkThreatAssessment?.VERSION ?? null,
       basicForecast: root?.StormBasicHkSignalForecast?.VERSION ?? null,
-      shadowForecastV2: resolveV2Engine()?.VERSION ?? null
+      shadowForecastV2: resolveV2Engine()?.VERSION ?? SHADOW_V2_VERSION
     };
   }
 
@@ -255,7 +270,7 @@
       return engine.buildForecast({ basicForecast, signalInputs, threatAssessment, generatedAt, sourceLifecycle });
     }
     return {
-      schemaVersion: 'hk-signal-shadow-v2/unavailable',
+      schemaVersion: SHADOW_V2_VERSION,
       available: false,
       reason: 'v2-development-engine-unavailable',
       semantics: {
@@ -425,7 +440,7 @@
     }
     const shadowNotes = [...new Set((shadow?.shadow?.adjustments || []).map(item => item?.label).filter(Boolean))];
     const phases = phaseNote(shadow);
-    const v2Label = shadow?.schemaVersion || resolveV2Engine()?.VERSION || 'V2';
+    const v2Label = shadow?.schemaVersion || resolveV2Engine()?.VERSION || SHADOW_V2_VERSION;
 
     return `<div class="hk-threat-summary" style="margin-top:9px;padding-top:8px;border-top:1px solid #353535;font-size:.73rem;line-height:1.5">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="color:#8f8f8f">香港影響 Beta · V1 / V2</span><strong style="color:#fff;font-size:.82rem">${escapeHtml(impactLabel)}</strong></div>
