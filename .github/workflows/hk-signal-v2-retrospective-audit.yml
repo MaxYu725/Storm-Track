@@ -7,6 +7,7 @@ on:
     paths:
       - analysis/hk-signal-forecast-v2.js
       - scripts/compare-hk-signal-v2-corpus.mjs
+      - scripts/replay-historical-v2-case.mjs
       - tests/hk-signal-v2-quiet-window.test.cjs
       - tests/hk-signal-v2-corpus-comparator.test.mjs
       - docs/HK_SIGNAL_V2_QUIET_WINDOW_REVISION.md
@@ -28,6 +29,7 @@ jobs:
         run: |
           node --check analysis/hk-signal-forecast-v2.js
           node --check scripts/compare-hk-signal-v2-corpus.mjs
+          node --check scripts/replay-historical-v2-case.mjs
           node --check tests/hk-signal-v2-quiet-window.test.cjs
           node --check tests/hk-signal-v2-corpus-comparator.test.mjs
 
@@ -69,11 +71,45 @@ jobs:
           }
           NODE
 
-      - name: Upload V2 retrospective report
+      - name: Replay historical Noul with V2 0.5
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/replay-historical-v2-case.mjs historical/cases/2026-noul.json > /tmp/noul-v2-replay.json
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('/tmp/noul-v2-replay.json','utf8'));
+          if (report.schemaVersion !== 'historical-v2-shadow-replay/v1') throw new Error('unexpected historical V2 replay schema');
+          if (report.caseId !== '2026-noul') throw new Error('unexpected historical case');
+          if (report.engineVersions.v2 !== 'hk-signal-shadow-v2/0.5') throw new Error(`unexpected V2 version ${report.engineVersions.v2}`);
+          if (!(report.replay.recordCount >= 60) || !(report.replay.v2AvailableForecastCount > 0)) throw new Error('historical V2 replay is empty');
+          if (JSON.stringify(report.replay.usableAgencySet) !== JSON.stringify(['CMA'])) throw new Error('historical replay silently substituted an agency');
+          if (report.semantics.HkoTruthUsedAsForecastInput !== false || report.semantics.HkoTruthUsedOnlyAfterForecastGeneration !== true) {
+            throw new Error('historical truth separation invariant failed');
+          }
+          console.log(`historical NOUL snapshots=${report.replay.recordCount} v1/v2 available=${report.replay.v1AvailableForecastCount}/${report.replay.v2AvailableForecastCount}`);
+          for (const signal of ['T1','T3','T8']) {
+            const v1 = report.replay.signalStateSummary[signal].v1;
+            const v2 = report.replay.signalStateSummary[signal].v2;
+            const event = report.replay.v2Events[signal];
+            console.log([
+              signal,
+              `official=${event.officialIssuedAt}`,
+              `V1 first positive/likely=${v1.firstPositiveAt}/${v1.firstLikelyAt}`,
+              `V2 first positive/likely=${v2.firstPositiveAt}/${v2.firstLikelyAt}`,
+              `V2 states=${JSON.stringify(v2.states)}`,
+              `stable lead=${event.diagnostics?.firstStablePossibleLeadHours}`
+            ].join(' | '));
+          }
+          NODE
+
+      - name: Upload V2 retrospective reports
         uses: actions/upload-artifact@v4
         with:
           name: hk-signal-v2-corpus-audit
-          path: /tmp/hk-signal-v2-corpus.json
+          path: |
+            /tmp/hk-signal-v2-corpus.json
+            /tmp/noul-v2-replay.json
           if-no-files-found: error
           retention-days: 7
 
@@ -93,8 +129,22 @@ jobs:
             const t1 = item.signals.T1, t3 = item.signals.T3;
             console.log(`| ${String(item.displayName).replaceAll('|','/')} | ${item.captureCount} | ${t1.v1.positive} | ${t1.v2.positive} | ${t1.v1.likely} | ${t1.v2.likely} | ${t1.transitions.likelyToPossible} | ${t1.transitions.positiveToUnlikely} | ${t3.v1.positive}→${t3.v2.positive} | ${item.multiPhaseCaptureCount} |`);
           }
+          const historical = JSON.parse(fs.readFileSync('/tmp/noul-v2-replay.json','utf8'));
           console.log('');
-          console.log('Truth is **not** used during V2 recomputation. This table is a model-behaviour comparison, not a promotion score.');
+          console.log('## Historical positive-signal control — NOUL 2026');
+          console.log('');
+          console.log(`As-issued CMA/NMC snapshots: **${historical.replay.recordCount}**. HKO truth is consulted only after each forecast has been generated.`);
+          console.log('');
+          console.log('| Signal | Official issue | V1 first positive | V2 first positive | V1 first likely | V2 first likely |');
+          console.log('|---|---|---|---|---|---|');
+          for (const signal of ['T1','T3','T8']) {
+            const v1 = historical.replay.signalStateSummary[signal].v1;
+            const v2 = historical.replay.signalStateSummary[signal].v2;
+            const event = historical.replay.v2Events[signal];
+            console.log(`| ${signal} | ${event.officialIssuedAt || '-'} | ${v1.firstPositiveAt || '-'} | ${v2.firstPositiveAt || '-'} | ${v1.firstLikelyAt || '-'} | ${v2.firstLikelyAt || '-'} |`);
+          }
+          console.log('');
+          console.log('Truth is **not** used during V2 recomputation. Outcome comparison is a separate validation layer.');
           NODE
 
       - name: Check whitespace
