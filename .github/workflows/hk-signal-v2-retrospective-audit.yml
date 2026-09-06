@@ -8,6 +8,7 @@ on:
       - analysis/hk-signal-forecast-v2.js
       - scripts/compare-hk-signal-v2-corpus.mjs
       - tests/hk-signal-v2-quiet-window.test.cjs
+      - tests/hk-signal-v2-corpus-comparator.test.mjs
       - docs/HK_SIGNAL_V2_QUIET_WINDOW_REVISION.md
       - .github/workflows/hk-signal-v2-retrospective-audit.yml
   workflow_dispatch:
@@ -28,9 +29,12 @@ jobs:
           node --check analysis/hk-signal-forecast-v2.js
           node --check scripts/compare-hk-signal-v2-corpus.mjs
           node --check tests/hk-signal-v2-quiet-window.test.cjs
+          node --check tests/hk-signal-v2-corpus-comparator.test.mjs
 
       - name: Run V2 0.3 deterministic regression suite
-        run: node tests/hk-signal-v2-quiet-window.test.cjs
+        run: |
+          node tests/hk-signal-v2-quiet-window.test.cjs
+          node tests/hk-signal-v2-corpus-comparator.test.mjs
 
       - name: Load immutable prospective corpus
         shell: bash
@@ -62,6 +66,14 @@ jobs:
             ].join(' | '));
           }
           NODE
+
+      - name: Upload V2 retrospective report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hk-signal-v2-corpus-audit
+          path: /tmp/hk-signal-v2-corpus.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Write audit summary
         shell: bash
