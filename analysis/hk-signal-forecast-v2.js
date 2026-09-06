@@ -5,10 +5,13 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormHkSignalForecastV2() {
   'use strict';
 
-  const VERSION = 'hk-signal-shadow-v2/0.3';
+  const VERSION = 'hk-signal-shadow-v2/0.4';
   const HOUR_MS = 60 * 60 * 1000;
   const TERMINAL_STALE_HOURS = 12;
   const PHASE_NEAR_TERM_HOURS = 36;
+  const T1_CURRENT_MATURITY_SCALE_KM = 800;
+  const T1_MINIMUM_MATURITY_SCALE_KM = 500;
+  const T1_LIKELY_READINESS_FLOOR = 0.58;
   const SIGNAL_THRESHOLDS = Object.freeze({
     T1: Object.freeze({ possible: 0.35, likely: 0.58 }),
     T3: Object.freeze({ possible: 0.38, likely: 0.65 }),
@@ -45,6 +48,13 @@
     catch { return null; }
   }
 
+  function smoothCloser(distanceKm, scaleKm) {
+    const distance = finite(distanceKm);
+    if (!Number.isFinite(distance) || !Number.isFinite(scaleKm) || scaleKm <= 0) return 0;
+    const ratio = Math.max(0, distance) / scaleKm;
+    return 1 / (1 + ratio ** 3);
+  }
+
   function terminalIntensityHint(value) {
     const text = String(value || '').trim().toLowerCase();
     if (!text) return false;
@@ -54,26 +64,17 @@
   function sourceShape(source) {
     const positions = Array.isArray(source?.positions) ? source.positions : [];
     const forecast = Array.isArray(source?.forecast) ? source.forecast : [];
-    const current = positions[positions.length - 1]
-      || source?.current
-      || null;
+    const current = positions[positions.length - 1] || source?.current || null;
     const forecastCount = Array.isArray(source?.forecast)
       ? forecast.length
       : Math.max(0, finite(source?.forecastCount) ?? 0);
-    return {
-      bulletinTime: source?.bulletinTime ?? null,
-      current,
-      forecastCount
-    };
+    return { bulletinTime: source?.bulletinTime ?? null, current, forecastCount };
   }
 
   function buildSourceLifecycleContext(groupOrSources, observedAt, options = {}) {
     const observedMs = timeMs(observedAt);
-    const rawSources = options.sourcesDirect === true
-      ? (groupOrSources || {})
-      : (groupOrSources?.sources || {});
-    const sourceEntries = Object.entries(rawSources)
-      .filter(([, source]) => source && typeof source === 'object');
+    const rawSources = options.sourcesDirect === true ? (groupOrSources || {}) : (groupOrSources?.sources || {});
+    const sourceEntries = Object.entries(rawSources).filter(([, source]) => source && typeof source === 'object');
     const sourceAges = [];
     const intensities = {};
     let forecastPointTotal = 0;
@@ -143,6 +144,64 @@
     return points.reduce((best, item) => item.distanceKm < best.distanceKm ? item : best, points[0]);
   }
 
+  function materialDistance(baseKm, minimumKm = 35, fraction = 0.09) {
+    return Math.max(minimumKm, Math.max(0, finite(baseKm) ?? 0) * fraction);
+  }
+
+  function findReapproachTurn(points, reApproachConfidence) {
+    if (points.length < 3) return null;
+    let valleyIndex = null;
+    const firstRise = points[1].distanceKm - points[0].distanceKm;
+    if (firstRise >= materialDistance(points[0].distanceKm, 30, 0.07)) {
+      valleyIndex = 0;
+    } else {
+      for (let i = 1; i < points.length - 1; i += 1) {
+        const inbound = points[i - 1].distanceKm - points[i].distanceKm;
+        const outbound = points[i + 1].distanceKm - points[i].distanceKm;
+        const threshold = materialDistance(points[i].distanceKm, 25, 0.06);
+        if (inbound >= threshold && outbound >= threshold) {
+          valleyIndex = i;
+          break;
+        }
+      }
+    }
+    if (valleyIndex == null || valleyIndex >= points.length - 2) return null;
+
+    let peakIndex = valleyIndex + 1;
+    for (let i = valleyIndex + 1; i < points.length - 1; i += 1) {
+      if (points[i].distanceKm > points[peakIndex].distanceKm) peakIndex = i;
+    }
+    if (peakIndex >= points.length - 1) return null;
+    let laterIndex = peakIndex + 1;
+    for (let i = peakIndex + 1; i < points.length; i += 1) {
+      if (points[i].distanceKm < points[laterIndex].distanceKm) laterIndex = i;
+    }
+
+    const valley = points[valleyIndex];
+    const peak = points[peakIndex];
+    const later = points[laterIndex];
+    const outwardGainKm = peak.distanceKm - valley.distanceKm;
+    const recoveryKm = peak.distanceKm - later.distanceKm;
+    const outwardThreshold = materialDistance(valley.distanceKm, 40, 0.10);
+    const recoveryThreshold = materialDistance(peak.distanceKm, 40, 0.10);
+    const timingSeparated = peak.leadHours - valley.leadHours >= 6
+      && later.leadHours - peak.leadHours >= 6;
+    const shapeStrong = outwardGainKm >= outwardThreshold && recoveryKm >= recoveryThreshold;
+    const analyzerSupport = reApproachConfidence >= 0.22 || recoveryKm >= 80;
+    if (!timingSeparated || !shapeStrong || !analyzerSupport) return null;
+
+    return {
+      valleyIndex,
+      peakIndex,
+      laterIndex,
+      valley,
+      peak,
+      later,
+      outwardGainKm,
+      recoveryKm
+    };
+  }
+
   function derivePhaseContext(threatAssessment, generatedAt) {
     const points = timelinePoints(threatAssessment, generatedAt);
     const analyzers = threatAssessment?.analyzers || {};
@@ -153,7 +212,7 @@
 
     if (!points.length) {
       return {
-        schemaVersion: 'hk-signal-phase-context/v1',
+        schemaVersion: 'hk-signal-phase-context/v2',
         available: false,
         reason: 'no-future-timeline',
         operationalPhase: directDepart > directApproach + 0.15 ? 'departure'
@@ -164,29 +223,24 @@
         quasiStationary,
         currentPhaseMinimum: null,
         laterPhaseMinimum: null,
+        phasePeak: null,
         globalFutureMinimum: null,
         globalMinimumBelongsToLaterPhase: false,
-        multiPhase: false
+        multiPhase: false,
+        futureCheckpointCount: 0
       };
     }
 
+    const globalFutureMinimum = minimumPoint(points);
+    const turn = findReapproachTurn(points, reApproach);
     const nearPoints = points.filter(item => item.leadHours <= PHASE_NEAR_TERM_HOURS);
     const currentPool = nearPoints.length ? nearPoints : points.slice(0, Math.min(3, points.length));
-    const currentPhaseMinimum = minimumPoint(currentPool);
-    const laterStart = Math.max(
-      PHASE_NEAR_TERM_HOURS,
-      (finite(currentPhaseMinimum?.leadHours) ?? 0) + 12
-    );
-    const laterPoints = points.filter(item => item.leadHours > laterStart);
-    const laterPhaseMinimum = minimumPoint(laterPoints);
-    const globalFutureMinimum = minimumPoint(points);
-    const materialLaterImprovement = Boolean(currentPhaseMinimum && laterPhaseMinimum)
-      && laterPhaseMinimum.distanceKm <= currentPhaseMinimum.distanceKm - Math.max(30, currentPhaseMinimum.distanceKm * 0.10);
-    const globalMinimumBelongsToLaterPhase = Boolean(currentPhaseMinimum && globalFutureMinimum)
-      && globalFutureMinimum.leadHours > currentPhaseMinimum.leadHours + 12
-      && globalFutureMinimum.distanceKm <= currentPhaseMinimum.distanceKm - Math.max(20, currentPhaseMinimum.distanceKm * 0.07);
-    const multiPhase = (reApproach >= 0.30 && materialLaterImprovement)
-      || globalMinimumBelongsToLaterPhase;
+    const currentPhaseMinimum = turn?.valley || minimumPoint(currentPool);
+    const laterPhaseMinimum = turn?.later || null;
+    const globalMinimumBelongsToLaterPhase = Boolean(turn && globalFutureMinimum)
+      && globalFutureMinimum.leadHours >= turn.peak.leadHours
+      && globalFutureMinimum.distanceKm <= turn.valley.distanceKm - materialDistance(turn.valley.distanceKm, 20, 0.05);
+    const multiPhase = Boolean(turn);
 
     let operationalPhase = 'mixed';
     if (multiPhase && directDepart > directApproach + 0.10) operationalPhase = 'departure-before-reapproach';
@@ -196,7 +250,7 @@
     else if (quasiStationary >= 0.45) operationalPhase = 'quasi-stationary';
 
     return {
-      schemaVersion: 'hk-signal-phase-context/v1',
+      schemaVersion: 'hk-signal-phase-context/v2',
       available: true,
       operationalPhase,
       directApproach,
@@ -205,10 +259,17 @@
       quasiStationary,
       currentPhaseMinimum,
       laterPhaseMinimum,
+      phasePeak: turn?.peak || null,
       globalFutureMinimum,
       globalMinimumBelongsToLaterPhase,
-      materialLaterImprovement,
       multiPhase,
+      turnDiagnostics: turn ? {
+        outwardGainKm: turn.outwardGainKm,
+        recoveryKm: turn.recoveryKm,
+        valleyLeadHours: turn.valley.leadHours,
+        peakLeadHours: turn.peak.leadHours,
+        laterLeadHours: turn.later.leadHours
+      } : null,
       nearTermHours: PHASE_NEAR_TERM_HOURS,
       futureCheckpointCount: points.length
     };
@@ -226,50 +287,50 @@
     const strongest = signal?.strongestCheckpoint || null;
     const total = Math.max(0, finite(strongest?.totalAgencyCount) ?? 0);
     const support = Math.max(0, finite(strongest?.supportAgencyCount) ?? 0);
-    const participationFraction = usableAgencyCount > 0 && total > 0
-      ? clamp(total / usableAgencyCount)
-      : (total > 0 ? 1 : 0);
-    const positiveSupportFraction = total > 0 ? clamp(support / total) : 0;
-    const strongestLeadHours = strongest?.validTime ? leadHours(generatedAt, strongest.validTime) : null;
     return {
       totalAgencyCount: total,
       supportAgencyCount: support,
-      participationFraction,
-      positiveSupportFraction,
-      strongestLeadHours
+      participationFraction: usableAgencyCount > 0 && total > 0 ? clamp(total / usableAgencyCount) : (total > 0 ? 1 : 0),
+      positiveSupportFraction: total > 0 ? clamp(support / total) : 0,
+      strongestLeadHours: strongest?.validTime ? leadHours(generatedAt, strongest.validTime) : null
     };
   }
 
-  function t1DecisionReadiness(signal, support, phaseContext) {
+  function t1DecisionReadiness(signal, support, phaseContext, threatAssessment) {
     const risk = finite(signal?.riskIndex);
     if (!Number.isFinite(risk)) return null;
+    const summary = threatAssessment?.summary || {};
+    const currentDistanceKm = finite(summary.currentDistanceKm);
+    const forecastMinimumKm = finite(summary.forecastMinimumKm);
+    const currentProximity = smoothCloser(currentDistanceKm, T1_CURRENT_MATURITY_SCALE_KM);
+    const minimumProximity = smoothCloser(forecastMinimumKm, T1_MINIMUM_MATURITY_SCALE_KM);
+    const geometryMaturity = Math.sqrt(currentProximity * minimumProximity);
+    const geometryFactor = 0.35 + 0.65 * geometryMaturity;
     const lead = Math.max(0, finite(support?.strongestLeadHours) ?? 72);
     const leadCredibility = 1 / (1 + lead / 48);
+    const temporalFactor = 0.90 + 0.10 * leadCredibility;
     const persistence = Math.max(0, finite(signal?.persistenceHours) ?? 0);
     const persistenceCredibility = 1 - Math.exp(-persistence / 12);
-    const supportFraction = support?.totalAgencyCount > 0
-      ? support.positiveSupportFraction
-      : 0.50;
     let phaseFactor = 1;
-    if (phaseContext?.operationalPhase === 'departure') phaseFactor = 0.76;
-    else if (phaseContext?.operationalPhase === 'departure-before-reapproach') phaseFactor = 0.86;
-    else if (phaseContext?.operationalPhase === 'multi-phase') phaseFactor = 0.92;
-    const readinessFactor = clamp(
-      0.60
-      + 0.18 * supportFraction
-      + 0.12 * leadCredibility
-      + 0.10 * persistenceCredibility,
-      0.55,
-      1
-    ) * phaseFactor;
+    if (phaseContext?.operationalPhase === 'departure') phaseFactor = 0.78;
+    else if (phaseContext?.operationalPhase === 'departure-before-reapproach') phaseFactor = 0.90;
+    else if (phaseContext?.operationalPhase === 'multi-phase') phaseFactor = 0.95;
+    const readinessFactor = clamp(geometryFactor * temporalFactor * phaseFactor);
     return {
       index: clamp(risk * readinessFactor),
       factor: readinessFactor,
-      supportFraction,
+      likelyFloor: T1_LIKELY_READINESS_FLOOR,
+      currentDistanceKm,
+      forecastMinimumKm,
+      currentProximity,
+      minimumProximity,
+      geometryMaturity,
+      geometryFactor,
       leadCredibility,
+      temporalFactor,
       persistenceCredibility,
-      phaseFactor,
-      likelyFloor: 0.52
+      positiveSupportFraction: support?.positiveSupportFraction ?? null,
+      phaseFactor
     };
   }
 
@@ -277,9 +338,9 @@
     if (signal?.likelihood === 'unlikely') return 'not-applicable';
     const startLead = leadHours(generatedAt, signal?.estimatedWindow?.start);
     if (signal?.estimatedWindow?.start && signal?.estimatedWindow?.end) {
-      if (phaseContext?.multiPhase === true
-          && Number.isFinite(startLead)
-          && startLead > PHASE_NEAR_TERM_HOURS) return 'later-phase-estimated';
+      if (phaseContext?.multiPhase === true && Number.isFinite(startLead)
+          && Number.isFinite(finite(phaseContext?.phasePeak?.leadHours))
+          && startLead >= finite(phaseContext.phasePeak.leadHours)) return 'later-phase-estimated';
       return 'estimated';
     }
     if (futureTimelineCount > 0) {
@@ -307,13 +368,10 @@
     output.generatedAt = generatedAt ?? basicForecast.generatedAt ?? null;
 
     const usableAgencyCount = Math.max(0, finite(signalInputs?.featureVector?.usableAgencyCount)
-      ?? finite(signalInputs?.coverage?.usableAgencyCount)
-      ?? 0);
+      ?? finite(signalInputs?.coverage?.usableAgencyCount) ?? 0);
     const presentAgencyCount = Math.max(0, finite(sourceLifecycle?.sourceAgencyCount) ?? usableAgencyCount);
     const presenceCoverage = clamp(presentAgencyCount / 4);
-    const usableWithinPresent = presentAgencyCount > 0
-      ? clamp(usableAgencyCount / presentAgencyCount)
-      : 0;
+    const usableWithinPresent = presentAgencyCount > 0 ? clamp(usableAgencyCount / presentAgencyCount) : 0;
     const presenceConfidenceFactor = 0.72 + 0.28 * presenceCoverage;
     const usabilityConfidenceFactor = 0.72 + 0.28 * usableWithinPresent;
     const confidenceCoverageFactor = clamp(presenceConfidenceFactor * usabilityConfidenceFactor);
@@ -326,18 +384,13 @@
     const futureTimelineCount = phaseContext?.futureCheckpointCount ?? 0;
     const futureThreatExists = futureTimelineCount > 0;
     const lifecyclePenalty = !futureThreatExists && hoursAfterMinimum > 0
-      ? clamp(directDepart * (hoursAfterMinimum / (hoursAfterMinimum + 12)) * 0.40, 0, 0.40)
-      : 0;
+      ? clamp(directDepart * (hoursAfterMinimum / (hoursAfterMinimum + 12)) * 0.40, 0, 0.40) : 0;
     const terminalCandidate = sourceLifecycle?.terminalStateCandidate === true
-      && !futureThreatExists
-      && hoursAfterMinimum > 0;
+      && !futureThreatExists && hoursAfterMinimum > 0;
     const terminalAgeHours = finite(sourceLifecycle?.freshestBulletinAgeHours);
     const terminalAgeBlend = terminalCandidate && Number.isFinite(terminalAgeHours)
-      ? clamp((terminalAgeHours - TERMINAL_STALE_HOURS) / TERMINAL_STALE_HOURS)
-      : 0;
-    const terminalLifecyclePenalty = terminalCandidate
-      ? clamp(0.22 + terminalAgeBlend * 0.10, 0, 0.32)
-      : 0;
+      ? clamp((terminalAgeHours - TERMINAL_STALE_HOURS) / TERMINAL_STALE_HOURS) : 0;
+    const terminalLifecyclePenalty = terminalCandidate ? clamp(0.22 + terminalAgeBlend * 0.10, 0, 0.32) : 0;
     const adjustments = [];
 
     if (confidenceCoverageFactor < 0.999) adjustments.push({
@@ -382,22 +435,14 @@
       let longHorizonFactor = 1;
       let supportConfidenceFactor = 1;
 
-      if (code !== 'T1'
-          && Number.isFinite(support.strongestLeadHours)
-          && support.strongestLeadHours > 72
-          && usableAgencyCount > 0
-          && support.totalAgencyCount > 0) {
+      if (code !== 'T1' && Number.isFinite(support.strongestLeadHours)
+          && support.strongestLeadHours > 72 && usableAgencyCount > 0 && support.totalAgencyCount > 0) {
         const horizonBlend = clamp((support.strongestLeadHours - 72) / 48);
         const evidenceWeakness = 0.45 * (1 - support.participationFraction)
           + 0.55 * (1 - support.positiveSupportFraction);
         longHorizonFactor = clamp(1 - horizonBlend * evidenceWeakness * 0.50, 0.50, 1);
-        supportConfidenceFactor = clamp(
-          0.68
-          + 0.17 * support.participationFraction
-          + 0.15 * support.positiveSupportFraction,
-          0.68,
-          1
-        );
+        supportConfidenceFactor = clamp(0.68 + 0.17 * support.participationFraction
+          + 0.15 * support.positiveSupportFraction, 0.68, 1);
         riskFactor *= longHorizonFactor;
         if (longHorizonFactor < 0.999) adjustments.push({
           code: `${code.toLowerCase()}-long-horizon-evidence`,
@@ -424,32 +469,26 @@
 
       let decisionReadiness = null;
       if (code === 'T1' && signal.likelihood !== 'unlikely') {
-        decisionReadiness = t1DecisionReadiness(signal, support, phaseContext);
+        decisionReadiness = t1DecisionReadiness(signal, support, phaseContext, threatAssessment);
         signal.decisionReadinessIndex = decisionReadiness?.index ?? null;
-        if (baselineSignal.likelihood === 'likely'
-            && Number.isFinite(decisionReadiness?.index)
+        if (baselineSignal.likelihood === 'likely' && Number.isFinite(decisionReadiness?.index)
             && decisionReadiness.index < decisionReadiness.likelyFloor) {
           signal.likelihood = 'possible';
           adjustments.push({
             code: 't1-likely-readiness',
-            label: 'T1 likely 決策成熟度折減',
+            label: 'T1 likely 幾何/時效成熟度折減',
             decisionReadinessIndex: decisionReadiness.index,
             likelyFloor: decisionReadiness.likelyFloor,
-            supportFraction: decisionReadiness.supportFraction,
+            currentDistanceKm: decisionReadiness.currentDistanceKm,
+            forecastMinimumKm: decisionReadiness.forecastMinimumKm,
+            geometryMaturity: decisionReadiness.geometryMaturity,
             leadCredibility: decisionReadiness.leadCredibility,
-            persistenceCredibility: decisionReadiness.persistenceCredibility,
             phaseFactor: decisionReadiness.phaseFactor
           });
         }
       }
 
-      signal.timingState = classifyTiming(
-        signal,
-        futureTimelineCount,
-        hoursAfterMinimum,
-        phaseContext,
-        output.generatedAt
-      );
+      signal.timingState = classifyTiming(signal, futureTimelineCount, hoursAfterMinimum, phaseContext, output.generatedAt);
       if (signal.likelihood === 'unlikely') signal.estimatedWindow = null;
       signal.windowRole = signal.estimatedWindow ? 'risk-evidence-window' : null;
       signal.shadowDiagnostics = {
@@ -468,10 +507,7 @@
       };
     }
 
-    output.impact = {
-      ...(output.impact || {}),
-      phaseContext: cloneSerializable(phaseContext)
-    };
+    output.impact = { ...(output.impact || {}), phaseContext: cloneSerializable(phaseContext) };
     output.shadow = {
       version: VERSION,
       mode: 'parallel-shadow-development',
@@ -501,17 +537,18 @@
       noTruthFeedback: true,
       sourcePresenceAndUsabilitySeparatedForConfidence: true,
       longHorizonParticipationAndPositiveSupportSeparated: true,
-      t1LikelyCarriesDecisionReadiness: true,
+      t1LikelyRequiresGeometricDecisionMaturity: true,
       postMinimumDepartureResidualRiskCanDecay: true,
       staleTerminalLifecycleEvidenceCanDecayResidualRisk: true,
       phaseAwareInterpretationIncluded: true,
+      phaseDetectionRequiresActualOutwardThenInwardTurn: true,
       riskWindowIsNotIssuanceTime: true,
       missingPositiveWindowCarriesExplicitTimingState: true,
       noNewProbabilityOutput: true,
       officialHkoForecast: false,
       officialHkoDecisionInferred: false,
       aiGenerated: false,
-      label: 'Storm Track warning signal risk estimate V2 shadow 0.3'
+      label: 'Storm Track warning signal risk estimate V2 shadow 0.4'
     };
     return output;
   }
@@ -520,6 +557,9 @@
     VERSION,
     TERMINAL_STALE_HOURS,
     PHASE_NEAR_TERM_HOURS,
+    T1_CURRENT_MATURITY_SCALE_KM,
+    T1_MINIMUM_MATURITY_SCALE_KM,
+    T1_LIKELY_READINESS_FLOOR,
     SIGNAL_THRESHOLDS,
     buildSourceLifecycleContext,
     derivePhaseContext,
