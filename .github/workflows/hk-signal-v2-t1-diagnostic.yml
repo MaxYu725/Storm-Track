@@ -1,0 +1,42 @@
+name: Diagnose HK Signal T1 likely evidence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/diagnose-hk-signal-t1-likely.mjs
+      - .github/workflows/hk-signal-v2-t1-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Load immutable prospective corpus
+        run: |
+          git fetch origin data/beta-prospective-observations
+          git worktree add /tmp/storm-beta-corpus FETCH_HEAD
+      - name: Diagnose V1 T1 likely snapshots
+        run: |
+          node --check scripts/diagnose-hk-signal-t1-likely.mjs
+          node scripts/diagnose-hk-signal-t1-likely.mjs /tmp/storm-beta-corpus > /tmp/hk-signal-t1-likely.json
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const r = JSON.parse(fs.readFileSync('/tmp/hk-signal-t1-likely.json','utf8'));
+          for (const c of r.cases) {
+            const s = c.stats;
+            console.log(`${c.displayName} | ${c.caseId} | likely=${c.likelyCount} | risk median=${s.risk.median} | lead median=${s.strongestLeadHours.median} | support median=${s.supportFraction.median} | depart median=${s.directDepart.median} | current km median=${s.currentDistanceKm.median}`);
+          }
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hk-signal-t1-likely-diagnostic
+          path: /tmp/hk-signal-t1-likely.json
+          retention-days: 7
+          if-no-files-found: error
