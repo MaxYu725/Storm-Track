@@ -1,5 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const v2engine = require('../analysis/hk-signal-forecast-v2.js');
 
 const root = process.argv[2] ? path.resolve(process.argv[2]) : null;
 if (!root) throw new Error('usage: node scripts/diagnose-hk-signal-t1-likely.mjs <beta-prospective-corpus-dir>');
@@ -22,6 +26,7 @@ function listJsonFiles(dir) {
   return out.sort();
 }
 function finite(value) {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -54,13 +59,29 @@ for (const record of records) {
     const groupKey = obs?.group?.key || null;
     const id = identity.get(key(record.captureFingerprint, groupKey));
     if (!id?.caseId) continue;
-    const signal = obs?.analysis?.basicForecast?.signals?.T1;
+    const analysis = obs?.analysis || {};
+    const signal = analysis?.basicForecast?.signals?.T1;
     if (signal?.likelihood !== 'likely') continue;
     const strongest = signal?.strongestCheckpoint || {};
     const total = Math.max(0, finite(strongest.totalAgencyCount) ?? 0);
     const support = Math.max(0, finite(strongest.supportAgencyCount) ?? 0);
-    const generatedAt = obs?.analysis?.generatedAt || obs?.analysis?.basicForecast?.generatedAt || record.capturedAt;
-    const threat = obs?.analysis?.threatAssessment || {};
+    const generatedAt = analysis?.generatedAt || analysis?.basicForecast?.generatedAt || record.capturedAt;
+    const threat = analysis?.threatAssessment || {};
+    const lifecycle = v2engine.buildSourceLifecycleContext(
+      obs?.sources || {},
+      obs?.observedAt || record.capturedAt,
+      { sourcesDirect: true }
+    );
+    const v2 = v2engine.buildForecast({
+      basicForecast: analysis.basicForecast,
+      signalInputs: analysis.signalInputs,
+      threatAssessment: threat,
+      generatedAt,
+      sourceLifecycle: lifecycle
+    });
+    const v2Signal = v2?.signals?.T1 || null;
+    const readiness = v2Signal?.shadowDiagnostics?.decisionReadiness || null;
+    const phase = v2Signal?.shadowDiagnostics?.phaseContext || null;
     const row = {
       capturedAt: record.capturedAt,
       risk: finite(signal.riskIndex),
@@ -75,7 +96,18 @@ for (const record of records) {
       reApproach: finite(threat?.analyzers?.reApproach?.confidence),
       currentDistanceKm: finite(threat?.summary?.currentDistanceKm),
       forecastMinimumKm: finite(threat?.summary?.forecastMinimumKm),
-      forecastMinimumLeadHours: finite(threat?.summary?.forecastMinimumLeadHours)
+      forecastMinimumLeadHours: finite(threat?.summary?.forecastMinimumLeadHours),
+      v2Likelihood: v2Signal?.likelihood || null,
+      v2Risk: finite(v2Signal?.riskIndex),
+      v2ReadinessIndex: finite(readiness?.index),
+      v2ReadinessFactor: finite(readiness?.factor),
+      v2GeometryMaturity: finite(readiness?.geometryMaturity),
+      v2GeometryFactor: finite(readiness?.geometryFactor),
+      v2CurrentProximity: finite(readiness?.currentProximity),
+      v2MinimumProximity: finite(readiness?.minimumProximity),
+      v2PhaseFactor: finite(readiness?.phaseFactor),
+      v2OperationalPhase: phase?.operationalPhase || null,
+      v2MultiPhase: phase?.multiPhase === true
     };
     if (!cases.has(id.caseId)) cases.set(id.caseId, { caseId:id.caseId, displayName:obs?.group?.displayName || groupKey, rows:[] });
     cases.get(id.caseId).rows.push(row);
@@ -83,16 +115,31 @@ for (const record of records) {
 }
 
 const report = {
-  schemaVersion: 'hk-signal-t1-likely-diagnostic/v1',
+  schemaVersion: 'hk-signal-t1-likely-diagnostic/v2',
+  v2Version: v2engine.VERSION,
   recordCount: records.length,
   cases: [...cases.values()].map(item => {
-    const fields = ['risk','confidence','persistenceHours','strongestLeadHours','supportFraction','supportAgencyCount','checkpointAgencyCount','directApproach','directDepart','reApproach','currentDistanceKm','forecastMinimumKm','forecastMinimumLeadHours'];
+    const fields = ['risk','confidence','persistenceHours','strongestLeadHours','supportFraction','supportAgencyCount','checkpointAgencyCount','directApproach','directDepart','reApproach','currentDistanceKm','forecastMinimumKm','forecastMinimumLeadHours','v2Risk','v2ReadinessIndex','v2ReadinessFactor','v2GeometryMaturity','v2GeometryFactor','v2CurrentProximity','v2MinimumProximity','v2PhaseFactor'];
+    const v2LikelyRows = item.rows.filter(row => row.v2Likelihood === 'likely');
+    const v2PossibleRows = item.rows.filter(row => row.v2Likelihood === 'possible');
+    const v2UnlikelyRows = item.rows.filter(row => row.v2Likelihood === 'unlikely');
     return {
       caseId: item.caseId,
       displayName: item.displayName,
       likelyCount: item.rows.length,
       firstLikelyAt: item.rows[0]?.capturedAt || null,
       lastLikelyAt: item.rows.at(-1)?.capturedAt || null,
+      v2: {
+        likelyCount: v2LikelyRows.length,
+        possibleCount: v2PossibleRows.length,
+        unlikelyCount: v2UnlikelyRows.length,
+        firstLikelyAt: v2LikelyRows[0]?.capturedAt || null,
+        lastLikelyAt: v2LikelyRows.at(-1)?.capturedAt || null,
+        likelyReadiness: stats(v2LikelyRows.map(row => row.v2ReadinessIndex)),
+        downgradedReadiness: stats(v2PossibleRows.map(row => row.v2ReadinessIndex)),
+        likelyCurrentDistanceKm: stats(v2LikelyRows.map(row => row.currentDistanceKm)),
+        likelyForecastMinimumKm: stats(v2LikelyRows.map(row => row.forecastMinimumKm))
+      },
       stats: Object.fromEntries(fields.map(field => [field, stats(item.rows.map(row => row[field]))])),
       rows: item.rows
     };
