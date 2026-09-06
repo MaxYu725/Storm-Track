@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const v2engine = require('../analysis/hk-signal-forecast-v2.js');
+const v2engine = require('../analysis/hk-signal-forecast-v2-05.js');
 
 const root = process.argv[2] ? path.resolve(process.argv[2]) : null;
 if (!root) throw new Error('usage: node scripts/diagnose-hk-signal-t1-likely.mjs <beta-prospective-corpus-dir>');
@@ -100,7 +100,10 @@ for (const record of records) {
       v2Likelihood: v2Signal?.likelihood || null,
       v2Risk: finite(v2Signal?.riskIndex),
       v2ReadinessIndex: finite(readiness?.index),
+      v2PrePersistenceReadinessIndex: finite(readiness?.prePersistenceIndex),
       v2ReadinessFactor: finite(readiness?.factor),
+      v2PersistenceFactor: finite(readiness?.persistenceFactor),
+      v2PersistenceCredibility: finite(readiness?.persistenceCredibility),
       v2GeometryMaturity: finite(readiness?.geometryMaturity),
       v2GeometryFactor: finite(readiness?.geometryFactor),
       v2CurrentProximity: finite(readiness?.currentProximity),
@@ -115,11 +118,11 @@ for (const record of records) {
 }
 
 const report = {
-  schemaVersion: 'hk-signal-t1-likely-diagnostic/v2',
+  schemaVersion: 'hk-signal-t1-likely-diagnostic/v3',
   v2Version: v2engine.VERSION,
   recordCount: records.length,
   cases: [...cases.values()].map(item => {
-    const fields = ['risk','confidence','persistenceHours','strongestLeadHours','supportFraction','supportAgencyCount','checkpointAgencyCount','directApproach','directDepart','reApproach','currentDistanceKm','forecastMinimumKm','forecastMinimumLeadHours','v2Risk','v2ReadinessIndex','v2ReadinessFactor','v2GeometryMaturity','v2GeometryFactor','v2CurrentProximity','v2MinimumProximity','v2PhaseFactor'];
+    const fields = ['risk','confidence','persistenceHours','strongestLeadHours','supportFraction','supportAgencyCount','checkpointAgencyCount','directApproach','directDepart','reApproach','currentDistanceKm','forecastMinimumKm','forecastMinimumLeadHours','v2Risk','v2ReadinessIndex','v2PrePersistenceReadinessIndex','v2ReadinessFactor','v2PersistenceFactor','v2PersistenceCredibility','v2GeometryMaturity','v2GeometryFactor','v2CurrentProximity','v2MinimumProximity','v2PhaseFactor'];
     const v2LikelyRows = item.rows.filter(row => row.v2Likelihood === 'likely');
     const v2PossibleRows = item.rows.filter(row => row.v2Likelihood === 'possible');
     const v2UnlikelyRows = item.rows.filter(row => row.v2Likelihood === 'unlikely');
@@ -137,6 +140,8 @@ const report = {
         lastLikelyAt: v2LikelyRows.at(-1)?.capturedAt || null,
         likelyReadiness: stats(v2LikelyRows.map(row => row.v2ReadinessIndex)),
         downgradedReadiness: stats(v2PossibleRows.map(row => row.v2ReadinessIndex)),
+        likelyPersistenceHours: stats(v2LikelyRows.map(row => row.persistenceHours)),
+        downgradedPersistenceHours: stats(v2PossibleRows.map(row => row.persistenceHours)),
         likelyCurrentDistanceKm: stats(v2LikelyRows.map(row => row.currentDistanceKm)),
         likelyForecastMinimumKm: stats(v2LikelyRows.map(row => row.forecastMinimumKm))
       },
