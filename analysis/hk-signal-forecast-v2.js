@@ -5,13 +5,14 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStormHkSignalForecastV2() {
   'use strict';
 
-  const VERSION = 'hk-signal-shadow-v2/0.4';
+  const VERSION = 'hk-signal-shadow-v2/0.5';
   const HOUR_MS = 60 * 60 * 1000;
   const TERMINAL_STALE_HOURS = 12;
   const PHASE_NEAR_TERM_HOURS = 36;
   const T1_CURRENT_MATURITY_SCALE_KM = 800;
   const T1_MINIMUM_MATURITY_SCALE_KM = 500;
   const T1_LIKELY_READINESS_FLOOR = 0.58;
+  const T1_PERSISTENCE_FACTOR_FLOOR = 0.85;
   const SIGNAL_THRESHOLDS = Object.freeze({
     T1: Object.freeze({ possible: 0.35, likely: 0.58 }),
     T3: Object.freeze({ possible: 0.38, likely: 0.65 }),
@@ -311,11 +312,13 @@
     const temporalFactor = 0.90 + 0.10 * leadCredibility;
     const persistence = Math.max(0, finite(signal?.persistenceHours) ?? 0);
     const persistenceCredibility = 1 - Math.exp(-persistence / 12);
+    const persistenceFactor = T1_PERSISTENCE_FACTOR_FLOOR
+      + (1 - T1_PERSISTENCE_FACTOR_FLOOR) * persistenceCredibility;
     let phaseFactor = 1;
     if (phaseContext?.operationalPhase === 'departure') phaseFactor = 0.78;
     else if (phaseContext?.operationalPhase === 'departure-before-reapproach') phaseFactor = 0.90;
     else if (phaseContext?.operationalPhase === 'multi-phase') phaseFactor = 0.95;
-    const readinessFactor = clamp(geometryFactor * temporalFactor * phaseFactor);
+    const readinessFactor = clamp(geometryFactor * temporalFactor * persistenceFactor * phaseFactor);
     return {
       index: clamp(risk * readinessFactor),
       factor: readinessFactor,
@@ -329,6 +332,7 @@
       leadCredibility,
       temporalFactor,
       persistenceCredibility,
+      persistenceFactor,
       positiveSupportFraction: support?.positiveSupportFraction ?? null,
       phaseFactor
     };
@@ -476,13 +480,15 @@
           signal.likelihood = 'possible';
           adjustments.push({
             code: 't1-likely-readiness',
-            label: 'T1 likely 幾何/時效成熟度折減',
+            label: 'T1 likely 幾何/時效/持續成熟度折減',
             decisionReadinessIndex: decisionReadiness.index,
             likelyFloor: decisionReadiness.likelyFloor,
             currentDistanceKm: decisionReadiness.currentDistanceKm,
             forecastMinimumKm: decisionReadiness.forecastMinimumKm,
             geometryMaturity: decisionReadiness.geometryMaturity,
             leadCredibility: decisionReadiness.leadCredibility,
+            persistenceCredibility: decisionReadiness.persistenceCredibility,
+            persistenceFactor: decisionReadiness.persistenceFactor,
             phaseFactor: decisionReadiness.phaseFactor
           });
         }
@@ -538,6 +544,7 @@
       sourcePresenceAndUsabilitySeparatedForConfidence: true,
       longHorizonParticipationAndPositiveSupportSeparated: true,
       t1LikelyRequiresGeometricDecisionMaturity: true,
+      t1LikelyRequiresPersistenceDecisionMaturity: true,
       postMinimumDepartureResidualRiskCanDecay: true,
       staleTerminalLifecycleEvidenceCanDecayResidualRisk: true,
       phaseAwareInterpretationIncluded: true,
@@ -548,7 +555,7 @@
       officialHkoForecast: false,
       officialHkoDecisionInferred: false,
       aiGenerated: false,
-      label: 'Storm Track warning signal risk estimate V2 shadow 0.4'
+      label: 'Storm Track warning signal risk estimate V2 shadow 0.5'
     };
     return output;
   }
@@ -560,6 +567,7 @@
     T1_CURRENT_MATURITY_SCALE_KM,
     T1_MINIMUM_MATURITY_SCALE_KM,
     T1_LIKELY_READINESS_FLOOR,
+    T1_PERSISTENCE_FACTOR_FLOOR,
     SIGNAL_THRESHOLDS,
     buildSourceLifecycleContext,
     derivePhaseContext,
