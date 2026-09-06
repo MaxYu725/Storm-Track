@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const v2engine = require('../analysis/hk-signal-forecast-v2-05.js');
+const v2engine = require('../analysis/hk-signal-forecast-v2.js');
 
 const prospectiveDir = process.argv[2] ? path.resolve(process.argv[2]) : null;
 if (!prospectiveDir) {
@@ -98,7 +98,6 @@ function newCase(caseId, displayName) {
       },
       timingStates: {},
       readinessAppliedCount: 0,
-      persistenceReadinessAppliedCount: 0,
       longHorizonAdjustmentCount: 0
     }])),
     phaseStates: {},
@@ -185,9 +184,6 @@ for (const record of records) {
       signalStats.timingStates[timing] = (signalStats.timingStates[timing] || 0) + 1;
       if (adjustments.some(item => item.code === 't1-likely-readiness') && code === 'T1') {
         signalStats.readinessAppliedCount += 1;
-      }
-      if (adjustments.some(item => item.code === 't1-likely-persistence-readiness') && code === 'T1') {
-        signalStats.persistenceReadinessAppliedCount += 1;
       }
       if (adjustments.some(item => item.code === `${code.toLowerCase()}-long-horizon-evidence`)) {
         signalStats.longHorizonAdjustmentCount += 1;
