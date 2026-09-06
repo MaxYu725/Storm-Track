@@ -1,0 +1,100 @@
+name: Validate HK Signal V2 historical positive control
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - analysis/hk-signal-forecast-v2.js
+      - scripts/replay-historical-v2-case.mjs
+      - scripts/replay-historical-case.mjs
+      - scripts/cma-historical-adapter.mjs
+      - historical/cases/2026-noul.json
+      - .github/workflows/hk-signal-v2-historical-positive-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  noul-positive-control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Check replay syntax
+        run: |
+          set -euo pipefail
+          node --check scripts/replay-historical-v2-case.mjs
+
+      - name: Replay Noul with frozen V1 and V2 0.5
+        run: |
+          set -euo pipefail
+          node scripts/replay-historical-v2-case.mjs historical/cases/2026-noul.json > /tmp/noul-v2-replay.json
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('/tmp/noul-v2-replay.json', 'utf8'));
+          if (report.schemaVersion !== 'historical-v2-shadow-replay/v1') throw new Error(`unexpected replay schema ${report.schemaVersion}`);
+          if (report.caseId !== '2026-noul') throw new Error(`unexpected case ${report.caseId}`);
+          if (report.engineVersions.v2 !== 'hk-signal-shadow-v2/0.5') throw new Error(`unexpected V2 version ${report.engineVersions.v2}`);
+          if (!(report.replay.recordCount >= 60) || !(report.replay.v2AvailableForecastCount > 0)) throw new Error('historical V2 replay is empty');
+          if (JSON.stringify(report.replay.usableAgencySet) !== JSON.stringify(['CMA'])) throw new Error(`agency substitution detected: ${JSON.stringify(report.replay.usableAgencySet)}`);
+          if (report.semantics.HkoTruthUsedAsForecastInput !== false || report.semantics.HkoTruthUsedOnlyAfterForecastGeneration !== true) {
+            throw new Error('truth/input separation invariant failed');
+          }
+
+          console.log(`NOUL snapshots=${report.replay.recordCount} | V1/V2 available=${report.replay.v1AvailableForecastCount}/${report.replay.v2AvailableForecastCount}`);
+          for (const signal of ['T1', 'T3', 'T8']) {
+            const v1 = report.replay.signalStateSummary[signal].v1;
+            const v2 = report.replay.signalStateSummary[signal].v2;
+            const event = report.replay.v2Events[signal];
+            console.log([
+              signal,
+              `official=${event.officialIssuedAt}`,
+              `V1 first positive=${v1.firstPositiveAt}`,
+              `V2 first positive=${v2.firstPositiveAt}`,
+              `V1 first likely=${v1.firstLikelyAt}`,
+              `V2 first likely=${v2.firstLikelyAt}`,
+              `V2 states=${JSON.stringify(v2.states)}`,
+              `V2 stable-positive lead=${event.diagnostics?.firstStablePossibleLeadHours}`
+            ].join(' | '));
+          }
+          NODE
+
+      - name: Upload historical replay report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hk-signal-v2-noul-positive-control
+          path: /tmp/noul-v2-replay.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Write validation summary
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('/tmp/noul-v2-replay.json', 'utf8'));
+          console.log('# HK Signal V2 0.5 — historical NOUL positive control');
+          console.log('');
+          console.log(`As-issued CMA/NMC snapshots: **${report.replay.recordCount}**. HKO truth is verification-only and is consulted after forecast generation.`);
+          console.log('');
+          console.log('| Signal | Official issue | V1 first positive | V2 first positive | V1 first likely | V2 first likely | V2 stable-positive lead |');
+          console.log('|---|---|---|---|---|---|---:|');
+          for (const signal of ['T1', 'T3', 'T8']) {
+            const v1 = report.replay.signalStateSummary[signal].v1;
+            const v2 = report.replay.signalStateSummary[signal].v2;
+            const event = report.replay.v2Events[signal];
+            console.log(`| ${signal} | ${event.officialIssuedAt || '-'} | ${v1.firstPositiveAt || '-'} | ${v2.firstPositiveAt || '-'} | ${v1.firstLikelyAt || '-'} | ${v2.firstLikelyAt || '-'} | ${event.diagnostics?.firstStablePossibleLeadHours ?? '-'} |`);
+          }
+          console.log('');
+          console.log('This is an independent positive-event validation control, not a calibration/training pass.');
+          NODE
+
+      - name: Check whitespace
+        run: git diff --check origin/main...HEAD
