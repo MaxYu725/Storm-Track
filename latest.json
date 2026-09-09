@@ -1,6 +1,6 @@
 {
   "schemaVersion": "hko-warning-truth/v1",
-  "retrievedAt": "2026-09-09T17:40:02.868Z",
+  "retrievedAt": "2026-09-09T18:10:09.320Z",
   "sourceCommit": "a8c5957a490c8d3fd3ac879783bd9a31a454db03",
   "authority": "Hong Kong Observatory Open Data API",
   "truth": {
@@ -20,8 +20,8 @@
     "specialWeatherTips": []
   },
   "sourceHashes": {
-    "warnsum": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-    "warningInfo": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "warnsum": "feb590e86c6b4f17442780e2dd5d681c66fecad479f853535bdf634e63c8501d",
+    "warningInfo": "1a4afbde32e8d0200671d90b0fc26e719fd1e74c6be84e021c528a2f2c926947",
     "swt": "cb0f6fc10f8448b2e38bd5227e96377a0d34c0faea4c886ed52fc581235e38f0"
   },
   "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
@@ -31,14 +31,14 @@
     {
       "name": "warnsum",
       "url": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc",
-      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-      "bytes": 2
+      "sha256": "feb590e86c6b4f17442780e2dd5d681c66fecad479f853535bdf634e63c8501d",
+      "bytes": 187
     },
     {
       "name": "warningInfo",
       "url": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warningInfo&lang=tc",
-      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-      "bytes": 2
+      "sha256": "1a4afbde32e8d0200671d90b0fc26e719fd1e74c6be84e021c528a2f2c926947",
+      "bytes": 483
     },
     {
       "name": "swt",
@@ -48,8 +48,31 @@
     }
   ],
   "sourcePayloads": {
-    "warnsum": {},
-    "warningInfo": {},
+    "warnsum": {
+      "WTS": {
+        "name": "雷暴警告",
+        "code": "WTS",
+        "actionCode": "ISSUE",
+        "issueTime": "2026-09-10T02:05:00+08:00",
+        "expireTime": "2026-09-10T04:00:00+08:00",
+        "updateTime": "2026-09-10T02:05:00+08:00"
+      }
+    },
+    "warningInfo": {
+      "details": [
+        {
+          "contents": [
+            "天文台在9月10日上午2時05分發出雷暴警告，有效時間至今日上午4時正，預料新界有局部地區雷暴。",
+            "雷暴發生時，請採取以下預防措施：",
+            "1. 如身處室外，請到安全地方躲避。",
+            "2. 離開水面。切勿在戶外游泳或進行其他戶外水上運動。",
+            "3. 切勿站立於高地或接近導電的物體、樹木或桅杆。"
+          ],
+          "warningStatementCode": "WTS",
+          "updateTime": "2026-09-10T02:05:00+08:00"
+        }
+      ]
+    },
     "swt": {
       "swt": []
     }
