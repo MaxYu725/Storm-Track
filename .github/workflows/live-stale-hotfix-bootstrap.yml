@@ -74,7 +74,7 @@ jobs:
               raise SystemExit('service worker version marker mismatch')
           sw_path.write_text(sw.replace(old_version, new_version, 1), encoding='utf-8')
 
-          test = r'''\
+          test = r'''
           'use strict';
 
           const assert = require('node:assert/strict');
