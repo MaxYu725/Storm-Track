@@ -852,6 +852,8 @@ const WeatherApp = (() => {
     const DB_VERSION = 2;
     const FETCH_TIMEOUT_MS = 16000;
     const FOREGROUND_REFRESH_AFTER_MS = 5 * 60 * 1000;
+    const LIVE_SOURCE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+    const LIVE_SOURCE_FUTURE_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 
     const SOURCE_CONFIG = {
         HKO: { name: '香港天文台', color: '#ffffff', dash: '7,8' },
@@ -1229,9 +1231,10 @@ const WeatherApp = (() => {
         for (const source of ['HKO', 'CMA', 'JMA', 'CWA']) {
             const entry = cached[source];
             if (entry && Array.isArray(entry.storms)) {
-                agencyStorms[source] = entry.storms;
+                const freshStorms = filterLiveAgencyStorms(source, entry.storms);
+                agencyStorms[source] = freshStorms;
                 cachedSources += 1;
-                const countText = entry.storms.length ? `${entry.storms.length} 個風暴` : '沒有活躍路徑';
+                const countText = freshStorms.length ? `${freshStorms.length} 個風暴` : '沒有活躍路徑';
                 setSourceHealth(source, 'stale', `快取 ${countText} · ${formatHkt(entry.savedAt)} · 更新中`);
             } else {
                 agencyStorms[source] = [];
@@ -1265,7 +1268,7 @@ const WeatherApp = (() => {
         try {
             const storms = await loader();
             if (serial !== requestSerial) return;
-            agencyStorms[source] = Array.isArray(storms) ? storms : [];
+            agencyStorms[source] = filterLiveAgencyStorms(source, Array.isArray(storms) ? storms : []);
             sourceSettled[source] = true;
             const suffix = source === 'JMA' ? '（官方 XML）' : source === 'CWA' ? '（官方 API）' : '';
             setSourceHealth(
@@ -1288,6 +1291,40 @@ const WeatherApp = (() => {
             setLoading(activeFetchCount > 0);
             if (activeFetchCount === 0) finalizeRefresh();
         }
+    }
+
+    function isLiveTimestampFresh(value, nowMs = Date.now()) {
+        const referenceMs = parseTimeMs(value);
+        if (!Number.isFinite(referenceMs)) return false;
+        const ageMs = nowMs - referenceMs;
+        return ageMs >= -LIVE_SOURCE_FUTURE_TOLERANCE_MS && ageMs <= LIVE_SOURCE_MAX_AGE_MS;
+    }
+
+    function sourceReferenceTimeMs(storm) {
+        const values = [
+            storm?.bulletinTime,
+            storm?.forecast?.[0]?.baseTime,
+            storm?.positions?.at(-1)?.time
+        ].map(parseTimeMs).filter(Number.isFinite);
+        return values.length ? Math.max(...values) : NaN;
+    }
+
+    function isLiveSourceFresh(storm, nowMs = Date.now()) {
+        return isLiveTimestampFresh(sourceReferenceTimeMs(storm), nowMs);
+    }
+
+    function filterLiveAgencyStorms(source, storms, nowMs = Date.now()) {
+        return (Array.isArray(storms) ? storms : []).filter(storm => {
+            const fresh = isLiveSourceFresh(storm, nowMs);
+            if (!fresh) {
+                console.warn(`${source} 活躍路徑已淘汰過期資料`, {
+                    sourceId: storm?.sourceId || null,
+                    displayName: storm?.displayName || storm?.nameEn || storm?.nameTc || null,
+                    bulletinTime: storm?.bulletinTime || null
+                });
+            }
+            return fresh;
+        });
     }
 
     function noDataMessage(source) {
@@ -1569,6 +1606,7 @@ const WeatherApp = (() => {
         for (const entry of entries) {
             const title = textOfLocal(entry, 'title');
             const updated = textOfLocal(entry, 'updated');
+            if (updated && !isLiveTimestampFresh(updated)) continue;
             const link = elementsByLocalName(entry, 'link').find(node => node.getAttribute('href'));
             const url = link?.getAttribute('href') || '';
             const match = url.match(/_VPTW(6[0-5])_/i);
