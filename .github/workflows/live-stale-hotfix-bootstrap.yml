@@ -1,0 +1,169 @@
+name: Bootstrap live storm freshness fix
+
+on:
+  push:
+    branches:
+      - fix/live-stale-storm-lifecycle
+    paths:
+      - .github/workflows/live-stale-hotfix-bootstrap.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch live source lifecycle handling
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          index_path = Path('index.html')
+          text = index_path.read_text(encoding='utf-8')
+
+          def replace_once(old, new, label):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "    const FETCH_TIMEOUT_MS = 16000;\n    const FOREGROUND_REFRESH_AFTER_MS = 5 * 60 * 1000;\n\n    const SOURCE_CONFIG = {",
+              "    const FETCH_TIMEOUT_MS = 16000;\n    const FOREGROUND_REFRESH_AFTER_MS = 5 * 60 * 1000;\n    const LIVE_SOURCE_MAX_AGE_MS = 24 * 60 * 60 * 1000;\n    const LIVE_SOURCE_FUTURE_TOLERANCE_MS = 6 * 60 * 60 * 1000;\n\n    const SOURCE_CONFIG = {",
+              'freshness constants'
+          )
+
+          replace_once(
+              "            if (entry && Array.isArray(entry.storms)) {\n                agencyStorms[source] = entry.storms;\n                cachedSources += 1;\n                const countText = entry.storms.length ? `${entry.storms.length} 個風暴` : '沒有活躍路徑';",
+              "            if (entry && Array.isArray(entry.storms)) {\n                const freshStorms = filterLiveAgencyStorms(source, entry.storms);\n                agencyStorms[source] = freshStorms;\n                cachedSources += 1;\n                const countText = freshStorms.length ? `${freshStorms.length} 個風暴` : '沒有活躍路徑';",
+              'cache freshness gate'
+          )
+
+          replace_once(
+              "            agencyStorms[source] = Array.isArray(storms) ? storms : [];",
+              "            agencyStorms[source] = filterLiveAgencyStorms(source, Array.isArray(storms) ? storms : []);",
+              'network freshness gate'
+          )
+
+          replace_once(
+              "    function noDataMessage(source) {\n",
+              "    function isLiveTimestampFresh(value, nowMs = Date.now()) {\n        const referenceMs = parseTimeMs(value);\n        if (!Number.isFinite(referenceMs)) return false;\n        const ageMs = nowMs - referenceMs;\n        return ageMs >= -LIVE_SOURCE_FUTURE_TOLERANCE_MS && ageMs <= LIVE_SOURCE_MAX_AGE_MS;\n    }\n\n    function sourceReferenceTimeMs(storm) {\n        const values = [\n            storm?.bulletinTime,\n            storm?.forecast?.[0]?.baseTime,\n            storm?.positions?.at(-1)?.time\n        ].map(parseTimeMs).filter(Number.isFinite);\n        return values.length ? Math.max(...values) : NaN;\n    }\n\n    function isLiveSourceFresh(storm, nowMs = Date.now()) {\n        return isLiveTimestampFresh(sourceReferenceTimeMs(storm), nowMs);\n    }\n\n    function filterLiveAgencyStorms(source, storms, nowMs = Date.now()) {\n        return (Array.isArray(storms) ? storms : []).filter(storm => {\n            const fresh = isLiveSourceFresh(storm, nowMs);\n            if (!fresh) {\n                console.warn(`${source} 活躍路徑已淘汰過期資料`, {\n                    sourceId: storm?.sourceId || null,\n                    displayName: storm?.displayName || storm?.nameEn || storm?.nameTc || null,\n                    bulletinTime: storm?.bulletinTime || null\n                });\n            }\n            return fresh;\n        });\n    }\n\n    function noDataMessage(source) {\n",
+              'live freshness helpers'
+          )
+
+          replace_once(
+              "            const title = textOfLocal(entry, 'title');\n            const updated = textOfLocal(entry, 'updated');\n            const link = elementsByLocalName(entry, 'link').find(node => node.getAttribute('href'));",
+              "            const title = textOfLocal(entry, 'title');\n            const updated = textOfLocal(entry, 'updated');\n            if (updated && !isLiveTimestampFresh(updated)) continue;\n            const link = elementsByLocalName(entry, 'link').find(node => node.getAttribute('href'));",
+              'JMA feed freshness gate'
+          )
+
+          index_path.write_text(text, encoding='utf-8')
+
+          sw_path = Path('sw.js')
+          sw = sw_path.read_text(encoding='utf-8')
+          old_version = "const VERSION = '3.3.12';"
+          new_version = "const VERSION = '3.3.13';"
+          if sw.count(old_version) != 1:
+              raise SystemExit('service worker version marker mismatch')
+          sw_path.write_text(sw.replace(old_version, new_version, 1), encoding='utf-8')
+
+          test = r'''\
+          'use strict';
+
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const vm = require('node:vm');
+
+          const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+          function extractFunction(name) {
+            const marker = `function ${name}(`;
+            const start = html.indexOf(marker);
+            assert.notEqual(start, -1, `${name} must exist in index.html`);
+            const open = html.indexOf('{', start);
+            let depth = 0;
+            for (let index = open; index < html.length; index += 1) {
+              if (html[index] === '{') depth += 1;
+              else if (html[index] === '}') {
+                depth -= 1;
+                if (depth === 0) return html.slice(start, index + 1);
+              }
+            }
+            throw new Error(`unterminated ${name} function`);
+          }
+
+          const context = {
+            result: null,
+            console: { warn() {} },
+            LIVE_SOURCE_MAX_AGE_MS: 24 * 60 * 60 * 1000,
+            LIVE_SOURCE_FUTURE_TOLERANCE_MS: 6 * 60 * 60 * 1000
+          };
+          vm.createContext(context);
+          vm.runInContext(`
+          ${extractFunction('parseTimeMs')}
+          ${extractFunction('isLiveTimestampFresh')}
+          ${extractFunction('sourceReferenceTimeMs')}
+          ${extractFunction('isLiveSourceFresh')}
+          ${extractFunction('filterLiveAgencyStorms')}
+          result = { isLiveTimestampFresh, sourceReferenceTimeMs, isLiveSourceFresh, filterLiveAgencyStorms };
+          `, context);
+
+          const { isLiveTimestampFresh, filterLiveAgencyStorms } = context.result;
+          const now = Date.parse('2026-09-09T00:00:00Z');
+
+          assert.equal(isLiveTimestampFresh('2026-09-08T12:00:00Z', now), true, 'recent bulletin should remain live');
+          assert.equal(isLiveTimestampFresh('2026-09-07T23:59:59Z', now), false, 'bulletin older than 24h should leave live view');
+          assert.equal(isLiveTimestampFresh('2026-09-09T07:00:00Z', now), false, 'implausibly future-dated bulletin should not be treated as live');
+          assert.equal(isLiveTimestampFresh(null, now), false, 'missing freshness evidence should not keep a source live');
+
+          const storms = [
+            {
+              agency: 'JMA', sourceId: 'TC2621', nameEn: 'SAUDEL', bulletinTime: '2026-09-03T13:05:00Z',
+              positions: [{ time: '2026-09-03T13:00:00Z' }], forecast: []
+            },
+            {
+              agency: 'JMA', sourceId: 'TC2628', nameEn: 'KROVANH', bulletinTime: '2026-09-08T21:00:00Z',
+              positions: [{ time: '2026-09-08T21:00:00Z' }], forecast: []
+            },
+            {
+              agency: 'HKO', sourceId: 'fresh-forecast-base', bulletinTime: '2026-09-07T20:00:00Z',
+              positions: [{ time: '2026-09-07T20:00:00Z' }], forecast: [{ baseTime: '2026-09-08T20:00:00Z' }]
+            }
+          ];
+
+          const filtered = filterLiveAgencyStorms('TEST', storms, now);
+          assert.deepEqual(filtered.map(item => item.sourceId), ['TC2628', 'fresh-forecast-base']);
+
+          assert.match(html, /const LIVE_SOURCE_MAX_AGE_MS = 24 \* 60 \* 60 \* 1000;/);
+          assert.match(html, /const freshStorms = filterLiveAgencyStorms\(source, entry\.storms\);/);
+          assert.match(html, /agencyStorms\[source\] = filterLiveAgencyStorms\(source, Array\.isArray\(storms\) \? storms : \[\]\);/);
+          assert.match(extractFunction('parseJmaFeedCandidates'), /if \(updated && !isLiveTimestampFresh\(updated\)\) continue;/);
+
+          console.log('frontend live source freshness tests: OK');
+          '''
+          Path('tests/frontend-live-source-freshness.test.cjs').write_text(test.lstrip(), encoding='utf-8')
+          PY
+
+      - name: Run targeted frontend tests
+        run: |
+          node tests/frontend-live-source-freshness.test.cjs
+          node tests/frontend-storm-identity-grouping.test.cjs
+          node tests/frontend-hk-threat-ui.test.cjs
+
+      - name: Commit generated fix
+        shell: bash
+        run: |
+          rm .github/workflows/live-stale-hotfix-bootstrap.yml
+          git config user.name "storm-track-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html sw.js tests/frontend-live-source-freshness.test.cjs .github/workflows/live-stale-hotfix-bootstrap.yml
+          git commit -m "fix: retire stale live storm sources"
+          git push origin HEAD:${GITHUB_REF_NAME}
