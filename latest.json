@@ -61,8 +61,8 @@
     "reconciledThrough": "2026-09-10T01:23:51.254Z",
     "trustedRecorderSchema": "beta-prospective-recorder/v2",
     "trustedRecordCount": 1110,
-    "healthRecordCount": 1054,
-    "latestHealthCapturedAt": "2026-09-11T01:16:18.921Z",
+    "healthRecordCount": 1055,
+    "latestHealthCapturedAt": "2026-09-11T02:01:06.540Z",
     "recorderSchemaCounts": {
       "beta-prospective-recorder/v1": 1,
       "beta-prospective-recorder/v2": 1110
@@ -143,7 +143,7 @@
         ]
       }
     ],
-    "coverageRecordCount": 1194,
+    "coverageRecordCount": 1195,
     "coverageGapCount": 55,
     "coverageGaps": [
       {
@@ -441,62 +441,9 @@
   "status": "evaluated",
   "awaiting": {
     "status": "monitoring-higher-signals",
-    "activeHkoCaseIds": [
-      "STC-2026-JMA-TC2628"
-    ],
-    "pendingSignalsByCase": {
-      "STC-2026-JMA-TC2628": [
-        "T1",
-        "T3",
-        "T8"
-      ]
-    },
-    "latestPredictions": [
-      {
-        "caseId": "STC-2026-JMA-TC2628",
-        "capturedAt": "2026-09-10T01:10:40.371Z",
-        "captureFingerprint": "00733184f135904fd8e71725f233f212c2ce0eae094ccaf9468400b3890dcd40",
-        "rawGroupKey": "KROVANH",
-        "displayName": "科羅旺 (KROVANH)",
-        "likelihood": "unlikely",
-        "estimatedWindow": null,
-        "signals": {
-          "T1": {
-            "likelihood": "unlikely",
-            "riskIndex": 0.018316011160736438,
-            "confidenceIndex": 0.6326250000000001,
-            "persistenceHours": 0,
-            "estimatedWindow": null
-          },
-          "T3": {
-            "likelihood": "unlikely",
-            "riskIndex": 0.0014368910973857067,
-            "confidenceIndex": 0.44283750000000005,
-            "persistenceHours": 0,
-            "estimatedWindow": null
-          },
-          "T8": {
-            "likelihood": "unlikely",
-            "riskIndex": 0.00030592951660644765,
-            "confidenceIndex": 0.39222750000000006,
-            "persistenceHours": 0,
-            "estimatedWindow": null
-          }
-        },
-        "sourceAgencies": [
-          "HKO"
-        ],
-        "engineVersions": {
-          "ui": "frontend-hk-threat-ui/v3",
-          "snapshot": "storm-analysis-snapshot/v1",
-          "impact": "hk-impact/v1",
-          "signalInputs": "hko-signal-risk-inputs/v1",
-          "threatAssessment": "hk-threat-assessment/v1",
-          "basicForecast": "basic-hk-signal-forecast/v1",
-          "shadowForecastV2": "hk-signal-shadow-v2/0.5"
-        }
-      }
-    ],
+    "activeHkoCaseIds": [],
+    "pendingSignalsByCase": {},
+    "latestPredictions": [],
     "latestHkoTruth": {
       "retrievedAt": "2026-09-11T01:36:18.665Z",
       "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
@@ -1214,11 +1161,11 @@
     "immutableEvidence": "Closeout is derived from trusted beta-prospective-recorder/v2 observations and HKO truth events; raw corpora are never rewritten."
   },
   "closeoutSummary": {
-    "closeoutCount": 14,
-    "blockedCount": 3,
+    "closeoutCount": 17,
+    "blockedCount": 0,
     "classifications": {
       "transient-false-alarm": 1,
-      "correct-negative": 11,
+      "correct-negative": 14,
       "stable-false-alarm": 2
     }
   },
@@ -2456,54 +2403,305 @@
           "recordCount": 495
         }
       }
-    }
-  ],
-  "closeoutBlocked": [
+    },
     {
+      "schemaVersion": "hk-signal-closeout/v1",
+      "policyVersion": "hk-signal-closeout-policy/v1",
+      "status": "not-issued",
+      "officialOutcome": "not-issued",
       "caseId": "STC-2026-JMA-TC2628",
       "signal": "T1",
-      "reason": "evidence-coverage-incomplete",
-      "detail": "joint-coverage-shorter-than-grace",
-      "afterAt": "2026-09-10T01:10:40.371Z",
-      "checkedAt": "2026-09-11T01:57:34.988Z",
+      "closedAt": "2026-09-11T01:23:51.254Z",
+      "evidenceAt": "2026-09-11T01:36:18.665Z",
+      "closeoutReason": "case-inactive-after-healthy-absence",
+      "graceHours": 24,
+      "forecastOutcome": "correct-negative",
+      "forecastEvidence": {
+        "classification": "correct-negative",
+        "severityClassification": "correct-negative",
+        "snapshotCount": 932,
+        "positiveSnapshotCount": 0,
+        "possibleSnapshotCount": 0,
+        "likelySnapshotCount": 0,
+        "likelihoodCounts": {
+          "unlikely": 932,
+          "possible": 0,
+          "likely": 0,
+          "unknown": 0
+        },
+        "firstPositiveAt": null,
+        "lastPositiveAt": null,
+        "firstPossibleAt": null,
+        "lastPossibleAt": null,
+        "firstLikelyAt": null,
+        "lastLikelyAt": null,
+        "firstStablePositiveAt": null,
+        "maxRiskIndex": 0.14820810011218558,
+        "maxRiskIndexByLikelihood": {
+          "possible": null,
+          "likely": null
+        },
+        "terminalResidualSnapshotCount": 0,
+        "firstTerminalResidualAt": null,
+        "lastTerminalResidualAt": null,
+        "finalPreClose": {
+          "capturedAt": "2026-09-10T01:10:40.371Z",
+          "captureFingerprint": "00733184f135904fd8e71725f233f212c2ce0eae094ccaf9468400b3890dcd40",
+          "likelihood": "unlikely",
+          "riskIndex": 0.018316011160736438,
+          "confidenceIndex": 0.6326250000000001,
+          "persistenceHours": 0,
+          "estimatedWindow": null,
+          "diagnostics": {
+            "sourceAgencyCount": 1,
+            "sourceAgencies": [
+              "HKO"
+            ],
+            "forecastPointAgencyCount": 0,
+            "forecastPointTotal": 0,
+            "bulletinAgeHoursByAgency": {
+              "HKO": 23.101769722222222
+            },
+            "freshestBulletinAgeHours": 23.101769722222222,
+            "stalestBulletinAgeHours": 23.101769722222222,
+            "allSourcesStale": true,
+            "terminalStaleThresholdHours": 12,
+            "representativeMinimumTime": "2026-09-09T00:00:00.000Z",
+            "representativeMinimumInPast": true,
+            "currentIntensityByAgency": {
+              "HKO": "Extratropical Low"
+            },
+            "terminalResidualCandidate": true
+          }
+        }
+      },
+      "timingGrade": null,
+      "rubricGradeApplied": false,
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
-      "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
-      "prospectiveHealthRecordCount": 1054,
-      "truthHealthRecordCount": 570,
-      "prospectiveMaxGapMinutes": 60,
-      "truthHealthMaxGapMinutes": 90
+      "evidenceCoverage": {
+        "policyVersion": "hk-signal-evidence-coverage/v1",
+        "status": "covered",
+        "coverageStartedAt": "2026-09-10T01:23:51.254Z",
+        "coverageThrough": "2026-09-11T01:36:18.665Z",
+        "durationHours": 24,
+        "prospectiveMaxGapMinutes": 60,
+        "truthMaxGapMinutes": 90,
+        "prospectiveSegment": {
+          "startAt": "2026-09-10T01:23:51.254Z",
+          "endAt": "2026-09-11T02:01:06.540Z",
+          "firstEvidenceAt": "2026-09-10T01:23:51.254Z",
+          "lastEvidenceAt": "2026-09-11T02:01:06.540Z",
+          "recordCount": 41
+        },
+        "truthSegment": {
+          "startAt": "2026-08-31T15:06:01.292Z",
+          "endAt": "2026-09-11T01:36:18.665Z",
+          "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
+          "lastEvidenceAt": "2026-09-11T01:36:18.665Z",
+          "recordCount": 495
+        }
+      }
     },
     {
+      "schemaVersion": "hk-signal-closeout/v1",
+      "policyVersion": "hk-signal-closeout-policy/v1",
+      "status": "not-issued",
+      "officialOutcome": "not-issued",
       "caseId": "STC-2026-JMA-TC2628",
       "signal": "T3",
-      "reason": "evidence-coverage-incomplete",
-      "detail": "joint-coverage-shorter-than-grace",
-      "afterAt": "2026-09-10T01:10:40.371Z",
-      "checkedAt": "2026-09-11T01:57:34.988Z",
+      "closedAt": "2026-09-11T01:23:51.254Z",
+      "evidenceAt": "2026-09-11T01:36:18.665Z",
+      "closeoutReason": "case-inactive-after-healthy-absence",
+      "graceHours": 24,
+      "forecastOutcome": "correct-negative",
+      "forecastEvidence": {
+        "classification": "correct-negative",
+        "severityClassification": "correct-negative",
+        "snapshotCount": 932,
+        "positiveSnapshotCount": 0,
+        "possibleSnapshotCount": 0,
+        "likelySnapshotCount": 0,
+        "likelihoodCounts": {
+          "unlikely": 932,
+          "possible": 0,
+          "likely": 0,
+          "unknown": 0
+        },
+        "firstPositiveAt": null,
+        "lastPositiveAt": null,
+        "firstPossibleAt": null,
+        "lastPossibleAt": null,
+        "firstLikelyAt": null,
+        "lastLikelyAt": null,
+        "firstStablePositiveAt": null,
+        "maxRiskIndex": 0.08279018975208673,
+        "maxRiskIndexByLikelihood": {
+          "possible": null,
+          "likely": null
+        },
+        "terminalResidualSnapshotCount": 0,
+        "firstTerminalResidualAt": null,
+        "lastTerminalResidualAt": null,
+        "finalPreClose": {
+          "capturedAt": "2026-09-10T01:10:40.371Z",
+          "captureFingerprint": "00733184f135904fd8e71725f233f212c2ce0eae094ccaf9468400b3890dcd40",
+          "likelihood": "unlikely",
+          "riskIndex": 0.0014368910973857067,
+          "confidenceIndex": 0.44283750000000005,
+          "persistenceHours": 0,
+          "estimatedWindow": null,
+          "diagnostics": {
+            "sourceAgencyCount": 1,
+            "sourceAgencies": [
+              "HKO"
+            ],
+            "forecastPointAgencyCount": 0,
+            "forecastPointTotal": 0,
+            "bulletinAgeHoursByAgency": {
+              "HKO": 23.101769722222222
+            },
+            "freshestBulletinAgeHours": 23.101769722222222,
+            "stalestBulletinAgeHours": 23.101769722222222,
+            "allSourcesStale": true,
+            "terminalStaleThresholdHours": 12,
+            "representativeMinimumTime": "2026-09-09T00:00:00.000Z",
+            "representativeMinimumInPast": true,
+            "currentIntensityByAgency": {
+              "HKO": "Extratropical Low"
+            },
+            "terminalResidualCandidate": true
+          }
+        }
+      },
+      "timingGrade": null,
+      "rubricGradeApplied": false,
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
-      "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
-      "prospectiveHealthRecordCount": 1054,
-      "truthHealthRecordCount": 570,
-      "prospectiveMaxGapMinutes": 60,
-      "truthHealthMaxGapMinutes": 90
+      "evidenceCoverage": {
+        "policyVersion": "hk-signal-evidence-coverage/v1",
+        "status": "covered",
+        "coverageStartedAt": "2026-09-10T01:23:51.254Z",
+        "coverageThrough": "2026-09-11T01:36:18.665Z",
+        "durationHours": 24,
+        "prospectiveMaxGapMinutes": 60,
+        "truthMaxGapMinutes": 90,
+        "prospectiveSegment": {
+          "startAt": "2026-09-10T01:23:51.254Z",
+          "endAt": "2026-09-11T02:01:06.540Z",
+          "firstEvidenceAt": "2026-09-10T01:23:51.254Z",
+          "lastEvidenceAt": "2026-09-11T02:01:06.540Z",
+          "recordCount": 41
+        },
+        "truthSegment": {
+          "startAt": "2026-08-31T15:06:01.292Z",
+          "endAt": "2026-09-11T01:36:18.665Z",
+          "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
+          "lastEvidenceAt": "2026-09-11T01:36:18.665Z",
+          "recordCount": 495
+        }
+      }
     },
     {
+      "schemaVersion": "hk-signal-closeout/v1",
+      "policyVersion": "hk-signal-closeout-policy/v1",
+      "status": "not-issued",
+      "officialOutcome": "not-issued",
       "caseId": "STC-2026-JMA-TC2628",
       "signal": "T8",
-      "reason": "evidence-coverage-incomplete",
-      "detail": "joint-coverage-shorter-than-grace",
-      "afterAt": "2026-09-10T01:10:40.371Z",
-      "checkedAt": "2026-09-11T01:57:34.988Z",
+      "closedAt": "2026-09-11T01:23:51.254Z",
+      "evidenceAt": "2026-09-11T01:36:18.665Z",
+      "closeoutReason": "case-inactive-after-healthy-absence",
+      "graceHours": 24,
+      "forecastOutcome": "correct-negative",
+      "forecastEvidence": {
+        "classification": "correct-negative",
+        "severityClassification": "correct-negative",
+        "snapshotCount": 932,
+        "positiveSnapshotCount": 0,
+        "possibleSnapshotCount": 0,
+        "likelySnapshotCount": 0,
+        "likelihoodCounts": {
+          "unlikely": 932,
+          "possible": 0,
+          "likely": 0,
+          "unknown": 0
+        },
+        "firstPositiveAt": null,
+        "lastPositiveAt": null,
+        "firstPossibleAt": null,
+        "lastPossibleAt": null,
+        "firstLikelyAt": null,
+        "lastLikelyAt": null,
+        "firstStablePositiveAt": null,
+        "maxRiskIndex": 0.07352456117688363,
+        "maxRiskIndexByLikelihood": {
+          "possible": null,
+          "likely": null
+        },
+        "terminalResidualSnapshotCount": 0,
+        "firstTerminalResidualAt": null,
+        "lastTerminalResidualAt": null,
+        "finalPreClose": {
+          "capturedAt": "2026-09-10T01:10:40.371Z",
+          "captureFingerprint": "00733184f135904fd8e71725f233f212c2ce0eae094ccaf9468400b3890dcd40",
+          "likelihood": "unlikely",
+          "riskIndex": 0.00030592951660644765,
+          "confidenceIndex": 0.39222750000000006,
+          "persistenceHours": 0,
+          "estimatedWindow": null,
+          "diagnostics": {
+            "sourceAgencyCount": 1,
+            "sourceAgencies": [
+              "HKO"
+            ],
+            "forecastPointAgencyCount": 0,
+            "forecastPointTotal": 0,
+            "bulletinAgeHoursByAgency": {
+              "HKO": 23.101769722222222
+            },
+            "freshestBulletinAgeHours": 23.101769722222222,
+            "stalestBulletinAgeHours": 23.101769722222222,
+            "allSourcesStale": true,
+            "terminalStaleThresholdHours": 12,
+            "representativeMinimumTime": "2026-09-09T00:00:00.000Z",
+            "representativeMinimumInPast": true,
+            "currentIntensityByAgency": {
+              "HKO": "Extratropical Low"
+            },
+            "terminalResidualCandidate": true
+          }
+        }
+      },
+      "timingGrade": null,
+      "rubricGradeApplied": false,
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
-      "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
-      "prospectiveHealthRecordCount": 1054,
-      "truthHealthRecordCount": 570,
-      "prospectiveMaxGapMinutes": 60,
-      "truthHealthMaxGapMinutes": 90
+      "evidenceCoverage": {
+        "policyVersion": "hk-signal-evidence-coverage/v1",
+        "status": "covered",
+        "coverageStartedAt": "2026-09-10T01:23:51.254Z",
+        "coverageThrough": "2026-09-11T01:36:18.665Z",
+        "durationHours": 24,
+        "prospectiveMaxGapMinutes": 60,
+        "truthMaxGapMinutes": 90,
+        "prospectiveSegment": {
+          "startAt": "2026-09-10T01:23:51.254Z",
+          "endAt": "2026-09-11T02:01:06.540Z",
+          "firstEvidenceAt": "2026-09-10T01:23:51.254Z",
+          "lastEvidenceAt": "2026-09-11T02:01:06.540Z",
+          "recordCount": 41
+        },
+        "truthSegment": {
+          "startAt": "2026-08-31T15:06:01.292Z",
+          "endAt": "2026-09-11T01:36:18.665Z",
+          "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
+          "lastEvidenceAt": "2026-09-11T01:36:18.665Z",
+          "recordCount": 495
+        }
+      }
     }
   ],
-  "closeoutCheckedAt": "2026-09-11T01:57:34.988Z",
-  "generatedAt": "2026-09-11T01:57:35.121Z",
+  "closeoutBlocked": [],
+  "closeoutCheckedAt": "2026-09-11T02:02:37.717Z",
+  "generatedAt": "2026-09-11T02:02:37.844Z",
   "sourceCommit": "a8c5957a490c8d3fd3ac879783bd9a31a454db03",
-  "evaluationFingerprint": "3c48682b8e5ce2da45fd11a6092af0f4967186fc761b158163d79170e632eed5"
+  "evaluationFingerprint": "e87deab7301875ce9982c3a977b932e1020e612f15041634f4700f8482f8d206"
 }
