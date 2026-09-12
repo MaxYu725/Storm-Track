@@ -58,14 +58,14 @@
   },
   "prospective": {
     "caseIdentitySchemaVersion": "storm-case-identity/v1",
-    "reconciledThrough": "2026-09-12T04:26:40.368Z",
+    "reconciledThrough": "2026-09-12T04:41:44.769Z",
     "trustedRecorderSchema": "beta-prospective-recorder/v2",
-    "trustedRecordCount": 1130,
-    "healthRecordCount": 1108,
-    "latestHealthCapturedAt": "2026-09-12T04:26:40.368Z",
+    "trustedRecordCount": 1131,
+    "healthRecordCount": 1109,
+    "latestHealthCapturedAt": "2026-09-12T04:41:44.769Z",
     "recorderSchemaCounts": {
       "beta-prospective-recorder/v1": 1,
-      "beta-prospective-recorder/v2": 1130
+      "beta-prospective-recorder/v2": 1131
     },
     "excludedRecordCount": 1,
     "excludedAmbiguousCaseCaptureCount": 8,
@@ -143,7 +143,7 @@
         ]
       }
     ],
-    "coverageRecordCount": 1248,
+    "coverageRecordCount": 1249,
     "coverageGapCount": 55,
     "coverageGaps": [
       {
@@ -441,9 +441,63 @@
   "status": "evaluated",
   "awaiting": {
     "status": "monitoring-higher-signals",
-    "activeHkoCaseIds": [],
-    "pendingSignalsByCase": {},
-    "latestPredictions": [],
+    "activeHkoCaseIds": [
+      "STC-2026-CMA-3332799"
+    ],
+    "pendingSignalsByCase": {
+      "STC-2026-CMA-3332799": [
+        "T1",
+        "T3",
+        "T8"
+      ]
+    },
+    "latestPredictions": [
+      {
+        "caseId": "STC-2026-CMA-3332799",
+        "capturedAt": "2026-09-12T04:41:44.769Z",
+        "captureFingerprint": "1c7a48d29ff0a98396ab025bd0aa55ba8d93126f7b30dad7de9aa454f62a3370",
+        "rawGroupKey": "TROPICALDEPRESSION",
+        "displayName": "熱帶低氣壓 (Tropical Depression)",
+        "likelihood": "unlikely",
+        "estimatedWindow": null,
+        "signals": {
+          "T1": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.23216187008653522,
+            "confidenceIndex": 0.6781456658015084,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T3": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.07149279196625609,
+            "confidenceIndex": 0.4747019660610558,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T8": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.02852548947988893,
+            "confidenceIndex": 0.4204503127969352,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          }
+        },
+        "sourceAgencies": [
+          "CMA",
+          "HKO"
+        ],
+        "engineVersions": {
+          "ui": "frontend-hk-threat-ui/v3",
+          "snapshot": "storm-analysis-snapshot/v1",
+          "impact": "hk-impact/v1",
+          "signalInputs": "hko-signal-risk-inputs/v1",
+          "threatAssessment": "hk-threat-assessment/v1",
+          "basicForecast": "basic-hk-signal-forecast/v1",
+          "shadowForecastV2": "hk-signal-shadow-v2/0.5"
+        }
+      }
+    ],
     "latestHkoTruth": {
       "retrievedAt": "2026-09-12T04:36:59.202Z",
       "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
@@ -2700,8 +2754,8 @@
     }
   ],
   "closeoutBlocked": [],
-  "closeoutCheckedAt": "2026-09-12T04:38:08.058Z",
-  "generatedAt": "2026-09-12T04:38:08.179Z",
+  "closeoutCheckedAt": "2026-09-12T04:43:11.411Z",
+  "generatedAt": "2026-09-12T04:43:11.536Z",
   "sourceCommit": "a8c5957a490c8d3fd3ac879783bd9a31a454db03",
-  "evaluationFingerprint": "be0efbf9259b64ab3f1b20d21a506aac7522ee7f0464a33ee3302eba174db2b1"
+  "evaluationFingerprint": "00deec5fa9564fab345c399b3d79687338871630090e61581c67d320b97d18b3"
 }
