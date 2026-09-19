@@ -58,14 +58,14 @@
   },
   "prospective": {
     "caseIdentitySchemaVersion": "storm-case-identity/v1",
-    "reconciledThrough": "2026-09-19T01:58:59.779Z",
+    "reconciledThrough": "2026-09-19T02:13:35.592Z",
     "trustedRecorderSchema": "beta-prospective-recorder/v2",
-    "trustedRecordCount": 1864,
-    "healthRecordCount": 1842,
-    "latestHealthCapturedAt": "2026-09-19T01:58:59.779Z",
+    "trustedRecordCount": 1865,
+    "healthRecordCount": 1843,
+    "latestHealthCapturedAt": "2026-09-19T02:13:35.592Z",
     "recorderSchemaCounts": {
       "beta-prospective-recorder/v1": 1,
-      "beta-prospective-recorder/v2": 1864
+      "beta-prospective-recorder/v2": 1865
     },
     "excludedRecordCount": 1,
     "excludedAmbiguousCaseCaptureCount": 8,
@@ -143,7 +143,7 @@
         ]
       }
     ],
-    "coverageRecordCount": 1982,
+    "coverageRecordCount": 1983,
     "coverageGapCount": 55,
     "coverageGaps": [
       {
@@ -441,9 +441,65 @@
   "status": "evaluated",
   "awaiting": {
     "status": "monitoring-higher-signals",
-    "activeHkoCaseIds": [],
-    "pendingSignalsByCase": {},
-    "latestPredictions": [],
+    "activeHkoCaseIds": [
+      "STC-2026-JMA-TC2630"
+    ],
+    "pendingSignalsByCase": {
+      "STC-2026-JMA-TC2630": [
+        "T1",
+        "T3",
+        "T8"
+      ]
+    },
+    "latestPredictions": [
+      {
+        "caseId": "STC-2026-JMA-TC2630",
+        "capturedAt": "2026-09-19T02:13:35.592Z",
+        "captureFingerprint": "65f42a7743de01334d842c278194d301683e6b61331b49164f7dfbe169f6aff1",
+        "rawGroupKey": "DUJUAN",
+        "displayName": "杜鵑 (DUJUAN)",
+        "likelihood": "unlikely",
+        "estimatedWindow": null,
+        "signals": {
+          "T1": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.1338010644537383,
+            "confidenceIndex": 0.892297665794976,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T3": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.04881801416006806,
+            "confidenceIndex": 0.7584530159257297,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T8": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.04873150265328514,
+            "confidenceIndex": 0.7227611092939307,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          }
+        },
+        "sourceAgencies": [
+          "CMA",
+          "CWA",
+          "HKO",
+          "JMA"
+        ],
+        "engineVersions": {
+          "ui": "frontend-hk-threat-ui/v3",
+          "snapshot": "storm-analysis-snapshot/v1",
+          "impact": "hk-impact/v1",
+          "signalInputs": "hko-signal-risk-inputs/v1",
+          "threatAssessment": "hk-threat-assessment/v1",
+          "basicForecast": "basic-hk-signal-forecast/v1",
+          "shadowForecastV2": "hk-signal-shadow-v2/0.5"
+        }
+      }
+    ],
     "latestHkoTruth": {
       "retrievedAt": "2026-09-19T02:04:07.911Z",
       "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
@@ -2999,8 +3055,8 @@
     }
   ],
   "closeoutBlocked": [],
-  "closeoutCheckedAt": "2026-09-19T02:04:34.997Z",
-  "generatedAt": "2026-09-19T02:04:35.154Z",
+  "closeoutCheckedAt": "2026-09-19T02:15:10.906Z",
+  "generatedAt": "2026-09-19T02:15:11.109Z",
   "sourceCommit": "a8c5957a490c8d3fd3ac879783bd9a31a454db03",
-  "evaluationFingerprint": "fbe659460c19be39355dbe1a871b12c37319017f0452ec35d95c7881db008080"
+  "evaluationFingerprint": "4f8dd693a7df7f98fcfc559f6b4ac4897f1fb99996cab5a735656599e62b297a"
 }
