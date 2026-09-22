@@ -58,14 +58,14 @@
   },
   "prospective": {
     "caseIdentitySchemaVersion": "storm-case-identity/v1",
-    "reconciledThrough": "2026-09-22T20:01:46.296Z",
+    "reconciledThrough": "2026-09-22T20:17:08.886Z",
     "trustedRecorderSchema": "beta-prospective-recorder/v2",
-    "trustedRecordCount": 2264,
-    "healthRecordCount": 2242,
-    "latestHealthCapturedAt": "2026-09-22T20:01:46.296Z",
+    "trustedRecordCount": 2265,
+    "healthRecordCount": 2243,
+    "latestHealthCapturedAt": "2026-09-22T20:17:08.886Z",
     "recorderSchemaCounts": {
       "beta-prospective-recorder/v1": 1,
-      "beta-prospective-recorder/v2": 2264
+      "beta-prospective-recorder/v2": 2265
     },
     "excludedRecordCount": 1,
     "excludedAmbiguousCaseCaptureCount": 8,
@@ -143,7 +143,7 @@
         ]
       }
     ],
-    "coverageRecordCount": 2382,
+    "coverageRecordCount": 2383,
     "coverageGapCount": 55,
     "coverageGaps": [
       {
@@ -426,10 +426,10 @@
     "caseCount": 11
   },
   "hkoTruth": {
-    "latestRetrievedAt": "2026-09-22T19:46:22.338Z",
+    "latestRetrievedAt": "2026-09-22T20:16:31.197Z",
     "latestTruthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
-    "healthRecordCount": 1096,
-    "latestHealthRetrievedAt": "2026-09-22T19:46:22.338Z",
+    "healthRecordCount": 1097,
+    "latestHealthRetrievedAt": "2026-09-22T20:16:31.197Z",
     "eventCount": 4,
     "initialTc1IssueCount": 1,
     "signalEventCounts": {
@@ -442,9 +442,15 @@
   "awaiting": {
     "status": "monitoring-higher-signals",
     "activeHkoCaseIds": [
+      "STC-2026-CWA-2026-29",
       "STC-2026-JMA-TC2630"
     ],
     "pendingSignalsByCase": {
+      "STC-2026-CWA-2026-29": [
+        "T1",
+        "T3",
+        "T8"
+      ],
       "STC-2026-JMA-TC2630": [
         "T1",
         "T3",
@@ -453,9 +459,55 @@
     },
     "latestPredictions": [
       {
+        "caseId": "STC-2026-CWA-2026-29",
+        "capturedAt": "2026-09-22T20:17:08.886Z",
+        "captureFingerprint": "822dc8319d6842bc28ef74d20240b60bafb95932af00688ac06ff8cfe62b9a60",
+        "rawGroupKey": "TROPICALDEPRESSION",
+        "displayName": "熱帶低氣壓 (Tropical Depression)",
+        "likelihood": "unlikely",
+        "estimatedWindow": null,
+        "signals": {
+          "T1": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.20168442501866543,
+            "confidenceIndex": 0.5233240484828766,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T3": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.1794973357277433,
+            "confidenceIndex": 0.41865923878630124,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T8": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.1738554548879892,
+            "confidenceIndex": 0.3907486228672145,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          }
+        },
+        "sourceAgencies": [
+          "CWA",
+          "HKO",
+          "JMA"
+        ],
+        "engineVersions": {
+          "ui": "frontend-hk-threat-ui/v3",
+          "snapshot": "storm-analysis-snapshot/v1",
+          "impact": "hk-impact/v1",
+          "signalInputs": "hko-signal-risk-inputs/v1",
+          "threatAssessment": "hk-threat-assessment/v1",
+          "basicForecast": "basic-hk-signal-forecast/v1",
+          "shadowForecastV2": "hk-signal-shadow-v2/0.5"
+        }
+      },
+      {
         "caseId": "STC-2026-JMA-TC2630",
-        "capturedAt": "2026-09-22T20:01:46.296Z",
-        "captureFingerprint": "b4b2420aa9021a8e05de122df4d732c5e5d14c73e7a7942766406a37883f56fa",
+        "capturedAt": "2026-09-22T20:17:08.886Z",
+        "captureFingerprint": "822dc8319d6842bc28ef74d20240b60bafb95932af00688ac06ff8cfe62b9a60",
         "rawGroupKey": "DUJUAN",
         "displayName": "熱帶低氣壓 (DUJUAN)",
         "likelihood": "unlikely",
@@ -498,7 +550,7 @@
       }
     ],
     "latestHkoTruth": {
-      "retrievedAt": "2026-09-22T19:46:22.338Z",
+      "retrievedAt": "2026-09-22T20:16:31.197Z",
       "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
       "truth": {
         "warningStatementCode": "WTCSGNL",
@@ -1794,10 +1846,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -1892,10 +1944,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -1990,10 +2042,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -2254,10 +2306,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -2352,10 +2404,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -2450,10 +2502,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -2548,10 +2600,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -2646,10 +2698,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -2744,10 +2796,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -2842,10 +2894,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -2940,10 +2992,10 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     },
@@ -3038,17 +3090,17 @@
         },
         "truthSegment": {
           "startAt": "2026-08-31T15:06:01.292Z",
-          "endAt": "2026-09-22T19:46:22.338Z",
+          "endAt": "2026-09-22T20:16:31.197Z",
           "firstEvidenceAt": "2026-08-31T15:06:01.292Z",
-          "lastEvidenceAt": "2026-09-22T19:46:22.338Z",
-          "recordCount": 1021
+          "lastEvidenceAt": "2026-09-22T20:16:31.197Z",
+          "recordCount": 1022
         }
       }
     }
   ],
   "closeoutBlocked": [],
-  "closeoutCheckedAt": "2026-09-22T20:06:27.028Z",
-  "generatedAt": "2026-09-22T20:06:27.145Z",
+  "closeoutCheckedAt": "2026-09-22T20:24:49.589Z",
+  "generatedAt": "2026-09-22T20:24:49.789Z",
   "sourceCommit": "a8c5957a490c8d3fd3ac879783bd9a31a454db03",
-  "evaluationFingerprint": "03a2cdbfc76be1f5c9373ed1a9fad27c70ce48cfea3513cf3c1458b62d038ec5"
+  "evaluationFingerprint": "6ccce4142d3ac89f0c8d18b80e452dfb93301ee34e32b42f3aeb03d0a45c39db"
 }
