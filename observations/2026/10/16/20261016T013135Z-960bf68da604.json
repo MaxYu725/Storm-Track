@@ -1,0 +1,2625 @@
+{
+  "schemaVersion": "beta-prospective-recorder/v2",
+  "capturedAt": "2026-10-16T01:31:35.700Z",
+  "targetUrl": "https://maxyu725.github.io/Storm-Track/?beta=hk-signal",
+  "sourceCommit": "a8c5957a490c8d3fd3ac879783bd9a31a454db03",
+  "pageTitle": "香港天氣｜HKO × CMA × JMA × CWA 熱帶氣旋路徑 v3.3 PWA",
+  "prospectiveSchemaVersion": "hk-beta-prospective-observation/v1",
+  "sourceStates": [
+    {
+      "agency": "HKO",
+      "state": "empty",
+      "message": "沒有活躍路徑"
+    },
+    {
+      "agency": "CMA",
+      "state": "ok",
+      "message": "1 個風暴"
+    },
+    {
+      "agency": "JMA",
+      "state": "ok",
+      "message": "1 個風暴（官方 XML）"
+    },
+    {
+      "agency": "CWA",
+      "state": "error",
+      "message": "CWA 連線逾時"
+    }
+  ],
+  "visibleGroupKeys": [
+    "CHAMPI"
+  ],
+  "discardedStaleObservationKeys": [],
+  "observationCount": 1,
+  "observations": [
+    {
+      "schemaVersion": "hk-beta-prospective-observation/v1",
+      "observedAt": "2026-10-16T01:31:34.944Z",
+      "group": {
+        "key": "CHAMPI",
+        "displayName": "蔷琵 (CHAMPI)",
+        "nameTc": "蔷琵",
+        "nameEn": "CHAMPI"
+      },
+      "sourceAgencies": [
+        "CMA",
+        "JMA"
+      ],
+      "sources": {
+        "CMA": {
+          "agency": "CMA",
+          "sourceId": "3359119",
+          "bulletinTime": "2026-10-16T00:00:00Z",
+          "positionCount": 7,
+          "forecastCount": 8,
+          "current": {
+            "time": "2026-10-16T00:00:00Z",
+            "baseTime": null,
+            "forecastHour": null,
+            "lat": 11.5,
+            "lon": 155,
+            "maximumWind": 23,
+            "pressure": 990,
+            "intensity": "TS"
+          },
+          "forecastStart": {
+            "time": "2026-10-16T12:00:00.000Z",
+            "baseTime": "2026-10-16T00:00:00Z",
+            "forecastHour": 12,
+            "lat": 11.8,
+            "lon": 152,
+            "maximumWind": 25,
+            "pressure": 985,
+            "intensity": "STS"
+          },
+          "forecastEnd": {
+            "time": "2026-10-21T00:00:00.000Z",
+            "baseTime": "2026-10-16T00:00:00Z",
+            "forecastHour": 120,
+            "lat": 19.8,
+            "lon": 131.6,
+            "maximumWind": 60,
+            "pressure": 920,
+            "intensity": "SuperTY"
+          },
+          "inputSha256": "481ae0641864ee748d10d721ae86117e83db1c0a7d730ba8737588509c8aec68"
+        },
+        "JMA": {
+          "agency": "JMA",
+          "sourceId": "TC2636",
+          "bulletinTime": "2026-10-16T09:45:00+09:00",
+          "positionCount": 1,
+          "forecastCount": 6,
+          "current": {
+            "time": "2026-10-16T09:00:00+09:00",
+            "baseTime": null,
+            "forecastHour": null,
+            "lat": 11.1,
+            "lon": 154.1,
+            "maximumWind": 23,
+            "pressure": 994,
+            "intensity": "熱帶風暴"
+          },
+          "forecastStart": {
+            "time": "2026-10-16T21:00:00+09:00",
+            "baseTime": null,
+            "forecastHour": null,
+            "lat": 11.9,
+            "lon": 152.3,
+            "maximumWind": 25,
+            "pressure": 990,
+            "intensity": "強烈熱帶風暴"
+          },
+          "forecastEnd": {
+            "time": "2026-10-21T09:00:00+09:00",
+            "baseTime": null,
+            "forecastHour": null,
+            "lat": 19.8,
+            "lon": 132.2,
+            "maximumWind": 50,
+            "pressure": 935,
+            "intensity": "非常に強い"
+          },
+          "inputSha256": "a33f634e6ebfcb66dc368741280da865a37e58d06df0b37e5b4f619754906b8e"
+        }
+      },
+      "engineVersions": {
+        "ui": "frontend-hk-threat-ui/v3",
+        "snapshot": "storm-analysis-snapshot/v1",
+        "impact": "hk-impact/v1",
+        "signalInputs": "hko-signal-risk-inputs/v1",
+        "threatAssessment": "hk-threat-assessment/v1",
+        "basicForecast": "basic-hk-signal-forecast/v1",
+        "shadowForecastV2": "hk-signal-shadow-v2/0.5"
+      },
+      "analysis": {
+        "available": true,
+        "reason": null,
+        "generatedAt": "2026-10-16T00:45:00.000Z",
+        "snapshotSchemaVersion": "storm-analysis-snapshot/v1",
+        "impact": {
+          "schemaVersion": "hk-impact/v1",
+          "closestApproach": {
+            "distanceRangeKm": {
+              "min": 1828.4797064690608,
+              "max": 1889.9390946440712
+            },
+            "agencyTimeWindow": {
+              "start": "2026-10-21T00:00:00.000Z",
+              "end": "2026-10-21T00:00:00.000Z",
+              "spanHours": 0
+            },
+            "consensus": {
+              "distanceKm": 1859.204407632533,
+              "time": "2026-10-21T00:00:00.000Z",
+              "timeMs": 1792540800000,
+              "lat": 19.8,
+              "lon": 131.89999999999998,
+              "interpolated": false,
+              "method": "official-point",
+              "appComputed": true,
+              "source": "unweighted-consensus-track-v1"
+            }
+          },
+          "trend": {
+            "aggregate": "approaching",
+            "counts": {
+              "approaching": 2,
+              "departing": 0,
+              "steady": 0,
+              "unavailable": 0
+            },
+            "agencies": {
+              "CMA": {
+                "state": "approaching",
+                "deltaKm": -158.45565632469425,
+                "horizonHours": 6,
+                "startTime": "2026-10-16T00:00:00.000Z",
+                "endTime": "2026-10-16T06:00:00.000Z",
+                "startDistanceKm": 4490.649283277352,
+                "endDistanceKm": 4332.193626952658
+              },
+              "JMA": {
+                "state": "approaching",
+                "deltaKm": -107.61184302479433,
+                "horizonHours": 6,
+                "startTime": "2026-10-16T00:00:00.000Z",
+                "endTime": "2026-10-16T06:00:00.000Z",
+                "startDistanceKm": 4415.416589961327,
+                "endDistanceKm": 4307.804746936533
+              }
+            },
+            "horizonHours": 6,
+            "thresholdKm": 10
+          },
+          "uncertainty": {
+            "level": "moderate",
+            "method": "heuristic-v1",
+            "reasons": [
+              "comparison-spread:46.6km",
+              "closest-distance-span:61.5km",
+              "closest-time-span:0.0h"
+            ]
+          }
+        },
+        "signalInputs": {
+          "schemaVersion": "hko-signal-risk-inputs/v1",
+          "coverage": {
+            "usableAgencies": [
+              "CMA",
+              "JMA"
+            ],
+            "usableAgencyCount": 2,
+            "windRadiusAgencies": [
+              "CMA"
+            ],
+            "officialMotionAgencies": [],
+            "derivedMotionAgencies": [
+              "CMA",
+              "JMA"
+            ]
+          },
+          "disagreement": {
+            "comparisonSpreadKm": 46.62459717293294,
+            "impactUncertaintyLevel": "moderate",
+            "impactUncertaintyMethod": "heuristic-v1",
+            "closestDistanceSpanKm": 61.45938817501042,
+            "closestTimeSpreadHours": 0,
+            "intensitySpreadMs": 10
+          },
+          "featureVector": {
+            "usableAgencyCount": 2,
+            "comparisonSpreadKm": 46.62459717293294,
+            "consensusClosestDistanceKm": 1859.204407632533,
+            "consensusClosestLeadHours": 120,
+            "closestDistanceMinKm": 1828.4797064690608,
+            "closestDistanceMaxKm": 1889.9390946440712,
+            "closestDistanceSpanKm": 61.45938817501042,
+            "closestTimeSpreadHours": 0,
+            "currentDistanceMedianKm": 4453.03293661934,
+            "derivedMotionSpeedMedianKmh": 16.237555159469512,
+            "currentMaximumWindMedianMs": 23,
+            "closestMaximumWindMedianMs": 55,
+            "intensitySpreadMs": 10,
+            "windRadiusAgencyCount": 1,
+            "latestWindFieldCoverageAgencyCount": 0,
+            "closestTimeWindFieldCoverageAgencyCount": 0,
+            "latestStrongWindFieldCoverageAgencyCount": 0,
+            "closestTimeStrongWindFieldCoverageAgencyCount": 0,
+            "latestGaleWindFieldCoverageAgencyCount": 0,
+            "closestTimeGaleWindFieldCoverageAgencyCount": 0,
+            "unknownThresholdWindFieldCoverageAgencyCount": 0,
+            "latestStrongWindFieldCoverageEffectiveAgencyCount": 0,
+            "closestTimeStrongWindFieldCoverageEffectiveAgencyCount": 0,
+            "latestGaleWindFieldCoverageEffectiveAgencyCount": 0,
+            "closestTimeGaleWindFieldCoverageEffectiveAgencyCount": 0,
+            "latestWindFieldEvidenceAgeMedianHours": 0,
+            "closestTimeWindFieldEvidenceAgeMedianHours": 120,
+            "windFieldTimelinePointCount": 7
+          },
+          "officialHkoWarningContext": {
+            "provided": false,
+            "inferred": false,
+            "currentSignal": null,
+            "issuedAt": null,
+            "source": null,
+            "text": null
+          }
+        },
+        "threatAssessment": {
+          "schemaVersion": "hk-threat-assessment/v1",
+          "summary": {
+            "currentDistanceKm": 4453.03293661934,
+            "forecastMinimumKm": 1859.204407632533,
+            "forecastMinimumLeadHours": 119.25,
+            "representativeMinimum": {
+              "distanceKm": 1859.204407632533,
+              "time": "2026-10-21T00:00:00.000Z",
+              "leadHours": 119.25,
+              "source": "unweighted-consensus"
+            },
+            "overallThreatIndex": 0.08224929260095577,
+            "confidenceIndex": 0.4778955546519803,
+            "strongestTimelineThreat": {
+              "label": "+47.3h",
+              "validTime": "2026-10-18T00:00:00.000Z",
+              "leadHours": 47.25,
+              "threatIndex": 0.2505191222388147,
+              "distanceMedianKm": 3394.6934416600798,
+              "windMedianMs": 42.5
+            },
+            "fastestEvolution": {
+              "label": "+35.3h",
+              "validTime": "2026-10-17T12:00:00.000Z",
+              "leadHours": 35.25,
+              "rapidEvolutionIndex": 0.7477208418268706,
+              "medianRapidEvolutionIndex": 0.6909754104656085,
+              "approachRateKmh": 21.267493954585536,
+              "strengtheningRateMsPerHour": 0.5416666666666666
+            }
+          },
+          "analyzers": {
+            "directApproach": {
+              "confidence": 0.9996606050483072
+            },
+            "directDepart": {
+              "confidence": 0
+            },
+            "reApproach": {
+              "confidence": 0
+            },
+            "quasiStationary": {
+              "confidence": 0.06685745028145824
+            },
+            "forecastEdge": {
+              "confidence": 1
+            },
+            "agencyDisagreement": {
+              "confidence": 0.32231365797956896
+            },
+            "interpolationReliability": {
+              "confidence": 0.9266846866427978
+            },
+            "windField": {
+              "confidence": 0,
+              "representativeWindMs": 55,
+              "dataAgencyCount": 1,
+              "latestCoverageAgencyCount": 0,
+              "closestCoverageAgencyCount": 0,
+              "latestStrongWindCoverageAgencyCount": 0,
+              "closestStrongWindCoverageAgencyCount": 0,
+              "latestGaleCoverageAgencyCount": 0,
+              "closestGaleCoverageAgencyCount": 0,
+              "strongWindCoverageFraction": 0,
+              "galeCoverageFraction": 0
+            },
+            "rapidEvolution": {
+              "confidence": 0.7477208418268706,
+              "checkpoint": "+35.3h"
+            }
+          },
+          "timeline": [
+            {
+              "label": "+11.3h",
+              "validTime": "2026-10-16T12:00:00.000Z",
+              "leadHours": 11.25,
+              "supportAgencyCount": 2,
+              "exactOfficialSupportCount": 2,
+              "interpolationReliability": 1,
+              "windSupportAgencyCount": 2,
+              "distanceMedianKm": 4187.151751544089,
+              "distanceRangeKm": {
+                "min": 4173.957300896277,
+                "max": 4200.346202191901
+              },
+              "windMedianMs": 25,
+              "proximityIndex": 0.0037270250932428923,
+              "windSeverityIndex": 0.5,
+              "agreementIndex": 0.9034849972684612,
+              "timeRelevance": 0.8648648648648649,
+              "physicalThreatIndex": 0.15260891756527,
+              "threatIndex": 0.14332864555116576,
+              "agencies": [
+                {
+                  "agency": "CMA",
+                  "time": "2026-10-16T12:00:00.000Z",
+                  "leadHours": 11.25,
+                  "distanceKm": 4173.957300896277,
+                  "maximumWindMs": 25,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -316.6919823810749,
+                  "windDeltaFromPreviousMs": 2,
+                  "approachRateKmh": 26.390998531756242,
+                  "strengtheningRateMsPerHour": 0.16666666666666666,
+                  "rapidEvolutionIndex": 0.6555555555555556
+                },
+                {
+                  "agency": "JMA",
+                  "time": "2026-10-16T12:00:00.000Z",
+                  "leadHours": 11.25,
+                  "distanceKm": 4200.346202191901,
+                  "maximumWindMs": 25,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -215.0703877694259,
+                  "windDeltaFromPreviousMs": 2,
+                  "approachRateKmh": 17.922532314118826,
+                  "strengtheningRateMsPerHour": 0.16666666666666666,
+                  "rapidEvolutionIndex": 0.48569633109440735
+                }
+              ],
+              "intervalFromPreviousHours": 12,
+              "distanceDeltaFromPreviousKm": -265.88118507525087,
+              "windDeltaFromPreviousMs": 2,
+              "approachRateKmh": 22.15676542293757,
+              "strengtheningRateMsPerHour": 0.16666666666666666,
+              "rapidEvolutionIndex": 0.5706259433249814,
+              "scenarioRapidEvolutionIndex": 0.6555555555555556
+            },
+            {
+              "label": "+23.3h",
+              "validTime": "2026-10-17T00:00:00.000Z",
+              "leadHours": 23.25,
+              "supportAgencyCount": 2,
+              "exactOfficialSupportCount": 2,
+              "interpolationReliability": 1,
+              "windSupportAgencyCount": 2,
+              "distanceMedianKm": 3899.5862530907043,
+              "distanceRangeKm": {
+                "min": 3890.439494293467,
+                "max": 3908.733011887942
+              },
+              "windMedianMs": 30,
+              "proximityIndex": 0.0046097551472388315,
+              "windSeverityIndex": 0.6666666666666666,
+              "agreementIndex": 0.9320585139532622,
+              "timeRelevance": 0.7559055118110236,
+              "physicalThreatIndex": 0.20322682860306718,
+              "threatIndex": 0.18090388168170665,
+              "agencies": [
+                {
+                  "agency": "CMA",
+                  "time": "2026-10-17T00:00:00.000Z",
+                  "leadHours": 23.25,
+                  "distanceKm": 3890.439494293467,
+                  "maximumWindMs": 30,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -283.5178066028102,
+                  "windDeltaFromPreviousMs": 5,
+                  "approachRateKmh": 23.626483883567516,
+                  "strengtheningRateMsPerHour": 0.4166666666666667,
+                  "rapidEvolutionIndex": 0.7059245020945093
+                },
+                {
+                  "agency": "JMA",
+                  "time": "2026-10-17T00:00:00.000Z",
+                  "leadHours": 23.25,
+                  "distanceKm": 3908.733011887942,
+                  "maximumWindMs": 30,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -291.6131903039591,
+                  "windDeltaFromPreviousMs": 5,
+                  "approachRateKmh": 24.301099191996588,
+                  "strengtheningRateMsPerHour": 0.4166666666666667,
+                  "rapidEvolutionIndex": 0.722115269496807
+                }
+              ],
+              "intervalFromPreviousHours": 12,
+              "distanceDeltaFromPreviousKm": -287.56549845338486,
+              "windDeltaFromPreviousMs": 5,
+              "approachRateKmh": 23.963791537782072,
+              "strengtheningRateMsPerHour": 0.4166666666666667,
+              "rapidEvolutionIndex": 0.7140198857956581,
+              "scenarioRapidEvolutionIndex": 0.722115269496807
+            },
+            {
+              "label": "+35.3h",
+              "validTime": "2026-10-17T12:00:00.000Z",
+              "leadHours": 35.25,
+              "supportAgencyCount": 2,
+              "exactOfficialSupportCount": 1,
+              "interpolationReliability": 0.7142857142857143,
+              "windSupportAgencyCount": 2,
+              "distanceMedianKm": 3644.376325635678,
+              "distanceRangeKm": {
+                "min": 3627.6901844911426,
+                "max": 3661.0624667802135
+              },
+              "windMedianMs": 36.5,
+              "proximityIndex": 0.005641743069638778,
+              "windSeverityIndex": 0.8833333333333333,
+              "agreementIndex": 0.879541146543673,
+              "timeRelevance": 0.6713286713286714,
+              "physicalThreatIndex": 0.2689492201487471,
+              "threatIndex": 0.22917106625961425,
+              "agencies": [
+                {
+                  "agency": "CMA",
+                  "time": "2026-10-17T12:00:00.000Z",
+                  "leadHours": 35.25,
+                  "distanceKm": 3627.6901844911426,
+                  "maximumWindMs": 38,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -262.7493098023242,
+                  "windDeltaFromPreviousMs": 8,
+                  "approachRateKmh": 21.89577581686035,
+                  "strengtheningRateMsPerHour": 0.6666666666666666,
+                  "rapidEvolutionIndex": 0.7477208418268706
+                },
+                {
+                  "agency": "JMA",
+                  "time": "2026-10-17T12:00:00.000Z",
+                  "leadHours": 35.25,
+                  "distanceKm": 3661.0624667802135,
+                  "maximumWindMs": 35,
+                  "interpolationSpanHours": 24,
+                  "interpolationReliability": 0.4285714285714286,
+                  "exactOfficialTime": false,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -247.67054510772869,
+                  "windDeltaFromPreviousMs": 5,
+                  "approachRateKmh": 20.639212092310725,
+                  "strengtheningRateMsPerHour": 0.4166666666666667,
+                  "rapidEvolutionIndex": 0.6342299791043463
+                }
+              ],
+              "intervalFromPreviousHours": 12,
+              "distanceDeltaFromPreviousKm": -255.20992745502645,
+              "windDeltaFromPreviousMs": 6.5,
+              "approachRateKmh": 21.267493954585536,
+              "strengtheningRateMsPerHour": 0.5416666666666666,
+              "rapidEvolutionIndex": 0.6909754104656085,
+              "scenarioRapidEvolutionIndex": 0.7477208418268706
+            },
+            {
+              "label": "+47.3h",
+              "validTime": "2026-10-18T00:00:00.000Z",
+              "leadHours": 47.25,
+              "supportAgencyCount": 2,
+              "exactOfficialSupportCount": 2,
+              "interpolationReliability": 1,
+              "windSupportAgencyCount": 2,
+              "distanceMedianKm": 3394.6934416600798,
+              "distanceRangeKm": {
+                "min": 3375.545640597036,
+                "max": 3413.8412427231237
+              },
+              "windMedianMs": 42.5,
+              "proximityIndex": 0.0069710834396318686,
+              "windSeverityIndex": 1,
+              "agreementIndex": 0.8630429875240615,
+              "timeRelevance": 0.6037735849056604,
+              "physicalThreatIndex": 0.3048797584077423,
+              "threatIndex": 0.2505191222388147,
+              "agencies": [
+                {
+                  "agency": "CMA",
+                  "time": "2026-10-18T00:00:00.000Z",
+                  "leadHours": 47.25,
+                  "distanceKm": 3375.545640597036,
+                  "maximumWindMs": 45,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -252.14454389410685,
+                  "windDeltaFromPreviousMs": 7,
+                  "approachRateKmh": 21.012045324508904,
+                  "strengtheningRateMsPerHour": 0.5833333333333334,
+                  "rapidEvolutionIndex": 0.6987335322326582
+                },
+                {
+                  "agency": "JMA",
+                  "time": "2026-10-18T00:00:00.000Z",
+                  "leadHours": 47.25,
+                  "distanceKm": 3413.8412427231237,
+                  "maximumWindMs": 40,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -247.22122405708978,
+                  "windDeltaFromPreviousMs": 5,
+                  "approachRateKmh": 20.60176867142415,
+                  "strengtheningRateMsPerHour": 0.4166666666666667,
+                  "rapidEvolutionIndex": 0.6333313370030685
+                }
+              ],
+              "intervalFromPreviousHours": 12,
+              "distanceDeltaFromPreviousKm": -249.6828839755981,
+              "windDeltaFromPreviousMs": 6,
+              "approachRateKmh": 20.806906997966507,
+              "strengtheningRateMsPerHour": 0.5,
+              "rapidEvolutionIndex": 0.6660324346178634,
+              "scenarioRapidEvolutionIndex": 0.6987335322326582
+            },
+            {
+              "label": "+59.3h",
+              "validTime": "2026-10-18T12:00:00.000Z",
+              "leadHours": 59.25,
+              "supportAgencyCount": 2,
+              "exactOfficialSupportCount": 1,
+              "interpolationReliability": 0.7142857142857143,
+              "windSupportAgencyCount": 2,
+              "distanceMedianKm": 3153.569052361583,
+              "distanceRangeKm": {
+                "min": 3135.8825824827336,
+                "max": 3171.255522240433
+              },
+              "windMedianMs": 46.25,
+              "proximityIndex": 0.008680538492618286,
+              "windSeverityIndex": 1,
+              "agreementIndex": 0.8727991936766887,
+              "timeRelevance": 0.5485714285714286,
+              "physicalThreatIndex": 0.3060763769448328,
+              "threatIndex": 0.24389914722832537,
+              "agencies": [
+                {
+                  "agency": "CMA",
+                  "time": "2026-10-18T12:00:00.000Z",
+                  "leadHours": 59.25,
+                  "distanceKm": 3135.8825824827336,
+                  "maximumWindMs": 50,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -239.6630581143022,
+                  "windDeltaFromPreviousMs": 5,
+                  "approachRateKmh": 19.971921509525185,
+                  "strengtheningRateMsPerHour": 0.4166666666666667,
+                  "rapidEvolutionIndex": 0.6182150051174933
+                },
+                {
+                  "agency": "JMA",
+                  "time": "2026-10-18T12:00:00.000Z",
+                  "leadHours": 59.25,
+                  "distanceKm": 3171.255522240433,
+                  "maximumWindMs": 42.5,
+                  "interpolationSpanHours": 24,
+                  "interpolationReliability": 0.4285714285714286,
+                  "exactOfficialTime": false,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -242.5857204826907,
+                  "windDeltaFromPreviousMs": 2.5,
+                  "approachRateKmh": 20.215476706890893,
+                  "strengtheningRateMsPerHour": 0.20833333333333334,
+                  "rapidEvolutionIndex": 0.5546158854098259
+                }
+              ],
+              "intervalFromPreviousHours": 12,
+              "distanceDeltaFromPreviousKm": -241.12438929849668,
+              "windDeltaFromPreviousMs": 3.75,
+              "approachRateKmh": 20.093699108208057,
+              "strengtheningRateMsPerHour": 0.3125,
+              "rapidEvolutionIndex": 0.5864154452636596,
+              "scenarioRapidEvolutionIndex": 0.6182150051174933
+            },
+            {
+              "label": "+71.3h",
+              "validTime": "2026-10-19T00:00:00.000Z",
+              "leadHours": 71.25,
+              "supportAgencyCount": 2,
+              "exactOfficialSupportCount": 2,
+              "interpolationReliability": 1,
+              "windSupportAgencyCount": 2,
+              "distanceMedianKm": 2921.098081343995,
+              "distanceRangeKm": {
+                "min": 2912.974344698919,
+                "max": 2929.221817989071
+              },
+              "windMedianMs": 50,
+              "proximityIndex": 0.010897898932363669,
+              "windSeverityIndex": 1,
+              "agreementIndex": 0.9394221921818252,
+              "timeRelevance": 0.5026178010471204,
+              "physicalThreatIndex": 0.30762852925265455,
+              "threatIndex": 0.23877449979950804,
+              "agencies": [
+                {
+                  "agency": "CMA",
+                  "time": "2026-10-19T00:00:00.000Z",
+                  "leadHours": 71.25,
+                  "distanceKm": 2912.974344698919,
+                  "maximumWindMs": 55,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -222.90823778381446,
+                  "windDeltaFromPreviousMs": 5,
+                  "approachRateKmh": 18.575686481984537,
+                  "strengtheningRateMsPerHour": 0.4166666666666667,
+                  "rapidEvolutionIndex": 0.5847053644565178
+                },
+                {
+                  "agency": "JMA",
+                  "time": "2026-10-19T00:00:00.000Z",
+                  "leadHours": 71.25,
+                  "distanceKm": 2929.221817989071,
+                  "maximumWindMs": 45,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -242.033704251362,
+                  "windDeltaFromPreviousMs": 2.5,
+                  "approachRateKmh": 20.169475354280166,
+                  "strengtheningRateMsPerHour": 0.20833333333333334,
+                  "rapidEvolutionIndex": 0.5535118529471684
+                }
+              ],
+              "intervalFromPreviousHours": 12,
+              "distanceDeltaFromPreviousKm": -232.470971017588,
+              "windDeltaFromPreviousMs": 3.75,
+              "approachRateKmh": 19.372580918132332,
+              "strengtheningRateMsPerHour": 0.3125,
+              "rapidEvolutionIndex": 0.5691086087018431,
+              "scenarioRapidEvolutionIndex": 0.5847053644565178
+            },
+            {
+              "label": "+95.3h",
+              "validTime": "2026-10-20T00:00:00.000Z",
+              "leadHours": 95.25,
+              "supportAgencyCount": 2,
+              "exactOfficialSupportCount": 2,
+              "interpolationReliability": 1,
+              "windSupportAgencyCount": 2,
+              "distanceMedianKm": 2423.5825472632587,
+              "distanceRangeKm": {
+                "min": 2394.8115292203993,
+                "max": 2452.353565306118
+              },
+              "windMedianMs": 52.5,
+              "proximityIndex": 0.018926408363986617,
+              "windSeverityIndex": 1,
+              "agreementIndex": 0.8014637598153567,
+              "timeRelevance": 0.43049327354260086,
+              "physicalThreatIndex": 0.3132484858547906,
+              "threatIndex": 0.2329697819686862,
+              "agencies": [
+                {
+                  "agency": "CMA",
+                  "time": "2026-10-20T00:00:00.000Z",
+                  "leadHours": 95.25,
+                  "distanceKm": 2394.8115292203993,
+                  "maximumWindMs": 60,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -518.1628154785199,
+                  "windDeltaFromPreviousMs": 5,
+                  "approachRateKmh": 21.590117311604995,
+                  "strengtheningRateMsPerHour": 0.20833333333333334,
+                  "rapidEvolutionIndex": 0.5876072599229643
+                },
+                {
+                  "agency": "JMA",
+                  "time": "2026-10-20T00:00:00.000Z",
+                  "leadHours": 95.25,
+                  "distanceKm": 2452.353565306118,
+                  "maximumWindMs": 45,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -476.86825268295297,
+                  "windDeltaFromPreviousMs": 0,
+                  "approachRateKmh": 19.869510528456374,
+                  "strengtheningRateMsPerHour": 0,
+                  "rapidEvolutionIndex": 0.47686825268295296
+                }
+              ],
+              "intervalFromPreviousHours": 24,
+              "distanceDeltaFromPreviousKm": -497.5155340807364,
+              "windDeltaFromPreviousMs": 2.5,
+              "approachRateKmh": 20.729813920030683,
+              "strengtheningRateMsPerHour": 0.10416666666666667,
+              "rapidEvolutionIndex": 0.5322377563029586,
+              "scenarioRapidEvolutionIndex": 0.5876072599229643
+            },
+            {
+              "label": "+119.3h",
+              "validTime": "2026-10-21T00:00:00.000Z",
+              "leadHours": 119.25,
+              "supportAgencyCount": 2,
+              "exactOfficialSupportCount": 2,
+              "interpolationReliability": 1,
+              "windSupportAgencyCount": 2,
+              "distanceMedianKm": 1859.209400556566,
+              "distanceRangeKm": {
+                "min": 1828.4797064690608,
+                "max": 1889.9390946440712
+              },
+              "windMedianMs": 55,
+              "proximityIndex": 0.040980982799821354,
+              "windSeverityIndex": 1,
+              "agreementIndex": 0.7894788283214843,
+              "timeRelevance": 0.3764705882352941,
+              "physicalThreatIndex": 0.32868668795987493,
+              "threatIndex": 0.23646107022054536,
+              "agencies": [
+                {
+                  "agency": "CMA",
+                  "time": "2026-10-21T00:00:00.000Z",
+                  "leadHours": 119.25,
+                  "distanceKm": 1828.4797064690608,
+                  "maximumWindMs": 60,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -566.3318227513384,
+                  "windDeltaFromPreviousMs": 0,
+                  "approachRateKmh": 23.597159281305768,
+                  "strengtheningRateMsPerHour": 0,
+                  "rapidEvolutionIndex": 0.5663318227513384
+                },
+                {
+                  "agency": "JMA",
+                  "time": "2026-10-21T00:00:00.000Z",
+                  "leadHours": 119.25,
+                  "distanceKm": 1889.9390946440712,
+                  "maximumWindMs": 50,
+                  "interpolationSpanHours": 0,
+                  "interpolationReliability": 1,
+                  "exactOfficialTime": true,
+                  "windRadiiAvailable": false,
+                  "distanceDeltaFromPreviousKm": -562.4144706620468,
+                  "windDeltaFromPreviousMs": 5,
+                  "approachRateKmh": 23.433936277585286,
+                  "strengtheningRateMsPerHour": 0.20833333333333334,
+                  "rapidEvolutionIndex": 0.6318589151064913
+                }
+              ],
+              "intervalFromPreviousHours": 24,
+              "distanceDeltaFromPreviousKm": -564.3731467066928,
+              "windDeltaFromPreviousMs": 2.5,
+              "approachRateKmh": 23.51554777944553,
+              "strengtheningRateMsPerHour": 0.10416666666666667,
+              "rapidEvolutionIndex": 0.5990953689289149,
+              "scenarioRapidEvolutionIndex": 0.6318589151064913
+            }
+          ],
+          "semantics": {
+            "deterministic": true,
+            "hardThreatGateUsed": false,
+            "timeWeightingIsContinuous": true,
+            "timelineUsesOfficialValidTimes": true,
+            "crossAgencyInterpolationIsTransparent": true,
+            "interpolationGapAffectsConfidenceNotPhysicalThreat": true,
+            "interpolationReliabilityIsContinuous": true,
+            "pastCheckpointsExcludedFromForecastTimeline": true,
+            "fixedDayBucketsUsed": false,
+            "checkpointSpacingIsDecisionGate": false,
+            "officialHkoForecast": false,
+            "officialHkoDecisionInferred": false,
+            "aiGenerated": false
+          }
+        },
+        "basicForecast": {
+          "schemaVersion": "basic-hk-signal-forecast/v1",
+          "available": true,
+          "generatedAt": "2026-10-16T00:45:00.000Z",
+          "impact": {
+            "likelihood": "unlikely",
+            "expected": false,
+            "closestApproach": {
+              "distanceKm": 1859.204407632533,
+              "time": "2026-10-21T00:00:00.000Z",
+              "source": "unweighted-consensus"
+            },
+            "currentDistanceKm": 4453.03293661934,
+            "threatIndex": 0.08224929260095577,
+            "confidenceIndex": 0.4778955546519803,
+            "forecastMinimumMayBeHorizonLimited": true,
+            "uncertainty": "moderate"
+          },
+          "signals": {
+            "T1": {
+              "likelihood": "unlikely",
+              "riskIndex": 0.16100755023111454,
+              "confidenceIndex": 0.4778955546519803,
+              "persistenceHours": 0,
+              "estimatedWindow": null,
+              "strongestCheckpoint": {
+                "label": "+119.3h",
+                "validTime": "2026-10-21T00:00:00.000Z",
+                "evidence": 0.16100755023111454,
+                "consensusEvidence": 0.16100755023111454,
+                "scenarioMaxEvidence": 0.16193747123526545,
+                "supportAgencyCount": 0,
+                "totalAgencyCount": 2
+              },
+              "basis": [
+                "current-distance:4453km",
+                "forecast-minimum:1859km",
+                "forecast-minimum-lead:119.3h",
+                "time-relevance:0.376",
+                "direct-approach:1.000",
+                "direct-depart:0.000",
+                "re-approach:0.000",
+                "quasi-stationary:0.067",
+                "rapid-evolution:0.748",
+                "forecast-edge:1.000",
+                "agency-disagreement:0.322",
+                "representative-wind:55.0m/s",
+                "wind-field-any:0.000",
+                "wind-field-t3:0.000",
+                "wind-field-t3-scenario:0.000",
+                "wind-field-t8:0.000",
+                "wind-field-t8-scenario:0.000",
+                "wind-radius-data:0.500",
+                "wind-field-latest-age:0.0h",
+                "wind-field-closest-age:120.0h",
+                "timeline-evidence:0.161",
+                "t1-risk-index:0.161"
+              ]
+            },
+            "T3": {
+              "likelihood": "unlikely",
+              "riskIndex": 0.18508230847887597,
+              "confidenceIndex": 0.40621122145418326,
+              "persistenceHours": 0,
+              "estimatedWindow": null,
+              "strongestCheckpoint": {
+                "label": "+119.3h",
+                "validTime": "2026-10-21T00:00:00.000Z",
+                "evidence": 0.01107812188425774,
+                "consensusEvidence": 0.01107812188425774,
+                "scenarioMaxEvidence": 0.011568906946059715,
+                "supportAgencyCount": 0,
+                "totalAgencyCount": 2
+              },
+              "basis": [
+                "current-distance:4453km",
+                "forecast-minimum:1859km",
+                "forecast-minimum-lead:119.3h",
+                "time-relevance:0.376",
+                "direct-approach:1.000",
+                "direct-depart:0.000",
+                "re-approach:0.000",
+                "quasi-stationary:0.067",
+                "rapid-evolution:0.748",
+                "forecast-edge:1.000",
+                "agency-disagreement:0.322",
+                "representative-wind:55.0m/s",
+                "wind-field-any:0.000",
+                "wind-field-t3:0.000",
+                "wind-field-t3-scenario:0.000",
+                "wind-field-t8:0.000",
+                "wind-field-t8-scenario:0.000",
+                "wind-radius-data:0.500",
+                "wind-field-latest-age:0.0h",
+                "wind-field-closest-age:120.0h",
+                "timeline-evidence:0.011",
+                "timeline-persistence:0.0h",
+                "direct-wind-field-risk:0.000",
+                "t3-likely-index:0.151",
+                "t3-risk-index:0.185"
+              ]
+            },
+            "T8": {
+              "likelihood": "unlikely",
+              "riskIndex": 0.1778907436787971,
+              "confidenceIndex": 0.38709539926810405,
+              "persistenceHours": 0,
+              "estimatedWindow": null,
+              "strongestCheckpoint": {
+                "label": "+119.3h",
+                "validTime": "2026-10-21T00:00:00.000Z",
+                "evidence": 0.0024293491281619922,
+                "consensusEvidence": 0.0024293491281619922,
+                "scenarioMaxEvidence": 0.002538766900112532,
+                "supportAgencyCount": 0,
+                "totalAgencyCount": 2
+              },
+              "basis": [
+                "current-distance:4453km",
+                "forecast-minimum:1859km",
+                "forecast-minimum-lead:119.3h",
+                "time-relevance:0.376",
+                "direct-approach:1.000",
+                "direct-depart:0.000",
+                "re-approach:0.000",
+                "quasi-stationary:0.067",
+                "rapid-evolution:0.748",
+                "forecast-edge:1.000",
+                "agency-disagreement:0.322",
+                "representative-wind:55.0m/s",
+                "wind-field-any:0.000",
+                "wind-field-t3:0.000",
+                "wind-field-t3-scenario:0.000",
+                "wind-field-t8:0.000",
+                "wind-field-t8-scenario:0.000",
+                "wind-radius-data:0.500",
+                "wind-field-latest-age:0.0h",
+                "wind-field-closest-age:120.0h",
+                "timeline-evidence:0.002",
+                "timeline-persistence:0.0h",
+                "direct-wind-field-risk:0.000",
+                "t8-peak-reliability:1.000",
+                "t8-credible-peak-evidence:0.002",
+                "t8-likely-index:0.142",
+                "t8-risk-index:0.178"
+              ]
+            }
+          },
+          "assessment": {
+            "schemaVersion": "hk-threat-assessment/v1",
+            "timeline": [
+              {
+                "label": "+11.3h",
+                "validTime": "2026-10-16T12:00:00.000Z",
+                "leadHours": 11.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 4187.151751544089,
+                "distanceRangeKm": {
+                  "min": 4173.957300896277,
+                  "max": 4200.346202191901
+                },
+                "windMedianMs": 25,
+                "proximityIndex": 0.0037270250932428923,
+                "windSeverityIndex": 0.5,
+                "agreementIndex": 0.9034849972684612,
+                "timeRelevance": 0.8648648648648649,
+                "physicalThreatIndex": 0.15260891756527,
+                "threatIndex": 0.14332864555116576,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-16T12:00:00.000Z",
+                    "leadHours": 11.25,
+                    "distanceKm": 4173.957300896277,
+                    "maximumWindMs": 25,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -316.6919823810749,
+                    "windDeltaFromPreviousMs": 2,
+                    "approachRateKmh": 26.390998531756242,
+                    "strengtheningRateMsPerHour": 0.16666666666666666,
+                    "rapidEvolutionIndex": 0.6555555555555556
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-16T12:00:00.000Z",
+                    "leadHours": 11.25,
+                    "distanceKm": 4200.346202191901,
+                    "maximumWindMs": 25,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -215.0703877694259,
+                    "windDeltaFromPreviousMs": 2,
+                    "approachRateKmh": 17.922532314118826,
+                    "strengtheningRateMsPerHour": 0.16666666666666666,
+                    "rapidEvolutionIndex": 0.48569633109440735
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -265.88118507525087,
+                "windDeltaFromPreviousMs": 2,
+                "approachRateKmh": 22.15676542293757,
+                "strengtheningRateMsPerHour": 0.16666666666666666,
+                "rapidEvolutionIndex": 0.5706259433249814,
+                "scenarioRapidEvolutionIndex": 0.6555555555555556
+              },
+              {
+                "label": "+23.3h",
+                "validTime": "2026-10-17T00:00:00.000Z",
+                "leadHours": 23.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 3899.5862530907043,
+                "distanceRangeKm": {
+                  "min": 3890.439494293467,
+                  "max": 3908.733011887942
+                },
+                "windMedianMs": 30,
+                "proximityIndex": 0.0046097551472388315,
+                "windSeverityIndex": 0.6666666666666666,
+                "agreementIndex": 0.9320585139532622,
+                "timeRelevance": 0.7559055118110236,
+                "physicalThreatIndex": 0.20322682860306718,
+                "threatIndex": 0.18090388168170665,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-17T00:00:00.000Z",
+                    "leadHours": 23.25,
+                    "distanceKm": 3890.439494293467,
+                    "maximumWindMs": 30,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -283.5178066028102,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 23.626483883567516,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.7059245020945093
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-17T00:00:00.000Z",
+                    "leadHours": 23.25,
+                    "distanceKm": 3908.733011887942,
+                    "maximumWindMs": 30,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -291.6131903039591,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 24.301099191996588,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.722115269496807
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -287.56549845338486,
+                "windDeltaFromPreviousMs": 5,
+                "approachRateKmh": 23.963791537782072,
+                "strengtheningRateMsPerHour": 0.4166666666666667,
+                "rapidEvolutionIndex": 0.7140198857956581,
+                "scenarioRapidEvolutionIndex": 0.722115269496807
+              },
+              {
+                "label": "+35.3h",
+                "validTime": "2026-10-17T12:00:00.000Z",
+                "leadHours": 35.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 1,
+                "interpolationReliability": 0.7142857142857143,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 3644.376325635678,
+                "distanceRangeKm": {
+                  "min": 3627.6901844911426,
+                  "max": 3661.0624667802135
+                },
+                "windMedianMs": 36.5,
+                "proximityIndex": 0.005641743069638778,
+                "windSeverityIndex": 0.8833333333333333,
+                "agreementIndex": 0.879541146543673,
+                "timeRelevance": 0.6713286713286714,
+                "physicalThreatIndex": 0.2689492201487471,
+                "threatIndex": 0.22917106625961425,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-17T12:00:00.000Z",
+                    "leadHours": 35.25,
+                    "distanceKm": 3627.6901844911426,
+                    "maximumWindMs": 38,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -262.7493098023242,
+                    "windDeltaFromPreviousMs": 8,
+                    "approachRateKmh": 21.89577581686035,
+                    "strengtheningRateMsPerHour": 0.6666666666666666,
+                    "rapidEvolutionIndex": 0.7477208418268706
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-17T12:00:00.000Z",
+                    "leadHours": 35.25,
+                    "distanceKm": 3661.0624667802135,
+                    "maximumWindMs": 35,
+                    "interpolationSpanHours": 24,
+                    "interpolationReliability": 0.4285714285714286,
+                    "exactOfficialTime": false,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -247.67054510772869,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 20.639212092310725,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.6342299791043463
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -255.20992745502645,
+                "windDeltaFromPreviousMs": 6.5,
+                "approachRateKmh": 21.267493954585536,
+                "strengtheningRateMsPerHour": 0.5416666666666666,
+                "rapidEvolutionIndex": 0.6909754104656085,
+                "scenarioRapidEvolutionIndex": 0.7477208418268706
+              },
+              {
+                "label": "+47.3h",
+                "validTime": "2026-10-18T00:00:00.000Z",
+                "leadHours": 47.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 3394.6934416600798,
+                "distanceRangeKm": {
+                  "min": 3375.545640597036,
+                  "max": 3413.8412427231237
+                },
+                "windMedianMs": 42.5,
+                "proximityIndex": 0.0069710834396318686,
+                "windSeverityIndex": 1,
+                "agreementIndex": 0.8630429875240615,
+                "timeRelevance": 0.6037735849056604,
+                "physicalThreatIndex": 0.3048797584077423,
+                "threatIndex": 0.2505191222388147,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-18T00:00:00.000Z",
+                    "leadHours": 47.25,
+                    "distanceKm": 3375.545640597036,
+                    "maximumWindMs": 45,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -252.14454389410685,
+                    "windDeltaFromPreviousMs": 7,
+                    "approachRateKmh": 21.012045324508904,
+                    "strengtheningRateMsPerHour": 0.5833333333333334,
+                    "rapidEvolutionIndex": 0.6987335322326582
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-18T00:00:00.000Z",
+                    "leadHours": 47.25,
+                    "distanceKm": 3413.8412427231237,
+                    "maximumWindMs": 40,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -247.22122405708978,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 20.60176867142415,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.6333313370030685
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -249.6828839755981,
+                "windDeltaFromPreviousMs": 6,
+                "approachRateKmh": 20.806906997966507,
+                "strengtheningRateMsPerHour": 0.5,
+                "rapidEvolutionIndex": 0.6660324346178634,
+                "scenarioRapidEvolutionIndex": 0.6987335322326582
+              },
+              {
+                "label": "+59.3h",
+                "validTime": "2026-10-18T12:00:00.000Z",
+                "leadHours": 59.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 1,
+                "interpolationReliability": 0.7142857142857143,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 3153.569052361583,
+                "distanceRangeKm": {
+                  "min": 3135.8825824827336,
+                  "max": 3171.255522240433
+                },
+                "windMedianMs": 46.25,
+                "proximityIndex": 0.008680538492618286,
+                "windSeverityIndex": 1,
+                "agreementIndex": 0.8727991936766887,
+                "timeRelevance": 0.5485714285714286,
+                "physicalThreatIndex": 0.3060763769448328,
+                "threatIndex": 0.24389914722832537,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-18T12:00:00.000Z",
+                    "leadHours": 59.25,
+                    "distanceKm": 3135.8825824827336,
+                    "maximumWindMs": 50,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -239.6630581143022,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 19.971921509525185,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.6182150051174933
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-18T12:00:00.000Z",
+                    "leadHours": 59.25,
+                    "distanceKm": 3171.255522240433,
+                    "maximumWindMs": 42.5,
+                    "interpolationSpanHours": 24,
+                    "interpolationReliability": 0.4285714285714286,
+                    "exactOfficialTime": false,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -242.5857204826907,
+                    "windDeltaFromPreviousMs": 2.5,
+                    "approachRateKmh": 20.215476706890893,
+                    "strengtheningRateMsPerHour": 0.20833333333333334,
+                    "rapidEvolutionIndex": 0.5546158854098259
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -241.12438929849668,
+                "windDeltaFromPreviousMs": 3.75,
+                "approachRateKmh": 20.093699108208057,
+                "strengtheningRateMsPerHour": 0.3125,
+                "rapidEvolutionIndex": 0.5864154452636596,
+                "scenarioRapidEvolutionIndex": 0.6182150051174933
+              },
+              {
+                "label": "+71.3h",
+                "validTime": "2026-10-19T00:00:00.000Z",
+                "leadHours": 71.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 2921.098081343995,
+                "distanceRangeKm": {
+                  "min": 2912.974344698919,
+                  "max": 2929.221817989071
+                },
+                "windMedianMs": 50,
+                "proximityIndex": 0.010897898932363669,
+                "windSeverityIndex": 1,
+                "agreementIndex": 0.9394221921818252,
+                "timeRelevance": 0.5026178010471204,
+                "physicalThreatIndex": 0.30762852925265455,
+                "threatIndex": 0.23877449979950804,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-19T00:00:00.000Z",
+                    "leadHours": 71.25,
+                    "distanceKm": 2912.974344698919,
+                    "maximumWindMs": 55,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -222.90823778381446,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 18.575686481984537,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.5847053644565178
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-19T00:00:00.000Z",
+                    "leadHours": 71.25,
+                    "distanceKm": 2929.221817989071,
+                    "maximumWindMs": 45,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -242.033704251362,
+                    "windDeltaFromPreviousMs": 2.5,
+                    "approachRateKmh": 20.169475354280166,
+                    "strengtheningRateMsPerHour": 0.20833333333333334,
+                    "rapidEvolutionIndex": 0.5535118529471684
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -232.470971017588,
+                "windDeltaFromPreviousMs": 3.75,
+                "approachRateKmh": 19.372580918132332,
+                "strengtheningRateMsPerHour": 0.3125,
+                "rapidEvolutionIndex": 0.5691086087018431,
+                "scenarioRapidEvolutionIndex": 0.5847053644565178
+              },
+              {
+                "label": "+95.3h",
+                "validTime": "2026-10-20T00:00:00.000Z",
+                "leadHours": 95.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 2423.5825472632587,
+                "distanceRangeKm": {
+                  "min": 2394.8115292203993,
+                  "max": 2452.353565306118
+                },
+                "windMedianMs": 52.5,
+                "proximityIndex": 0.018926408363986617,
+                "windSeverityIndex": 1,
+                "agreementIndex": 0.8014637598153567,
+                "timeRelevance": 0.43049327354260086,
+                "physicalThreatIndex": 0.3132484858547906,
+                "threatIndex": 0.2329697819686862,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-20T00:00:00.000Z",
+                    "leadHours": 95.25,
+                    "distanceKm": 2394.8115292203993,
+                    "maximumWindMs": 60,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -518.1628154785199,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 21.590117311604995,
+                    "strengtheningRateMsPerHour": 0.20833333333333334,
+                    "rapidEvolutionIndex": 0.5876072599229643
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-20T00:00:00.000Z",
+                    "leadHours": 95.25,
+                    "distanceKm": 2452.353565306118,
+                    "maximumWindMs": 45,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -476.86825268295297,
+                    "windDeltaFromPreviousMs": 0,
+                    "approachRateKmh": 19.869510528456374,
+                    "strengtheningRateMsPerHour": 0,
+                    "rapidEvolutionIndex": 0.47686825268295296
+                  }
+                ],
+                "intervalFromPreviousHours": 24,
+                "distanceDeltaFromPreviousKm": -497.5155340807364,
+                "windDeltaFromPreviousMs": 2.5,
+                "approachRateKmh": 20.729813920030683,
+                "strengtheningRateMsPerHour": 0.10416666666666667,
+                "rapidEvolutionIndex": 0.5322377563029586,
+                "scenarioRapidEvolutionIndex": 0.5876072599229643
+              },
+              {
+                "label": "+119.3h",
+                "validTime": "2026-10-21T00:00:00.000Z",
+                "leadHours": 119.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 1859.209400556566,
+                "distanceRangeKm": {
+                  "min": 1828.4797064690608,
+                  "max": 1889.9390946440712
+                },
+                "windMedianMs": 55,
+                "proximityIndex": 0.040980982799821354,
+                "windSeverityIndex": 1,
+                "agreementIndex": 0.7894788283214843,
+                "timeRelevance": 0.3764705882352941,
+                "physicalThreatIndex": 0.32868668795987493,
+                "threatIndex": 0.23646107022054536,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-21T00:00:00.000Z",
+                    "leadHours": 119.25,
+                    "distanceKm": 1828.4797064690608,
+                    "maximumWindMs": 60,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -566.3318227513384,
+                    "windDeltaFromPreviousMs": 0,
+                    "approachRateKmh": 23.597159281305768,
+                    "strengtheningRateMsPerHour": 0,
+                    "rapidEvolutionIndex": 0.5663318227513384
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-21T00:00:00.000Z",
+                    "leadHours": 119.25,
+                    "distanceKm": 1889.9390946440712,
+                    "maximumWindMs": 50,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -562.4144706620468,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 23.433936277585286,
+                    "strengtheningRateMsPerHour": 0.20833333333333334,
+                    "rapidEvolutionIndex": 0.6318589151064913
+                  }
+                ],
+                "intervalFromPreviousHours": 24,
+                "distanceDeltaFromPreviousKm": -564.3731467066928,
+                "windDeltaFromPreviousMs": 2.5,
+                "approachRateKmh": 23.51554777944553,
+                "strengtheningRateMsPerHour": 0.10416666666666667,
+                "rapidEvolutionIndex": 0.5990953689289149,
+                "scenarioRapidEvolutionIndex": 0.6318589151064913
+              }
+            ],
+            "analyzers": {
+              "directApproach": {
+                "confidence": 0.9996606050483072
+              },
+              "directDepart": {
+                "confidence": 0
+              },
+              "reApproach": {
+                "confidence": 0
+              },
+              "quasiStationary": {
+                "confidence": 0.06685745028145824
+              },
+              "forecastEdge": {
+                "confidence": 1
+              },
+              "agencyDisagreement": {
+                "confidence": 0.32231365797956896
+              },
+              "interpolationReliability": {
+                "confidence": 0.9266846866427978
+              },
+              "windField": {
+                "confidence": 0,
+                "representativeWindMs": 55,
+                "dataAgencyCount": 1,
+                "latestCoverageAgencyCount": 0,
+                "closestCoverageAgencyCount": 0,
+                "latestStrongWindCoverageAgencyCount": 0,
+                "closestStrongWindCoverageAgencyCount": 0,
+                "latestGaleCoverageAgencyCount": 0,
+                "closestGaleCoverageAgencyCount": 0,
+                "strongWindCoverageFraction": 0,
+                "galeCoverageFraction": 0
+              },
+              "rapidEvolution": {
+                "confidence": 0.7477208418268706,
+                "checkpoint": "+35.3h"
+              }
+            }
+          },
+          "semantics": {
+            "deterministic": true,
+            "firstVersionHeuristic": true,
+            "evidenceCombination": true,
+            "hardThreatGateUsed": false,
+            "fixedDayBucketsUsed": false,
+            "timelineCanDriveSignalRisk": true,
+            "signalTimingUsesFutureThresholdCrossings": true,
+            "stormIntensityIsCoupledToHongKongExposureForT3T8": true,
+            "agencyAgreementAffectsConfidenceNotThreatMagnitude": true,
+            "minorityAgencyThreatScenarioPreserved": true,
+            "minorityAgencyWindFieldScenarioPreserved": true,
+            "perAgencyEvidenceUsesOnlyAgencyData": true,
+            "windFieldThresholdsAreSignalSpecificWhenKnown": true,
+            "windFieldIntersectionIsDirectThreatEvidence": true,
+            "localWindPersistenceIsContinuousEvidence": true,
+            "horizonLimitedFallbackTimingSuppressed": true,
+            "timeWeightingIsContinuous": true,
+            "softTimeScaleHours": 72,
+            "historicalCalibrationRequired": false,
+            "probabilityOutputIncluded": false,
+            "estimatedWindowsAreBroadGuidance": true,
+            "timingWindowsReflectAnalysisConfidence": true,
+            "interpolationCadenceDoesNotSetTimingPrecision": true,
+            "interpolationReliabilityAffectsLikelyEscalationNotRawThreat": true,
+            "reliableConfirmedPeakCanSupportT8LikelyEscalation": true,
+            "timingThresholdCrossingsAreInterpolated": true,
+            "firstVisibleAboveThresholdDoesNotInventCrossing": true,
+            "officialHkoForecast": false,
+            "officialHkoDecisionInferred": false,
+            "label": "Storm Track warning signal risk estimate",
+            "aiGenerated": false
+          }
+        },
+        "shadowForecastV2": {
+          "schemaVersion": "hk-signal-shadow-v2/0.5",
+          "available": true,
+          "generatedAt": "2026-10-16T00:45:00.000Z",
+          "impact": {
+            "likelihood": "unlikely",
+            "expected": false,
+            "closestApproach": {
+              "distanceKm": 1859.204407632533,
+              "time": "2026-10-21T00:00:00.000Z",
+              "source": "unweighted-consensus"
+            },
+            "currentDistanceKm": 4453.03293661934,
+            "threatIndex": 0.08224929260095577,
+            "confidenceIndex": 0.4778955546519803,
+            "forecastMinimumMayBeHorizonLimited": true,
+            "uncertainty": "moderate",
+            "phaseContext": {
+              "schemaVersion": "hk-signal-phase-context/v2",
+              "available": true,
+              "operationalPhase": "approach",
+              "directApproach": 0.9996606050483072,
+              "directDepart": 0,
+              "reApproach": 0,
+              "quasiStationary": 0.06685745028145824,
+              "currentPhaseMinimum": {
+                "label": "+35.3h",
+                "validTime": "2026-10-17T12:00:00.000Z",
+                "leadHours": 35.25,
+                "distanceKm": 3644.376325635678,
+                "windMedianMs": 36.5,
+                "agencyCount": 2
+              },
+              "laterPhaseMinimum": null,
+              "phasePeak": null,
+              "globalFutureMinimum": {
+                "label": "+119.3h",
+                "validTime": "2026-10-21T00:00:00.000Z",
+                "leadHours": 119.25,
+                "distanceKm": 1859.209400556566,
+                "windMedianMs": 55,
+                "agencyCount": 2
+              },
+              "globalMinimumBelongsToLaterPhase": false,
+              "multiPhase": false,
+              "turnDiagnostics": null,
+              "nearTermHours": 36,
+              "futureCheckpointCount": 8
+            }
+          },
+          "signals": {
+            "T1": {
+              "likelihood": "unlikely",
+              "riskIndex": 0.16100755023111454,
+              "confidenceIndex": 0.41099017700070306,
+              "persistenceHours": 0,
+              "estimatedWindow": null,
+              "strongestCheckpoint": {
+                "label": "+119.3h",
+                "validTime": "2026-10-21T00:00:00.000Z",
+                "evidence": 0.16100755023111454,
+                "consensusEvidence": 0.16100755023111454,
+                "scenarioMaxEvidence": 0.16193747123526545,
+                "supportAgencyCount": 0,
+                "totalAgencyCount": 2
+              },
+              "basis": [
+                "current-distance:4453km",
+                "forecast-minimum:1859km",
+                "forecast-minimum-lead:119.3h",
+                "time-relevance:0.376",
+                "direct-approach:1.000",
+                "direct-depart:0.000",
+                "re-approach:0.000",
+                "quasi-stationary:0.067",
+                "rapid-evolution:0.748",
+                "forecast-edge:1.000",
+                "agency-disagreement:0.322",
+                "representative-wind:55.0m/s",
+                "wind-field-any:0.000",
+                "wind-field-t3:0.000",
+                "wind-field-t3-scenario:0.000",
+                "wind-field-t8:0.000",
+                "wind-field-t8-scenario:0.000",
+                "wind-radius-data:0.500",
+                "wind-field-latest-age:0.0h",
+                "wind-field-closest-age:120.0h",
+                "timeline-evidence:0.161",
+                "t1-risk-index:0.161"
+              ],
+              "baselineRiskIndex": 0.16100755023111454,
+              "adjustmentFactor": 1,
+              "timingState": "not-applicable",
+              "windowRole": null,
+              "shadowDiagnostics": {
+                "baselineLikelihood": "unlikely",
+                "confidenceCoverageFactor": 0.86,
+                "presenceConfidenceFactor": 0.86,
+                "usabilityConfidenceFactor": 1,
+                "longHorizonFactor": 1,
+                "supportConfidenceFactor": 1,
+                "support": {
+                  "totalAgencyCount": 2,
+                  "supportAgencyCount": 0,
+                  "participationFraction": 1,
+                  "positiveSupportFraction": 0,
+                  "strongestLeadHours": 119.25
+                },
+                "decisionReadiness": null,
+                "lifecyclePenalty": 0,
+                "terminalLifecyclePenalty": 0,
+                "terminalStateCandidate": false,
+                "phaseContext": {
+                  "schemaVersion": "hk-signal-phase-context/v2",
+                  "available": true,
+                  "operationalPhase": "approach",
+                  "directApproach": 0.9996606050483072,
+                  "directDepart": 0,
+                  "reApproach": 0,
+                  "quasiStationary": 0.06685745028145824,
+                  "currentPhaseMinimum": {
+                    "label": "+35.3h",
+                    "validTime": "2026-10-17T12:00:00.000Z",
+                    "leadHours": 35.25,
+                    "distanceKm": 3644.376325635678,
+                    "windMedianMs": 36.5,
+                    "agencyCount": 2
+                  },
+                  "laterPhaseMinimum": null,
+                  "phasePeak": null,
+                  "globalFutureMinimum": {
+                    "label": "+119.3h",
+                    "validTime": "2026-10-21T00:00:00.000Z",
+                    "leadHours": 119.25,
+                    "distanceKm": 1859.209400556566,
+                    "windMedianMs": 55,
+                    "agencyCount": 2
+                  },
+                  "globalMinimumBelongsToLaterPhase": false,
+                  "multiPhase": false,
+                  "turnDiagnostics": null,
+                  "nearTermHours": 36,
+                  "futureCheckpointCount": 8
+                }
+              }
+            },
+            "T3": {
+              "likelihood": "unlikely",
+              "riskIndex": 0.13497994919143025,
+              "confidenceIndex": 0.296940402883008,
+              "persistenceHours": 0,
+              "estimatedWindow": null,
+              "strongestCheckpoint": {
+                "label": "+119.3h",
+                "validTime": "2026-10-21T00:00:00.000Z",
+                "evidence": 0.01107812188425774,
+                "consensusEvidence": 0.01107812188425774,
+                "scenarioMaxEvidence": 0.011568906946059715,
+                "supportAgencyCount": 0,
+                "totalAgencyCount": 2
+              },
+              "basis": [
+                "current-distance:4453km",
+                "forecast-minimum:1859km",
+                "forecast-minimum-lead:119.3h",
+                "time-relevance:0.376",
+                "direct-approach:1.000",
+                "direct-depart:0.000",
+                "re-approach:0.000",
+                "quasi-stationary:0.067",
+                "rapid-evolution:0.748",
+                "forecast-edge:1.000",
+                "agency-disagreement:0.322",
+                "representative-wind:55.0m/s",
+                "wind-field-any:0.000",
+                "wind-field-t3:0.000",
+                "wind-field-t3-scenario:0.000",
+                "wind-field-t8:0.000",
+                "wind-field-t8-scenario:0.000",
+                "wind-radius-data:0.500",
+                "wind-field-latest-age:0.0h",
+                "wind-field-closest-age:120.0h",
+                "timeline-evidence:0.011",
+                "timeline-persistence:0.0h",
+                "direct-wind-field-risk:0.000",
+                "t3-likely-index:0.151",
+                "t3-risk-index:0.185"
+              ],
+              "baselineRiskIndex": 0.18508230847887597,
+              "adjustmentFactor": 0.729296875,
+              "timingState": "not-applicable",
+              "windowRole": null,
+              "shadowDiagnostics": {
+                "baselineLikelihood": "unlikely",
+                "confidenceCoverageFactor": 0.86,
+                "presenceConfidenceFactor": 0.86,
+                "usabilityConfidenceFactor": 1,
+                "longHorizonFactor": 0.729296875,
+                "supportConfidenceFactor": 0.8500000000000001,
+                "support": {
+                  "totalAgencyCount": 2,
+                  "supportAgencyCount": 0,
+                  "participationFraction": 1,
+                  "positiveSupportFraction": 0,
+                  "strongestLeadHours": 119.25
+                },
+                "decisionReadiness": null,
+                "lifecyclePenalty": 0,
+                "terminalLifecyclePenalty": 0,
+                "terminalStateCandidate": false,
+                "phaseContext": {
+                  "schemaVersion": "hk-signal-phase-context/v2",
+                  "available": true,
+                  "operationalPhase": "approach",
+                  "directApproach": 0.9996606050483072,
+                  "directDepart": 0,
+                  "reApproach": 0,
+                  "quasiStationary": 0.06685745028145824,
+                  "currentPhaseMinimum": {
+                    "label": "+35.3h",
+                    "validTime": "2026-10-17T12:00:00.000Z",
+                    "leadHours": 35.25,
+                    "distanceKm": 3644.376325635678,
+                    "windMedianMs": 36.5,
+                    "agencyCount": 2
+                  },
+                  "laterPhaseMinimum": null,
+                  "phasePeak": null,
+                  "globalFutureMinimum": {
+                    "label": "+119.3h",
+                    "validTime": "2026-10-21T00:00:00.000Z",
+                    "leadHours": 119.25,
+                    "distanceKm": 1859.209400556566,
+                    "windMedianMs": 55,
+                    "agencyCount": 2
+                  },
+                  "globalMinimumBelongsToLaterPhase": false,
+                  "multiPhase": false,
+                  "turnDiagnostics": null,
+                  "nearTermHours": 36,
+                  "futureCheckpointCount": 8
+                }
+              }
+            },
+            "T8": {
+              "likelihood": "unlikely",
+              "riskIndex": 0.1297351634563727,
+              "confidenceIndex": 0.2829667368649841,
+              "persistenceHours": 0,
+              "estimatedWindow": null,
+              "strongestCheckpoint": {
+                "label": "+119.3h",
+                "validTime": "2026-10-21T00:00:00.000Z",
+                "evidence": 0.0024293491281619922,
+                "consensusEvidence": 0.0024293491281619922,
+                "scenarioMaxEvidence": 0.002538766900112532,
+                "supportAgencyCount": 0,
+                "totalAgencyCount": 2
+              },
+              "basis": [
+                "current-distance:4453km",
+                "forecast-minimum:1859km",
+                "forecast-minimum-lead:119.3h",
+                "time-relevance:0.376",
+                "direct-approach:1.000",
+                "direct-depart:0.000",
+                "re-approach:0.000",
+                "quasi-stationary:0.067",
+                "rapid-evolution:0.748",
+                "forecast-edge:1.000",
+                "agency-disagreement:0.322",
+                "representative-wind:55.0m/s",
+                "wind-field-any:0.000",
+                "wind-field-t3:0.000",
+                "wind-field-t3-scenario:0.000",
+                "wind-field-t8:0.000",
+                "wind-field-t8-scenario:0.000",
+                "wind-radius-data:0.500",
+                "wind-field-latest-age:0.0h",
+                "wind-field-closest-age:120.0h",
+                "timeline-evidence:0.002",
+                "timeline-persistence:0.0h",
+                "direct-wind-field-risk:0.000",
+                "t8-peak-reliability:1.000",
+                "t8-credible-peak-evidence:0.002",
+                "t8-likely-index:0.142",
+                "t8-risk-index:0.178"
+              ],
+              "baselineRiskIndex": 0.1778907436787971,
+              "adjustmentFactor": 0.729296875,
+              "timingState": "not-applicable",
+              "windowRole": null,
+              "shadowDiagnostics": {
+                "baselineLikelihood": "unlikely",
+                "confidenceCoverageFactor": 0.86,
+                "presenceConfidenceFactor": 0.86,
+                "usabilityConfidenceFactor": 1,
+                "longHorizonFactor": 0.729296875,
+                "supportConfidenceFactor": 0.8500000000000001,
+                "support": {
+                  "totalAgencyCount": 2,
+                  "supportAgencyCount": 0,
+                  "participationFraction": 1,
+                  "positiveSupportFraction": 0,
+                  "strongestLeadHours": 119.25
+                },
+                "decisionReadiness": null,
+                "lifecyclePenalty": 0,
+                "terminalLifecyclePenalty": 0,
+                "terminalStateCandidate": false,
+                "phaseContext": {
+                  "schemaVersion": "hk-signal-phase-context/v2",
+                  "available": true,
+                  "operationalPhase": "approach",
+                  "directApproach": 0.9996606050483072,
+                  "directDepart": 0,
+                  "reApproach": 0,
+                  "quasiStationary": 0.06685745028145824,
+                  "currentPhaseMinimum": {
+                    "label": "+35.3h",
+                    "validTime": "2026-10-17T12:00:00.000Z",
+                    "leadHours": 35.25,
+                    "distanceKm": 3644.376325635678,
+                    "windMedianMs": 36.5,
+                    "agencyCount": 2
+                  },
+                  "laterPhaseMinimum": null,
+                  "phasePeak": null,
+                  "globalFutureMinimum": {
+                    "label": "+119.3h",
+                    "validTime": "2026-10-21T00:00:00.000Z",
+                    "leadHours": 119.25,
+                    "distanceKm": 1859.209400556566,
+                    "windMedianMs": 55,
+                    "agencyCount": 2
+                  },
+                  "globalMinimumBelongsToLaterPhase": false,
+                  "multiPhase": false,
+                  "turnDiagnostics": null,
+                  "nearTermHours": 36,
+                  "futureCheckpointCount": 8
+                }
+              }
+            }
+          },
+          "assessment": {
+            "schemaVersion": "hk-threat-assessment/v1",
+            "timeline": [
+              {
+                "label": "+11.3h",
+                "validTime": "2026-10-16T12:00:00.000Z",
+                "leadHours": 11.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 4187.151751544089,
+                "distanceRangeKm": {
+                  "min": 4173.957300896277,
+                  "max": 4200.346202191901
+                },
+                "windMedianMs": 25,
+                "proximityIndex": 0.0037270250932428923,
+                "windSeverityIndex": 0.5,
+                "agreementIndex": 0.9034849972684612,
+                "timeRelevance": 0.8648648648648649,
+                "physicalThreatIndex": 0.15260891756527,
+                "threatIndex": 0.14332864555116576,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-16T12:00:00.000Z",
+                    "leadHours": 11.25,
+                    "distanceKm": 4173.957300896277,
+                    "maximumWindMs": 25,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -316.6919823810749,
+                    "windDeltaFromPreviousMs": 2,
+                    "approachRateKmh": 26.390998531756242,
+                    "strengtheningRateMsPerHour": 0.16666666666666666,
+                    "rapidEvolutionIndex": 0.6555555555555556
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-16T12:00:00.000Z",
+                    "leadHours": 11.25,
+                    "distanceKm": 4200.346202191901,
+                    "maximumWindMs": 25,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -215.0703877694259,
+                    "windDeltaFromPreviousMs": 2,
+                    "approachRateKmh": 17.922532314118826,
+                    "strengtheningRateMsPerHour": 0.16666666666666666,
+                    "rapidEvolutionIndex": 0.48569633109440735
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -265.88118507525087,
+                "windDeltaFromPreviousMs": 2,
+                "approachRateKmh": 22.15676542293757,
+                "strengtheningRateMsPerHour": 0.16666666666666666,
+                "rapidEvolutionIndex": 0.5706259433249814,
+                "scenarioRapidEvolutionIndex": 0.6555555555555556
+              },
+              {
+                "label": "+23.3h",
+                "validTime": "2026-10-17T00:00:00.000Z",
+                "leadHours": 23.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 3899.5862530907043,
+                "distanceRangeKm": {
+                  "min": 3890.439494293467,
+                  "max": 3908.733011887942
+                },
+                "windMedianMs": 30,
+                "proximityIndex": 0.0046097551472388315,
+                "windSeverityIndex": 0.6666666666666666,
+                "agreementIndex": 0.9320585139532622,
+                "timeRelevance": 0.7559055118110236,
+                "physicalThreatIndex": 0.20322682860306718,
+                "threatIndex": 0.18090388168170665,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-17T00:00:00.000Z",
+                    "leadHours": 23.25,
+                    "distanceKm": 3890.439494293467,
+                    "maximumWindMs": 30,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -283.5178066028102,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 23.626483883567516,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.7059245020945093
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-17T00:00:00.000Z",
+                    "leadHours": 23.25,
+                    "distanceKm": 3908.733011887942,
+                    "maximumWindMs": 30,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -291.6131903039591,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 24.301099191996588,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.722115269496807
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -287.56549845338486,
+                "windDeltaFromPreviousMs": 5,
+                "approachRateKmh": 23.963791537782072,
+                "strengtheningRateMsPerHour": 0.4166666666666667,
+                "rapidEvolutionIndex": 0.7140198857956581,
+                "scenarioRapidEvolutionIndex": 0.722115269496807
+              },
+              {
+                "label": "+35.3h",
+                "validTime": "2026-10-17T12:00:00.000Z",
+                "leadHours": 35.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 1,
+                "interpolationReliability": 0.7142857142857143,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 3644.376325635678,
+                "distanceRangeKm": {
+                  "min": 3627.6901844911426,
+                  "max": 3661.0624667802135
+                },
+                "windMedianMs": 36.5,
+                "proximityIndex": 0.005641743069638778,
+                "windSeverityIndex": 0.8833333333333333,
+                "agreementIndex": 0.879541146543673,
+                "timeRelevance": 0.6713286713286714,
+                "physicalThreatIndex": 0.2689492201487471,
+                "threatIndex": 0.22917106625961425,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-17T12:00:00.000Z",
+                    "leadHours": 35.25,
+                    "distanceKm": 3627.6901844911426,
+                    "maximumWindMs": 38,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -262.7493098023242,
+                    "windDeltaFromPreviousMs": 8,
+                    "approachRateKmh": 21.89577581686035,
+                    "strengtheningRateMsPerHour": 0.6666666666666666,
+                    "rapidEvolutionIndex": 0.7477208418268706
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-17T12:00:00.000Z",
+                    "leadHours": 35.25,
+                    "distanceKm": 3661.0624667802135,
+                    "maximumWindMs": 35,
+                    "interpolationSpanHours": 24,
+                    "interpolationReliability": 0.4285714285714286,
+                    "exactOfficialTime": false,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -247.67054510772869,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 20.639212092310725,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.6342299791043463
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -255.20992745502645,
+                "windDeltaFromPreviousMs": 6.5,
+                "approachRateKmh": 21.267493954585536,
+                "strengtheningRateMsPerHour": 0.5416666666666666,
+                "rapidEvolutionIndex": 0.6909754104656085,
+                "scenarioRapidEvolutionIndex": 0.7477208418268706
+              },
+              {
+                "label": "+47.3h",
+                "validTime": "2026-10-18T00:00:00.000Z",
+                "leadHours": 47.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 3394.6934416600798,
+                "distanceRangeKm": {
+                  "min": 3375.545640597036,
+                  "max": 3413.8412427231237
+                },
+                "windMedianMs": 42.5,
+                "proximityIndex": 0.0069710834396318686,
+                "windSeverityIndex": 1,
+                "agreementIndex": 0.8630429875240615,
+                "timeRelevance": 0.6037735849056604,
+                "physicalThreatIndex": 0.3048797584077423,
+                "threatIndex": 0.2505191222388147,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-18T00:00:00.000Z",
+                    "leadHours": 47.25,
+                    "distanceKm": 3375.545640597036,
+                    "maximumWindMs": 45,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -252.14454389410685,
+                    "windDeltaFromPreviousMs": 7,
+                    "approachRateKmh": 21.012045324508904,
+                    "strengtheningRateMsPerHour": 0.5833333333333334,
+                    "rapidEvolutionIndex": 0.6987335322326582
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-18T00:00:00.000Z",
+                    "leadHours": 47.25,
+                    "distanceKm": 3413.8412427231237,
+                    "maximumWindMs": 40,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -247.22122405708978,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 20.60176867142415,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.6333313370030685
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -249.6828839755981,
+                "windDeltaFromPreviousMs": 6,
+                "approachRateKmh": 20.806906997966507,
+                "strengtheningRateMsPerHour": 0.5,
+                "rapidEvolutionIndex": 0.6660324346178634,
+                "scenarioRapidEvolutionIndex": 0.6987335322326582
+              },
+              {
+                "label": "+59.3h",
+                "validTime": "2026-10-18T12:00:00.000Z",
+                "leadHours": 59.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 1,
+                "interpolationReliability": 0.7142857142857143,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 3153.569052361583,
+                "distanceRangeKm": {
+                  "min": 3135.8825824827336,
+                  "max": 3171.255522240433
+                },
+                "windMedianMs": 46.25,
+                "proximityIndex": 0.008680538492618286,
+                "windSeverityIndex": 1,
+                "agreementIndex": 0.8727991936766887,
+                "timeRelevance": 0.5485714285714286,
+                "physicalThreatIndex": 0.3060763769448328,
+                "threatIndex": 0.24389914722832537,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-18T12:00:00.000Z",
+                    "leadHours": 59.25,
+                    "distanceKm": 3135.8825824827336,
+                    "maximumWindMs": 50,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -239.6630581143022,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 19.971921509525185,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.6182150051174933
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-18T12:00:00.000Z",
+                    "leadHours": 59.25,
+                    "distanceKm": 3171.255522240433,
+                    "maximumWindMs": 42.5,
+                    "interpolationSpanHours": 24,
+                    "interpolationReliability": 0.4285714285714286,
+                    "exactOfficialTime": false,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -242.5857204826907,
+                    "windDeltaFromPreviousMs": 2.5,
+                    "approachRateKmh": 20.215476706890893,
+                    "strengtheningRateMsPerHour": 0.20833333333333334,
+                    "rapidEvolutionIndex": 0.5546158854098259
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -241.12438929849668,
+                "windDeltaFromPreviousMs": 3.75,
+                "approachRateKmh": 20.093699108208057,
+                "strengtheningRateMsPerHour": 0.3125,
+                "rapidEvolutionIndex": 0.5864154452636596,
+                "scenarioRapidEvolutionIndex": 0.6182150051174933
+              },
+              {
+                "label": "+71.3h",
+                "validTime": "2026-10-19T00:00:00.000Z",
+                "leadHours": 71.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 2921.098081343995,
+                "distanceRangeKm": {
+                  "min": 2912.974344698919,
+                  "max": 2929.221817989071
+                },
+                "windMedianMs": 50,
+                "proximityIndex": 0.010897898932363669,
+                "windSeverityIndex": 1,
+                "agreementIndex": 0.9394221921818252,
+                "timeRelevance": 0.5026178010471204,
+                "physicalThreatIndex": 0.30762852925265455,
+                "threatIndex": 0.23877449979950804,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-19T00:00:00.000Z",
+                    "leadHours": 71.25,
+                    "distanceKm": 2912.974344698919,
+                    "maximumWindMs": 55,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -222.90823778381446,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 18.575686481984537,
+                    "strengtheningRateMsPerHour": 0.4166666666666667,
+                    "rapidEvolutionIndex": 0.5847053644565178
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-19T00:00:00.000Z",
+                    "leadHours": 71.25,
+                    "distanceKm": 2929.221817989071,
+                    "maximumWindMs": 45,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -242.033704251362,
+                    "windDeltaFromPreviousMs": 2.5,
+                    "approachRateKmh": 20.169475354280166,
+                    "strengtheningRateMsPerHour": 0.20833333333333334,
+                    "rapidEvolutionIndex": 0.5535118529471684
+                  }
+                ],
+                "intervalFromPreviousHours": 12,
+                "distanceDeltaFromPreviousKm": -232.470971017588,
+                "windDeltaFromPreviousMs": 3.75,
+                "approachRateKmh": 19.372580918132332,
+                "strengtheningRateMsPerHour": 0.3125,
+                "rapidEvolutionIndex": 0.5691086087018431,
+                "scenarioRapidEvolutionIndex": 0.5847053644565178
+              },
+              {
+                "label": "+95.3h",
+                "validTime": "2026-10-20T00:00:00.000Z",
+                "leadHours": 95.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 2423.5825472632587,
+                "distanceRangeKm": {
+                  "min": 2394.8115292203993,
+                  "max": 2452.353565306118
+                },
+                "windMedianMs": 52.5,
+                "proximityIndex": 0.018926408363986617,
+                "windSeverityIndex": 1,
+                "agreementIndex": 0.8014637598153567,
+                "timeRelevance": 0.43049327354260086,
+                "physicalThreatIndex": 0.3132484858547906,
+                "threatIndex": 0.2329697819686862,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-20T00:00:00.000Z",
+                    "leadHours": 95.25,
+                    "distanceKm": 2394.8115292203993,
+                    "maximumWindMs": 60,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -518.1628154785199,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 21.590117311604995,
+                    "strengtheningRateMsPerHour": 0.20833333333333334,
+                    "rapidEvolutionIndex": 0.5876072599229643
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-20T00:00:00.000Z",
+                    "leadHours": 95.25,
+                    "distanceKm": 2452.353565306118,
+                    "maximumWindMs": 45,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -476.86825268295297,
+                    "windDeltaFromPreviousMs": 0,
+                    "approachRateKmh": 19.869510528456374,
+                    "strengtheningRateMsPerHour": 0,
+                    "rapidEvolutionIndex": 0.47686825268295296
+                  }
+                ],
+                "intervalFromPreviousHours": 24,
+                "distanceDeltaFromPreviousKm": -497.5155340807364,
+                "windDeltaFromPreviousMs": 2.5,
+                "approachRateKmh": 20.729813920030683,
+                "strengtheningRateMsPerHour": 0.10416666666666667,
+                "rapidEvolutionIndex": 0.5322377563029586,
+                "scenarioRapidEvolutionIndex": 0.5876072599229643
+              },
+              {
+                "label": "+119.3h",
+                "validTime": "2026-10-21T00:00:00.000Z",
+                "leadHours": 119.25,
+                "supportAgencyCount": 2,
+                "exactOfficialSupportCount": 2,
+                "interpolationReliability": 1,
+                "windSupportAgencyCount": 2,
+                "distanceMedianKm": 1859.209400556566,
+                "distanceRangeKm": {
+                  "min": 1828.4797064690608,
+                  "max": 1889.9390946440712
+                },
+                "windMedianMs": 55,
+                "proximityIndex": 0.040980982799821354,
+                "windSeverityIndex": 1,
+                "agreementIndex": 0.7894788283214843,
+                "timeRelevance": 0.3764705882352941,
+                "physicalThreatIndex": 0.32868668795987493,
+                "threatIndex": 0.23646107022054536,
+                "agencies": [
+                  {
+                    "agency": "CMA",
+                    "time": "2026-10-21T00:00:00.000Z",
+                    "leadHours": 119.25,
+                    "distanceKm": 1828.4797064690608,
+                    "maximumWindMs": 60,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -566.3318227513384,
+                    "windDeltaFromPreviousMs": 0,
+                    "approachRateKmh": 23.597159281305768,
+                    "strengtheningRateMsPerHour": 0,
+                    "rapidEvolutionIndex": 0.5663318227513384
+                  },
+                  {
+                    "agency": "JMA",
+                    "time": "2026-10-21T00:00:00.000Z",
+                    "leadHours": 119.25,
+                    "distanceKm": 1889.9390946440712,
+                    "maximumWindMs": 50,
+                    "interpolationSpanHours": 0,
+                    "interpolationReliability": 1,
+                    "exactOfficialTime": true,
+                    "windRadiiAvailable": false,
+                    "distanceDeltaFromPreviousKm": -562.4144706620468,
+                    "windDeltaFromPreviousMs": 5,
+                    "approachRateKmh": 23.433936277585286,
+                    "strengtheningRateMsPerHour": 0.20833333333333334,
+                    "rapidEvolutionIndex": 0.6318589151064913
+                  }
+                ],
+                "intervalFromPreviousHours": 24,
+                "distanceDeltaFromPreviousKm": -564.3731467066928,
+                "windDeltaFromPreviousMs": 2.5,
+                "approachRateKmh": 23.51554777944553,
+                "strengtheningRateMsPerHour": 0.10416666666666667,
+                "rapidEvolutionIndex": 0.5990953689289149,
+                "scenarioRapidEvolutionIndex": 0.6318589151064913
+              }
+            ],
+            "analyzers": {
+              "directApproach": {
+                "confidence": 0.9996606050483072
+              },
+              "directDepart": {
+                "confidence": 0
+              },
+              "reApproach": {
+                "confidence": 0
+              },
+              "quasiStationary": {
+                "confidence": 0.06685745028145824
+              },
+              "forecastEdge": {
+                "confidence": 1
+              },
+              "agencyDisagreement": {
+                "confidence": 0.32231365797956896
+              },
+              "interpolationReliability": {
+                "confidence": 0.9266846866427978
+              },
+              "windField": {
+                "confidence": 0,
+                "representativeWindMs": 55,
+                "dataAgencyCount": 1,
+                "latestCoverageAgencyCount": 0,
+                "closestCoverageAgencyCount": 0,
+                "latestStrongWindCoverageAgencyCount": 0,
+                "closestStrongWindCoverageAgencyCount": 0,
+                "latestGaleCoverageAgencyCount": 0,
+                "closestGaleCoverageAgencyCount": 0,
+                "strongWindCoverageFraction": 0,
+                "galeCoverageFraction": 0
+              },
+              "rapidEvolution": {
+                "confidence": 0.7477208418268706,
+                "checkpoint": "+35.3h"
+              }
+            }
+          },
+          "semantics": {
+            "deterministic": true,
+            "firstVersionHeuristic": true,
+            "evidenceCombination": true,
+            "hardThreatGateUsed": false,
+            "fixedDayBucketsUsed": false,
+            "timelineCanDriveSignalRisk": true,
+            "signalTimingUsesFutureThresholdCrossings": true,
+            "stormIntensityIsCoupledToHongKongExposureForT3T8": true,
+            "agencyAgreementAffectsConfidenceNotThreatMagnitude": true,
+            "minorityAgencyThreatScenarioPreserved": true,
+            "minorityAgencyWindFieldScenarioPreserved": true,
+            "perAgencyEvidenceUsesOnlyAgencyData": true,
+            "windFieldThresholdsAreSignalSpecificWhenKnown": true,
+            "windFieldIntersectionIsDirectThreatEvidence": true,
+            "localWindPersistenceIsContinuousEvidence": true,
+            "horizonLimitedFallbackTimingSuppressed": true,
+            "timeWeightingIsContinuous": true,
+            "softTimeScaleHours": 72,
+            "historicalCalibrationRequired": false,
+            "probabilityOutputIncluded": false,
+            "estimatedWindowsAreBroadGuidance": true,
+            "timingWindowsReflectAnalysisConfidence": true,
+            "interpolationCadenceDoesNotSetTimingPrecision": true,
+            "interpolationReliabilityAffectsLikelyEscalationNotRawThreat": true,
+            "reliableConfirmedPeakCanSupportT8LikelyEscalation": true,
+            "timingThresholdCrossingsAreInterpolated": true,
+            "firstVisibleAboveThresholdDoesNotInventCrossing": true,
+            "officialHkoForecast": false,
+            "officialHkoDecisionInferred": false,
+            "label": "Storm Track warning signal risk estimate V2 shadow 0.5",
+            "aiGenerated": false,
+            "shadowOnly": true,
+            "developmentRevision": true,
+            "v1RemainsEvaluationBaseline": true,
+            "noTruthFeedback": true,
+            "sourcePresenceAndUsabilitySeparatedForConfidence": true,
+            "longHorizonParticipationAndPositiveSupportSeparated": true,
+            "t1LikelyRequiresGeometricDecisionMaturity": true,
+            "t1LikelyRequiresPersistenceDecisionMaturity": true,
+            "postMinimumDepartureResidualRiskCanDecay": true,
+            "staleTerminalLifecycleEvidenceCanDecayResidualRisk": true,
+            "phaseAwareInterpretationIncluded": true,
+            "phaseDetectionRequiresActualOutwardThenInwardTurn": true,
+            "riskWindowIsNotIssuanceTime": true,
+            "missingPositiveWindowCarriesExplicitTimingState": true,
+            "noNewProbabilityOutput": true
+          },
+          "baseForecastSchemaVersion": "basic-hk-signal-forecast/v1",
+          "shadow": {
+            "version": "hk-signal-shadow-v2/0.5",
+            "mode": "parallel-shadow-development",
+            "adjustments": [
+              {
+                "code": "source-coverage-confidence-v2",
+                "label": "來源存在/可用度信心修正",
+                "factor": 0.86,
+                "presentAgencyCount": 2,
+                "usableAgencyCount": 2,
+                "presenceCoverage": 0.5,
+                "usableWithinPresent": 1
+              },
+              {
+                "code": "t3-long-horizon-evidence",
+                "label": "T3 遠期參與/正向支援折減",
+                "factor": 0.729296875,
+                "strongestLeadHours": 119.25,
+                "checkpointAgencyCount": 2,
+                "supportAgencyCount": 0,
+                "usableAgencyCount": 2,
+                "participationFraction": 1,
+                "positiveSupportFraction": 0
+              },
+              {
+                "code": "t8-long-horizon-evidence",
+                "label": "T8 遠期參與/正向支援折減",
+                "factor": 0.729296875,
+                "strongestLeadHours": 119.25,
+                "checkpointAgencyCount": 2,
+                "supportAgencyCount": 0,
+                "usableAgencyCount": 2,
+                "participationFraction": 1,
+                "positiveSupportFraction": 0
+              }
+            ],
+            "diagnostics": {
+              "presentAgencyCount": 2,
+              "usableAgencyCount": 2,
+              "presenceCoverage": 0.5,
+              "usableWithinPresent": 1,
+              "presenceConfidenceFactor": 0.86,
+              "usabilityConfidenceFactor": 1,
+              "confidenceCoverageFactor": 0.86,
+              "hoursAfterMinimum": 0,
+              "directDepart": 0,
+              "futureTimelineCount": 8,
+              "lifecyclePenalty": 0,
+              "terminalLifecyclePenalty": 0,
+              "phaseContext": {
+                "schemaVersion": "hk-signal-phase-context/v2",
+                "available": true,
+                "operationalPhase": "approach",
+                "directApproach": 0.9996606050483072,
+                "directDepart": 0,
+                "reApproach": 0,
+                "quasiStationary": 0.06685745028145824,
+                "currentPhaseMinimum": {
+                  "label": "+35.3h",
+                  "validTime": "2026-10-17T12:00:00.000Z",
+                  "leadHours": 35.25,
+                  "distanceKm": 3644.376325635678,
+                  "windMedianMs": 36.5,
+                  "agencyCount": 2
+                },
+                "laterPhaseMinimum": null,
+                "phasePeak": null,
+                "globalFutureMinimum": {
+                  "label": "+119.3h",
+                  "validTime": "2026-10-21T00:00:00.000Z",
+                  "leadHours": 119.25,
+                  "distanceKm": 1859.209400556566,
+                  "windMedianMs": 55,
+                  "agencyCount": 2
+                },
+                "globalMinimumBelongsToLaterPhase": false,
+                "multiPhase": false,
+                "turnDiagnostics": null,
+                "nearTermHours": 36,
+                "futureCheckpointCount": 8
+              },
+              "sourceLifecycle": {
+                "observedAt": "2026-10-16T01:31:34.935Z",
+                "sourceAgencyCount": 2,
+                "sourceAgencies": [
+                  "CMA",
+                  "JMA"
+                ],
+                "forecastPointTotal": 14,
+                "sourceAgeHoursByAgency": {
+                  "CMA": 1.5263708333333332,
+                  "JMA": 0.7763708333333333
+                },
+                "freshestBulletinAgeHours": 0.7763708333333333,
+                "stalestBulletinAgeHours": 1.5263708333333332,
+                "allSourcesStale": false,
+                "terminalStaleThresholdHours": 12,
+                "currentIntensityByAgency": {
+                  "CMA": "TS",
+                  "JMA": "熱帶風暴"
+                },
+                "terminalIntensityAgencyCount": 0,
+                "terminalStateCandidate": false
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "captureFingerprint": "960bf68da60485709b9d0b1c23967cf2a0e0e6250b1eb7d4010ecd9965904261"
+}
