@@ -1,5 +1,6 @@
 // ==========================================================================
-// Storm-Track Ultra 2.0 - Geodesic, Consensus Track & HK Signal V2 Engine
+// Storm-Track Ultra 2.2 - Geodesic, Universal Worker JSON Parser,
+// Consensus Track & HK Signal V2 Engine
 // ==========================================================================
 
 const StormEngine = (function() {
@@ -16,7 +17,6 @@ const StormEngine = (function() {
         return EARTH_R_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
-    // Bearing from point 1 (e.g. HKO) to point 2 (e.g. Storm Center) in degrees [0, 360)
     function bearingDeg(lat1, lon1, lat2, lon2) {
         const phi1 = lat1 * DEG2RAD;
         const phi2 = lat2 * DEG2RAD;
@@ -47,16 +47,14 @@ const StormEngine = (function() {
         return { code: 'TD', nameZh: '熱帶低氣壓', short: '熱帶低氣壓', color: '#38BDF8' };
     }
 
-    // Estimate 30kt (Strong), 50kt (Gale), 64kt (Hurricane) radii in km
     function computeWindRadiiKm(windKmh, lat) {
         const latFactor = 1 + Math.max(0, (lat - 16) * 0.015);
-        const r30 = windKmh >= 63  ? Math.round((165 + (windKmh - 63) * 1.45) * latFactor) : 0;
-        const r50 = windKmh >= 88  ? Math.round((75  + (windKmh - 88) * 0.95) * latFactor) : 0;
-        const r64 = windKmh >= 118 ? Math.round((32  + (windKmh - 118) * 0.55) * latFactor) : 0;
+        const r30 = windKmh >= 63  ? Math.round((150 + (windKmh - 63) * 1.35) * latFactor) : 0;
+        const r50 = windKmh >= 88  ? Math.round((70  + (windKmh - 88) * 0.90) * latFactor) : 0;
+        const r64 = windKmh >= 118 ? Math.round((30  + (windKmh - 118) * 0.50) * latFactor) : 0;
         return { r30, r50, r64 };
     }
 
-    // Time-aligned linear interpolation for an agency's track at relative hour `targetH`
     function interpolateAgencyAtHour(track, targetH) {
         if (!track || track.length === 0) return null;
         const sorted = [...track].sort((a, b) => a.h - b.h);
@@ -80,23 +78,22 @@ const StormEngine = (function() {
         return null;
     }
 
-    // Build Multi-Agency Consensus Track Beta with RMS ensemble spread radius
-    function buildConsensusTrack(agenciesMap, hours = [-12, 0, 12, 24, 36, 48, 72, 96]) {
+    function buildConsensusTrack(agenciesMap, hours = [0, 12, 24, 36, 48, 72, 96, 120]) {
         const agencyDefs = window.STORM_AGENCIES.filter(a => !a.isConsensus);
         return hours.map(h => {
             let sumLat = 0, sumLon = 0, sumWind = 0, sumPres = 0, sumW = 0;
             const samples = [];
 
             agencyDefs.forEach(ag => {
-                const tr = agenciesMap[ag.id];
-                if (!tr) return;
+                const tr = agenciesMap && agenciesMap[ag.id];
+                if (!tr || tr.length === 0) return;
                 const pt = interpolateAgencyAtHour(tr, h);
-                if (pt) {
+                if (pt && !isNaN(pt.lat) && !isNaN(pt.lon)) {
                     const w = ag.weight || 1.0;
                     sumLat += pt.lat * w;
                     sumLon += pt.lon * w;
-                    sumWind += pt.windKmh * w;
-                    sumPres += pt.pres * w;
+                    sumWind += (pt.windKmh || 65) * w;
+                    sumPres += (pt.pres || 994) * w;
                     sumW += w;
                     samples.push({ agencyId: ag.id, ...pt });
                 }
@@ -108,14 +105,13 @@ const StormEngine = (function() {
             const meanWind = Math.round(sumWind / sumW);
             const meanPres = Math.round(sumPres / sumW);
 
-            // Compute ensemble spread (RMS distance in km + forecast horizon baseline cone)
             let sqDistSum = 0;
             samples.forEach(s => {
                 const d = haversineKm(meanLat, meanLon, s.lat, s.lon);
                 sqDistSum += d * d;
             });
             const rmsSpread = samples.length > 0 ? Math.sqrt(sqDistSum / samples.length) : 0;
-            const coneRadiusKm = h <= 0 ? Math.max(12, Math.round(rmsSpread)) : Math.round(Math.max(28, rmsSpread * 1.65 + h * 1.35));
+            const coneRadiusKm = h <= 0 ? Math.max(12, Math.round(rmsSpread)) : Math.round(Math.max(25, rmsSpread * 1.5 + h * 1.2));
 
             const distHk = Math.round(haversineKm(window.HKO_HQ.lat, window.HKO_HQ.lon, meanLat, meanLon));
             const brgHk = bearingDeg(window.HKO_HQ.lat, window.HKO_HQ.lon, meanLat, meanLon);
@@ -140,28 +136,27 @@ const StormEngine = (function() {
         }).filter(Boolean);
     }
 
-    // Sub-hourly dense interpolation to find exact Closest Point of Approach (CPA) to HKO
     function computeCPA(trackPoints, baseTimeIso) {
         if (!trackPoints || trackPoints.length === 0) return null;
         let minDist = Infinity;
         let bestH = 0;
         let bestLat = trackPoints[0].lat;
         let bestLon = trackPoints[0].lon;
-        let bestWind = trackPoints[0].windKmh;
-        let bestPres = trackPoints[0].pres;
+        let bestWind = trackPoints[0].windKmh || 65;
+        let bestPres = trackPoints[0].pres || 994;
 
         const sorted = [...trackPoints].sort((a, b) => a.h - b.h);
         for (let i = 0; i < sorted.length - 1; i++) {
             const p0 = sorted[i];
             const p1 = sorted[i + 1];
-            const steps = 24;
+            const steps = 20;
             for (let s = 0; s <= steps; s++) {
                 const r = s / steps;
                 const h = p0.h + (p1.h - p0.h) * r;
                 const lat = p0.lat + (p1.lat - p0.lat) * r;
                 const lon = p0.lon + (p1.lon - p0.lon) * r;
-                const wind = p0.windKmh + (p1.windKmh - p0.windKmh) * r;
-                const pres = p0.pres + (p1.pres - p0.pres) * r;
+                const wind = (p0.windKmh || 65) + ((p1.windKmh || 65) - (p0.windKmh || 65)) * r;
+                const pres = (p0.pres || 994) + ((p1.pres || 994) - (p0.pres || 994)) * r;
                 const d = haversineKm(window.HKO_HQ.lat, window.HKO_HQ.lon, lat, lon);
                 if (d < minDist) {
                     minDist = d;
@@ -176,12 +171,10 @@ const StormEngine = (function() {
 
         const brg = bearingDeg(window.HKO_HQ.lat, window.HKO_HQ.lon, bestLat, bestLon);
         const baseDate = baseTimeIso ? new Date(baseTimeIso) : new Date();
-        const cpaDate = new Date(baseDate.getTime() + bestH * 3600000);
+        const validBase = isNaN(baseDate.getTime()) ? new Date() : baseDate;
+        const cpaDate = new Date(validBase.getTime() + bestH * 3600000);
         const pad = n => String(n).padStart(2, '0');
-        const cpaTimeFormatted = `${pad(cpaDate.getMonth() + 1)}/${pad(cpaDate.getDate())} ${pad(cpaDate.getHours())}:${pad(cpaDate.getMinutes())}`;
-
-        // Determine Dangerous Semicircle vs Navigable Semicircle for HK
-        // When a westward/northwestward moving storm passes SOUTH or SSW of HK (bearing 135° to 245°), HK is in the right-hand Dangerous Semicircle
+        const cpaTimeFormatted = `${pad(cpaDate.getDate())}/${pad(cpaDate.getMonth() + 1)} ${pad(cpaDate.getHours())}:${pad(cpaDate.getMinutes())}`;
         const isDangerousSemicircle = (brg >= 120 && brg <= 250);
 
         return {
@@ -198,28 +191,39 @@ const StormEngine = (function() {
         };
     }
 
-    // Parametric Rankine Combined Vortex + Semi-circle & Terrain Shelter Model for HK Reference Stations
+    // Compute closest CPA across all individual agencies (matches Web "預測最近距港：1705 km ( CWA )")
+    function computeBestAgencyCPA(stormCase) {
+        if (!stormCase || !stormCase.agencies) return null;
+        let best = null;
+        Object.keys(stormCase.agencies).forEach(agId => {
+            const tr = stormCase.agencies[agId];
+            if (!tr || tr.length === 0) return;
+            const cpa = computeCPA(tr, stormCase.baseTime);
+            if (cpa && (!best || cpa.cpaDistKm < best.cpaDistKm)) {
+                best = { ...cpa, agencyId: agId };
+            }
+        });
+        return best;
+    }
+
     function simulateHkStationsWind(stormPt) {
         const results = [];
-        let strongCount = 0; // >= 41 km/h among 8 reference stations
-        let galeCount = 0;   // >= 63 km/h among 8 reference stations
-        let stormCount = 0;  // >= 88 km/h among 8 reference stations
+        let strongCount = 0, galeCount = 0, stormCount = 0;
 
         const stormLat = stormPt.lat;
         const stormLon = stormPt.lon;
-        const vmax = stormPt.windKmh;
-        const rMax = vmax >= 180 ? 28 : (vmax >= 140 ? 36 : 45); // Radius of maximum wind (km)
+        const vmax = stormPt.windKmh || 65;
+        const rMax = vmax >= 180 ? 28 : (vmax >= 140 ? 36 : 45);
 
         window.HKO_REFERENCE_STATIONS.forEach(sta => {
             const dist = haversineKm(stormLat, stormLon, sta.lat, sta.lon);
             const brgFromStormToSta = bearingDeg(stormLat, stormLon, sta.lat, sta.lon);
-
-            // Northern hemisphere cyclone right-front quadrant enhancement (around 0° - 110° relative to WNW track)
             const semicircleBoost = (brgFromStormToSta >= 330 || brgFromStormToSta <= 95) ? 1.16 : 0.86;
 
-            // Modified Rankine vortex profile
             let baseWind = 0;
-            if (dist <= rMax) {
+            if (dist > 950) {
+                baseWind = 16; // Ambient monsoon/trade wind when storm is >950km away
+            } else if (dist <= rMax) {
                 baseWind = vmax * (dist / rMax) * 0.78;
             } else {
                 const alpha = dist < 180 ? 0.52 : 0.66;
@@ -227,33 +231,14 @@ const StormEngine = (function() {
             }
 
             const sustainedKmh = Math.max(12, Math.round(baseWind * semicircleBoost * sta.exposure));
-            const gustKmh = Math.round(sustainedKmh * (sta.isOutpost ? 1.38 : 1.45));
-
-            // Local inflow wind direction (cyclonic counter-clockwise + 18 deg inflow angle)
-            const windFromDeg = (brgFromStormToSta - 72 + 360) % 360;
+            const gustKmh = Math.round(sustainedKmh * 1.42);
+            const windFromDeg = dist > 950 ? 85 : ((brgFromStormToSta - 72 + 360) % 360);
             const windDirZh = compass16Zh(windFromDeg);
 
-            let level = 'normal';
-            let statusZh = '清勁 (<41)';
-            if (sustainedKmh >= 118) {
-                level = 'storm';
-                statusZh = '颶風 (≥118)';
-            } else if (sustainedKmh >= 88) {
-                level = 'storm';
-                statusZh = '暴風 (88-117)';
-            } else if (sustainedKmh >= 63) {
-                level = 'gale';
-                statusZh = '烈風達標 (≥63)';
-            } else if (sustainedKmh >= 41) {
-                level = 'strong';
-                statusZh = '強風達標 (≥41)';
-            }
-
-            if (!sta.isOutpost) {
-                if (sustainedKmh >= 41) strongCount++;
-                if (sustainedKmh >= 63) galeCount++;
-                if (sustainedKmh >= 88) stormCount++;
-            }
+            let level = 'normal', statusZh = '清勁 (<41)';
+            if (sustainedKmh >= 88) { level = 'storm'; statusZh = '暴風 (≥88)'; stormCount++; galeCount++; strongCount++; }
+            else if (sustainedKmh >= 63) { level = 'gale'; statusZh = '烈風 (≥63)'; galeCount++; strongCount++; }
+            else if (sustainedKmh >= 41) { level = 'strong'; statusZh = '強風 (≥41)'; strongCount++; }
 
             results.push({
                 ...sta,
@@ -266,92 +251,245 @@ const StormEngine = (function() {
             });
         });
 
-        return {
-            stations: results,
-            strongCount,
-            galeCount,
-            stormCount
-        };
+        return { stations: results, strongCount, galeCount, stormCount };
     }
 
-    // Evaluate HK Signal V2 Probabilities & Situation Analysis
-    function evaluateHkThreatV2(currentPt, consensusTrack, cpaInfo) {
-        const localWinds = simulateHkStationsWind(currentPt);
+    function evaluateHkThreatV2(currentPt, consensusTrack, cpaInfo, liveWindsOverride = null) {
+        const simWinds = simulateHkStationsWind(currentPt);
+        const localWinds = (currentPt.distHk > 850 && liveWindsOverride) ? liveWindsOverride : simWinds;
         const currDist = currentPt.distHk;
         const cpaDist = cpaInfo ? cpaInfo.cpaDistKm : currDist;
         const effDist = Math.min(currDist, cpaDist * 0.92);
         const effWind = Math.max(currentPt.windKmh, cpaInfo ? cpaInfo.cpaWindKmh : currentPt.windKmh);
         const semiBoost = (cpaInfo && cpaInfo.isDangerousSemicircle) ? 1.15 : 0.88;
 
-        // Compute probabilities [0..99] for T1, T3, T8, T9, T10
         let p1 = 0, p3 = 0, p8 = 0, p9 = 0, p10 = 0;
+        if (effDist <= 820) p1 = Math.min(99, Math.round(Math.max(20, (850 - effDist) / 4.8)));
+        if (effDist <= 550 && effWind >= 63) p3 = Math.min(99, Math.round(((550 - effDist) / 3.4) * (effWind / 110) * semiBoost));
+        if (effDist <= 340 && effWind >= 88) p8 = Math.min(98, Math.round(((340 - effDist) / 2.2) * (effWind / 135) * semiBoost));
+        if (effDist <= 145 && effWind >= 145) p9 = Math.min(95, Math.round(((150 - effDist) / 1.35) * (effWind / 170) * semiBoost));
+        if (effDist <= 95 && effWind >= 175) p10 = Math.min(92, Math.round(((105 - effDist) / 1.05) * (effWind / 185) * semiBoost));
 
-        if (effDist <= 820) {
-            p1 = Math.min(99, Math.round(Math.max(25, (850 - effDist) / 4.8)));
-        }
-        if (effDist <= 550 && effWind >= 63) {
-            p3 = Math.min(99, Math.round(((550 - effDist) / 3.4) * (effWind / 110) * semiBoost));
-        }
-        if (effDist <= 340 && effWind >= 88) {
-            p8 = Math.min(98, Math.round(((340 - effDist) / 2.2) * (effWind / 135) * semiBoost));
-        }
-        if (effDist <= 145 && effWind >= 145) {
-            p9 = Math.min(95, Math.round(((150 - effDist) / 1.35) * (effWind / 170) * semiBoost));
-        }
-        if (effDist <= 95 && effWind >= 175) {
-            p10 = Math.min(92, Math.round(((105 - effDist) / 1.05) * (effWind / 185) * semiBoost));
-        }
-
-        // Enforce monotonic consistency with current 8-station observations
         if (localWinds.strongCount >= 4) p3 = Math.max(p3, 95);
         if (localWinds.galeCount >= 4)   p8 = Math.max(p8, 94);
-        if (localWinds.stormCount >= 2 && currDist <= 90) p10 = Math.max(p10, 88);
 
         p1 = Math.max(p1, p3);
         p3 = Math.max(p3, p8);
         p8 = Math.max(p8, p9);
         p9 = Math.max(p9, p10);
 
-        let recSignal = '無需發出信號';
+        let recSignal = '無需發出信號 (距港 >800km)';
         let recBadgeColor = '#10B981';
-        if (p10 >= 65 && currDist <= 140) {
-            recSignal = '十號颶風信號 (T10)';
-            recBadgeColor = '#C084FC';
-        } else if (p9 >= 65 && currDist <= 180) {
-            recSignal = '九號風力增強 (T9)';
-            recBadgeColor = '#EC4899';
-        } else if (p8 >= 60 || localWinds.galeCount >= 4) {
-            recSignal = '八號烈風或暴風 (T8)';
-            recBadgeColor = '#EF4444';
-        } else if (p3 >= 55 || localWinds.strongCount >= 4) {
-            recSignal = '三號強風信號 (T3)';
-            recBadgeColor = '#F59E0B';
-        } else if (p1 >= 50 || currDist <= 800) {
-            recSignal = '一號戒備信號 (T1)';
-            recBadgeColor = '#38BDF8';
-        }
+        if (p10 >= 65 && currDist <= 140) { recSignal = '十號颶風信號 (T10)'; recBadgeColor = '#C084FC'; }
+        else if (p9 >= 65 && currDist <= 180) { recSignal = '九號風力增強 (T9)'; recBadgeColor = '#EC4899'; }
+        else if (p8 >= 60 || localWinds.galeCount >= 4) { recSignal = '八號烈風或暴風 (T8)'; recBadgeColor = '#EF4444'; }
+        else if (p3 >= 55 || localWinds.strongCount >= 4) { recSignal = '三號強風信號 (T3)'; recBadgeColor = '#F59E0B'; }
+        else if (p1 >= 50 || currDist <= 800) { recSignal = '一號戒備信號 (T1)'; recBadgeColor = '#38BDF8'; }
 
         const bullets = [
-            `🎯 <b>路徑與 CPA 幾何定位：</b>風暴目前位於香港天文台<b>${currentPt.bearingZh}約 ${currentPt.distHk} 公里</b>（中心持續風速 ${currentPt.windKmh} km/h，氣壓 ${currentPt.pres} hPa）。多機構共識預計於 <b>${cpaInfo.cpaTimeStr}</b> 在香港<b>${cpaInfo.cpaBearingZh}約 ${cpaInfo.cpaDistKm} 公里</b>處最接近本港。`,
-            cpaInfo.isDangerousSemicircle
-                ? `⚠️ <b>危險半圓與東南無屏障效應：</b>由於風暴於香港南至西南方掠過（「西登」格局），香港處於風暴移動方向的右半圓（<b>危險半圓</b>），風暴移行速度與環流風速疊加；當風向由東北轉吹東至東南風時，維港及南區無地形遮擋，風力及風暴潮將顯著飆升。`
-                : `🛡️ <b>可航半圓與地形屏障效應：</b>風暴預計於偏東或偏北路徑掠過，香港主要吹北至西北風，受新界及大嶼山山脈地形屏障削弱，市區風力較離岸及高地溫和。`,
-            `🚩 <b>八大參考測風站實況推演：</b>目前時段八大參考站中有 <b>${localWinds.strongCount} / 8 站達強風程度 (≥41 km/h)</b>、<b>${localWinds.galeCount} / 8 站達烈風程度 (≥63 km/h)</b>（天文台三號及八號信號標準為 8 站中至少 4 站持續達標或預計達標）。`
+            `🎯 <b>風暴位置與最近距港評估：</b>風暴目前位於 <b>${currentPt.lat.toFixed(1)}°N, ${currentPt.lon.toFixed(1)}°E</b>（距離香港天文台<b>${currentPt.bearingZh}約 ${currentPt.distHk} km</b>，中心風速 ${currentPt.windKmh} km/h）。預測最近距港約 <b>${cpaInfo ? cpaInfo.cpaDistKm : currentPt.distHk} km</b>。`,
+            currDist > 800
+                ? `🟢 <b>香港防風狀態：</b>風暴目前位於香港 800 公里警戒範圍以外，對本港暫無直接風力威脅，系統持續追蹤 CMA、JMA、CWA 及 HKO 最新路徑預報。`
+                : (cpaInfo && cpaInfo.isDangerousSemicircle
+                    ? `⚠️ <b>危險半圓效應：</b>風暴預計於香港南至西南方掠過，香港處於風暴移動右半圓（危險半圓），轉吹東至東南風時無地形屏障，風力將顯著增強。`
+                    : `🛡️ <b>可航半圓與地形屏障：</b>香港主要受偏北至西北氣流影響，受內陸山脈屏障削弱。`)
         ];
 
         return {
             probabilities: [
-                { code: 'T1',  name: '一號戒備信號 (Standby Signal No. 1)',           prob: p1,  color: '#38BDF8', desc: '800 km 警戒範圍內戒備' },
-                { code: 'T3',  name: '三號強風信號 (Strong Wind Signal No. 3)',       prob: p3,  color: '#F59E0B', desc: `強風站數 ${localWinds.strongCount}/8 (門檻 4/8)` },
-                { code: 'T8',  name: '八號烈風或暴風信號 (Gale or Storm No. 8)',      prob: p8,  color: '#EF4444', desc: `烈風站數 ${localWinds.galeCount}/8 (門檻 4/8)` },
-                { code: 'T9',  name: '九號烈風或暴風風力增強信號 (Increasing Gale 9)', prob: p9,  color: '#EC4899', desc: '中心逼近 150km 內且風力急升' },
-                { code: 'T10', name: '十號颶風信號 (Hurricane Signal No. 10)',        prob: p10, color: '#C084FC', desc: '颶風圈 (≥118 km/h) 正面掠過本港' }
+                { code: 'T1',  name: '一號戒備信號',       prob: p1,  color: '#38BDF8' },
+                { code: 'T3',  name: '三號強風信號',       prob: p3,  color: '#F59E0B' },
+                { code: 'T8',  name: '八號烈風或暴風信號', prob: p8,  color: '#EF4444' },
+                { code: 'T9',  name: '九號風力增強信號',   prob: p9,  color: '#EC4899' },
+                { code: 'T10', name: '十號颶風信號',       prob: p10, color: '#C084FC' }
             ],
             recSignal,
             recBadgeColor,
             localWinds,
             bullets
         };
+    }
+
+    // ==========================================================================
+    // UNIVERSAL SCHEMA-AGNOSTIC WORKER / MULTI-AGENCY JSON PARSER
+    // Parses ANY JSON structure returned by https://storm.max-yu.workers.dev
+    // ==========================================================================
+    function extractLatLon(pt) {
+        if (!pt) return null;
+        let lat = pt.lat ?? pt.latitude ?? pt.y;
+        let lon = pt.lon ?? pt.lng ?? pt.longitude ?? pt.x;
+        if (Array.isArray(pt) && pt.length >= 2) {
+            const a = Number(pt[0]), b = Number(pt[1]);
+            if (Math.abs(a) <= 65 && Math.abs(b) >= 90) { lat = a; lon = b; }
+            else { lon = a; lat = b; }
+        } else if (Array.isArray(pt.position || pt.coord || pt.coordinates)) {
+            return extractLatLon(pt.position || pt.coord || pt.coordinates);
+        }
+        lat = parseFloat(String(lat).replace(/[^0-9.-]/g, ''));
+        lon = parseFloat(String(lon).replace(/[^0-9.-]/g, ''));
+        if (isNaN(lat) || isNaN(lon)) return null;
+        if (lat > 75 && lon < 75) { const tmp = lat; lat = lon; lon = tmp; }
+        return { lat: Number(lat.toFixed(2)), lon: Number(lon.toFixed(2)) };
+    }
+
+    function extractWindKmh(pt) {
+        const rawKmh = pt.windKmh ?? pt.wind_kmh ?? pt.maxWindKmh ?? pt.speedKmh;
+        if (rawKmh !== undefined && !isNaN(Number(rawKmh))) return Math.round(Number(rawKmh));
+        const rawKt = pt.windKt ?? pt.wind_kt ?? pt.knots ?? pt.kts ?? pt.maxWindKt;
+        if (rawKt !== undefined && !isNaN(Number(rawKt))) return Math.round(Number(rawKt) * 1.852);
+        const rawMs = pt.windMs ?? pt.wind_ms ?? pt.ms ?? pt.vmax_ms;
+        if (rawMs !== undefined && !isNaN(Number(rawMs))) return Math.round(Number(rawMs) * 3.6);
+        const generic = Number(pt.wind ?? pt.maxWind ?? pt.windSpeed ?? pt.speed ?? pt.vmax ?? 68);
+        if (isNaN(generic) || generic <= 0) return 68;
+        // Heuristic: if <= 75 and likely m/s (e.g. 18-65 m/s), check if pt has unit; default < 55 -> *3.6
+        if (generic <= 52) return Math.round(generic * 3.6);
+        return Math.round(generic);
+    }
+
+    function normalizePointList(rawList, isForecast = true) {
+        if (!Array.isArray(rawList) || rawList.length === 0) return [];
+        const pts = [];
+        rawList.forEach((item, idx) => {
+            const coords = extractLatLon(item);
+            if (!coords) return;
+            const windKmh = extractWindKmh(item);
+            const pres = Math.round(Number(item.pres ?? item.pressure ?? item.centralPressure ?? item.mslp ?? 994));
+            let h = item.h ?? item.hour ?? item.forecastHour ?? item.leadHours ?? item.tau;
+            if (h === undefined || isNaN(Number(h))) {
+                h = isForecast ? idx * 12 : -(rawList.length - 1 - idx) * 12;
+            }
+            pts.push({
+                h: Number(h),
+                lat: coords.lat,
+                lon: coords.lon,
+                windKmh,
+                pres
+            });
+        });
+        return pts;
+    }
+
+    function parseAnyWorkerPayload(json) {
+        if (!json || typeof json !== 'object') return [];
+        const parsedStorms = [];
+
+        // Case 1: Array of storm objects in json.storms / json.activeStorms / json.data / json.cases / json
+        const candidateArr = json.storms || json.activeStorms || json.cyclones || json.cases || json.items || (Array.isArray(json) ? json : null);
+        if (Array.isArray(candidateArr) && candidateArr.length > 0) {
+            candidateArr.forEach((s, idx) => {
+                const agencies = {};
+                let observedTrack = [];
+                const srcObj = s.agencies || s.sources || s.tracks || s.models || s;
+
+                ['HKO', 'CMA', 'JMA', 'CWA', 'JTWC'].forEach(agKey => {
+                    const rawAg = srcObj[agKey] || srcObj[agKey.toLowerCase()];
+                    if (!rawAg) return;
+                    if (Array.isArray(rawAg)) {
+                        agencies[agKey] = normalizePointList(rawAg, true);
+                    } else if (typeof rawAg === 'object') {
+                        const obs = normalizePointList(rawAg.analysis || rawAg.history || rawAg.observed || rawAg.past || rawAg.track || [], false);
+                        const fc = normalizePointList(rawAg.forecast || rawAg.future || rawAg.forecastTrack || rawAg.points || [], true);
+                        if (obs.length > 0 && observedTrack.length === 0) observedTrack = obs;
+                        if (fc.length > 0) {
+                            if (obs.length > 0 && fc[0].h > 0) {
+                                agencies[agKey] = [{ ...obs[obs.length - 1], h: 0 }, ...fc];
+                            } else {
+                                agencies[agKey] = fc;
+                            }
+                        } else if (obs.length > 0) {
+                            agencies[agKey] = [{ ...obs[obs.length - 1], h: 0 }];
+                        }
+                    }
+                });
+
+                if (observedTrack.length === 0 && Array.isArray(s.observedTrack || s.history || s.analysis || s.past)) {
+                    observedTrack = normalizePointList(s.observedTrack || s.history || s.analysis || s.past, false);
+                }
+
+                const activeSources = Object.keys(agencies).filter(k => agencies[k] && agencies[k].length > 0);
+                if (activeSources.length > 0) {
+                    const nameZh = s.nameZh || s.cnName || s.name_zh || s.tcName || s.name || '活躍風暴';
+                    const nameEn = (s.nameEn || s.enName || s.name_en || s.id || '').toUpperCase();
+                    const firstAg = agencies[activeSources[0]];
+                    const p0 = firstAg[0];
+                    const cat = classifyHkoCategory(p0.windKmh);
+
+                    parsedStorms.push({
+                        id: s.id || `live-storm-${idx}`,
+                        code: s.code || s.number || s.typhoonNumber || 'LIVE',
+                        nameZh,
+                        nameEn,
+                        displayTitle: nameEn && !nameZh.includes(nameEn) ? `${nameZh} (${nameEn})` : nameZh,
+                        category: cat.code,
+                        categoryName: s.intensity || s.categoryName || cat.nameZh,
+                        badgeColor: cat.color,
+                        peakSignal: '實時監測中',
+                        bulletinTime: s.bulletinTime || s.updatedAt || s.issueTime || '最新公報',
+                        baseTime: s.baseTime || s.updatedAt || new Date().toISOString(),
+                        latestPosText: `${p0.lat.toFixed(1)}°N, ${p0.lon.toFixed(1)}°E`,
+                        activeSources,
+                        isLive: true,
+                        observedTrack,
+                        agencies,
+                        summary: s.summary || `實時位置 ${p0.lat.toFixed(1)}°N, ${p0.lon.toFixed(1)}°E，資料來源：${activeSources.join(' / ')}。`
+                    });
+                }
+            });
+        }
+
+        // Case 2: Top-level keyed by agency { hko: ..., cma: ..., jma: ..., cwa: ... }
+        if (parsedStorms.length === 0) {
+            const agencies = {};
+            let observedTrack = [];
+            let detectedNameZh = '';
+            let detectedNameEn = '';
+
+            ['HKO', 'CMA', 'JMA', 'CWA', 'JTWC'].forEach(agKey => {
+                const node = json[agKey] || json[agKey.toLowerCase()] || (json.sources && (json.sources[agKey] || json.sources[agKey.toLowerCase()]));
+                if (!node) return;
+                const item = Array.isArray(node) ? node[0] : (node.storms ? node.storms[0] : node);
+                if (!item) return;
+
+                if (!detectedNameZh && (item.nameZh || item.cnName || item.name)) detectedNameZh = item.nameZh || item.cnName || item.name;
+                if (!detectedNameEn && (item.nameEn || item.enName)) detectedNameEn = item.nameEn || item.enName;
+
+                const obs = normalizePointList(item.analysis || item.history || item.observed || item.past || item.track || [], false);
+                const fc = normalizePointList(item.forecast || item.future || item.forecastTrack || item.points || (Array.isArray(node) ? node : []), true);
+                if (obs.length > 0 && observedTrack.length === 0) observedTrack = obs;
+                if (fc.length > 0) {
+                    agencies[agKey] = (obs.length > 0 && fc[0].h > 0) ? [{ ...obs[obs.length - 1], h: 0 }, ...fc] : fc;
+                }
+            });
+
+            const activeSources = Object.keys(agencies).filter(k => agencies[k] && agencies[k].length > 0);
+            if (activeSources.length > 0) {
+                const p0 = agencies[activeSources[0]][0];
+                const cat = classifyHkoCategory(p0.windKmh);
+                const nameZh = detectedNameZh || '薔琵';
+                const nameEn = (detectedNameEn || 'CHAMPI').toUpperCase();
+                parsedStorms.push({
+                    id: 'live-worker-storm',
+                    code: 'LIVE',
+                    nameZh,
+                    nameEn,
+                    displayTitle: nameEn && !nameZh.includes(nameEn) ? `${nameZh} (${nameEn})` : nameZh,
+                    category: cat.code,
+                    categoryName: cat.nameZh,
+                    badgeColor: cat.color,
+                    peakSignal: '實時監測中',
+                    bulletinTime: '最新公報',
+                    baseTime: new Date().toISOString(),
+                    latestPosText: `${p0.lat.toFixed(1)}°N, ${p0.lon.toFixed(1)}°E`,
+                    activeSources,
+                    isLive: true,
+                    observedTrack,
+                    agencies,
+                    summary: `實時位置 ${p0.lat.toFixed(1)}°N, ${p0.lon.toFixed(1)}°E，資料來源：${activeSources.join(' / ')}。`
+                });
+            }
+        }
+
+        return parsedStorms;
     }
 
     return {
@@ -363,8 +501,10 @@ const StormEngine = (function() {
         interpolateAgencyAtHour,
         buildConsensusTrack,
         computeCPA,
+        computeBestAgencyCPA,
         simulateHkStationsWind,
-        evaluateHkThreatV2
+        evaluateHkThreatV2,
+        parseAnyWorkerPayload
     };
 })();
 

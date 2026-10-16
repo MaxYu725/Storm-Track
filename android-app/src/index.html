@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="referrer" content="no-referrer">
-    <title>Storm-Track Ultra 2.1 - 實時氣旋與香港防風</title>
+    <title>Storm-Track Ultra 2.2 - 實時活躍風暴與香港防風</title>
 
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
@@ -17,21 +17,22 @@
 </head>
 <body>
 
-<div id="ultra-toast">📡 已同步最新實時氣象與氣旋數據</div>
+<div id="ultra-toast">📡 已同步最新活躍風暴與多機構路徑數據</div>
 
 <div id="app-wrapper">
     <!-- Single Ultra-Clean Top Header Bar (48px) -->
     <div class="top-header-bar">
         <div class="brand-group">
             <div class="brand-logo">🌀</div>
-            <div class="mode-switch-pill" onclick="AppNav.goTo(3)" title="點擊切換實時監測或歷史風暴模擬">
-                <span class="live-dot" id="top-mode-dot"></span>
-                <span id="top-mode-text">實時監測中...</span>
+            <div class="mode-switch-pill" onclick="AppNav.goTo(3)" title="點擊檢視活躍風暴與歷史檔案庫">
+                <span class="live-dot alert" id="top-mode-dot"></span>
+                <span id="top-mode-text">活躍風暴：薔琵 (CHAMPI)</span>
                 <span style="opacity:0.6;font-size:0.68rem;">▾</span>
             </div>
         </div>
         <div class="top-actions">
-            <button class="icon-action-btn" title="立即重新同步實時氣旋與天文台數據" onclick="StormApp.syncLiveAll(true)">↻</button>
+            <button class="icon-action-btn" title="定位至當前風暴中心" onclick="AppNav.goTo(0);RadarMapManager.focusStormCenter()" style="font-size:0.75rem;width:auto;padding:0 9px;font-weight:800;">📍 定位</button>
+            <button class="icon-action-btn" title="重新同步雲端實況" onclick="StormApp.syncLiveAll(true)">↻</button>
             <button class="icon-action-btn" id="theme-toggle-btn" title="切換深色/淺色主題" onclick="ThemeManager.toggle()">☀️</button>
         </div>
     </div>
@@ -44,8 +45,9 @@
 
             <!-- Minimalist Top-Right Controls -->
             <div class="radar-floating-tools">
-                <button class="map-tool-btn" onclick="RadarMapManager.ToggleLayerPopover()" id="btn-open-layers">⚙️ 圖層</button>
-                <button class="map-tool-btn" onclick="RadarMapManager.focusDefaultView()" title="重置視角">🎯 視角</button>
+                <button class="map-tool-btn" onclick="RadarMapManager.ToggleLayerPopover()" id="btn-open-layers">⚙️ 設定 / 圖層</button>
+                <button class="map-tool-btn" onclick="RadarMapManager.focusStormCenter()" title="定位至活躍風暴">🌀 風暴</button>
+                <button class="map-tool-btn" onclick="RadarMapManager.focusHongKong()" title="定位至香港天文台">🇭🇰 香港</button>
                 <button class="map-tool-btn" onclick="RadarMapManager.zoomIn()">＋</button>
                 <button class="map-tool-btn" onclick="RadarMapManager.zoomOut()">－</button>
             </div>
@@ -53,24 +55,25 @@
             <!-- Collapsible Layer & Base Map Popover (Hidden by default) -->
             <div id="map-layer-popover" class="hidden">
                 <div>
-                    <div class="popover-section-title">🗺️ 免 Key 底圖風格 (自動容錯)</div>
+                    <div class="popover-section-title">🧭 資料來源 / 路徑圖例</div>
+                    <div class="popover-chips-wrap" id="agency-layer-pills"></div>
+                </div>
+                <div>
+                    <div class="popover-section-title">🗺️ 地圖圖層</div>
+                    <div class="popover-chips-wrap">
+                        <div class="layer-chip active" id="chip-toggle-obs" onclick="RadarMapManager.toggleAuxLayer('observedTrack')">實測及分析路徑</div>
+                        <div class="layer-chip active" id="chip-toggle-cone" onclick="RadarMapManager.toggleAuxLayer('windCone')">暴風圈與誤差錐</div>
+                        <div class="layer-chip active" id="chip-toggle-rings" onclick="RadarMapManager.toggleAuxLayer('cordonRings')">香港 400/800km 圈</div>
+                        <div class="layer-chip" id="chip-toggle-stations" onclick="RadarMapManager.toggleAuxLayer('hkStations')">八大測風站</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="popover-section-title">🌐 免 Key 海圖底圖 (自動容錯)</div>
                     <div class="popover-chips-wrap" id="basemap-style-chips">
                         <div class="layer-chip active" data-style="dark" onclick="RadarMapManager.setBaseMapStyle('dark')">深色海圖</div>
                         <div class="layer-chip" data-style="sat" onclick="RadarMapManager.setBaseMapStyle('sat')">衛星影像</div>
                         <div class="layer-chip" data-style="street" onclick="RadarMapManager.setBaseMapStyle('street')">標準街道</div>
                         <div class="layer-chip" data-style="vector" onclick="RadarMapManager.setBaseMapStyle('vector')">純向量離線</div>
-                    </div>
-                </div>
-                <div>
-                    <div class="popover-section-title">🧭 氣象機構預報路徑</div>
-                    <div class="popover-chips-wrap" id="agency-layer-pills"></div>
-                </div>
-                <div>
-                    <div class="popover-section-title">⭕ 輔助戰術圖層</div>
-                    <div class="popover-chips-wrap">
-                        <div class="layer-chip active" id="chip-toggle-cone" onclick="RadarMapManager.toggleAuxLayer('windCone')">70% 圓錐與風圈</div>
-                        <div class="layer-chip active" id="chip-toggle-rings" onclick="RadarMapManager.toggleAuxLayer('cordonRings')">香港 400/800km 圈</div>
-                        <div class="layer-chip" id="chip-toggle-stations" onclick="RadarMapManager.toggleAuxLayer('hkStations')">八大測風站風速</div>
                     </div>
                 </div>
             </div>
@@ -79,35 +82,42 @@
             <div id="radar-bottom-sheet">
                 <div class="sheet-summary-row" onclick="RadarMapManager.toggleBottomSheet()">
                     <div class="sheet-primary-text">
-                        <span id="sheet-status-icon">🟢</span>
-                        <span id="sheet-title-text" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">正在連線實時氣旋監測...</span>
+                        <span id="sheet-status-icon">🌀</span>
+                        <div style="display:flex;flex-direction:column;min-width:0;">
+                            <div id="sheet-title-text" style="font-size:0.86rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">薔琵 (CHAMPI) • 熱帶風暴</div>
+                            <div id="sheet-subtitle-text" style="font-size:0.68rem;color:var(--sub-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">11.3°N, 154.6°E • 最近距港 1705 km (CWA)</div>
+                        </div>
                     </div>
                     <span class="sheet-sub-pill" id="sheet-toggle-pill">展開詳情 ▴</span>
                 </div>
 
                 <div class="sheet-expanded-body hidden" id="sheet-expanded-body">
+                    <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.72rem;color:var(--sub-text);">
+                        <span id="hud-sources-badges">來源：CMA / JMA / CWA</span>
+                        <span id="hud-bulletin-time">最近公報：16/10 08:00</span>
+                    </div>
                     <div class="hud-telemetry-row">
                         <div class="hud-metric-box">
-                            <span class="hud-metric-label">距港 HKO</span>
-                            <span class="hud-metric-val" id="hud-dist-hk" style="color:var(--accent-color);">--</span>
+                            <span class="hud-metric-label">最新位置</span>
+                            <span class="hud-metric-val" id="hud-pos-val" style="color:var(--accent-color);font-size:0.74rem;">11.3°N, 154.6°E</span>
                         </div>
                         <div class="hud-metric-box">
                             <span class="hud-metric-label">中心風速</span>
-                            <span class="hud-metric-val" id="hud-max-wind" style="color:#FBBF24;">--</span>
+                            <span class="hud-metric-val" id="hud-max-wind" style="color:#FBBF24;">68 km/h</span>
                         </div>
                         <div class="hud-metric-box">
                             <span class="hud-metric-label">中心氣壓</span>
-                            <span class="hud-metric-val" id="hud-min-pres">--</span>
+                            <span class="hud-metric-val" id="hud-min-pres">994 hPa</span>
                         </div>
                         <div class="hud-metric-box" onclick="AppNav.goTo(1)" style="cursor:pointer;">
-                            <span class="hud-metric-label">最接近 CPA</span>
-                            <span class="hud-metric-val" id="hud-cpa-val" style="color:#FF2E63;">--</span>
+                            <span class="hud-metric-label">預測最近距港</span>
+                            <span class="hud-metric-val" id="hud-cpa-val" style="color:#FF2E63;">1705 km</span>
                         </div>
                     </div>
 
                     <div class="scrubber-controls-row" id="scrubber-controls-row">
                         <button class="play-scrubber-btn" id="btn-play-scrubber" onclick="StormApp.toggleTimelinePlay()">▶</button>
-                        <input type="range" class="scrubber-slider" id="timeline-scrubber" min="0" max="7" step="1" value="1" oninput="StormApp.setTimelineIndex(Number(this.value))">
+                        <input type="range" class="scrubber-slider" id="timeline-scrubber" min="0" max="6" step="1" value="0" oninput="StormApp.setTimelineIndex(Number(this.value))">
                         <span class="chip-btn" id="scrubber-time-badge" onclick="StormApp.jumpToCPA()" style="padding:4px 8px;font-size:0.68rem;">跳至 CPA</span>
                     </div>
                 </div>
@@ -116,55 +126,44 @@
 
         <!-- PAGE 1: HK THREAT & LIVE WEATHER -->
         <div class="pivot-page" id="page-threat">
-            <!-- Live HKO Weather & Warning Strip -->
-            <div class="clean-card" style="background:linear-gradient(135deg, rgba(2,132,199,0.18), rgba(15,23,42,0.85));border-color:rgba(56,189,248,0.3);">
+            <!-- Active Storm Overview Card (Matches Web Right Sidebar Card) -->
+            <div class="clean-card" style="border-left:4px solid var(--accent-color);">
                 <div class="card-header-row">
-                    <div class="card-title">🇭🇰 香港天文台實時天氣與警告</div>
-                    <span class="card-badge" id="hko-live-update-tag">免 Key 官方直連</span>
+                    <div class="card-title" id="threat-active-storm-name">🌀 活躍風暴：薔琵 (CHAMPI)</div>
+                    <button class="chip-btn primary" onclick="AppNav.goTo(0);RadarMapManager.focusStormCenter()" style="padding:4px 10px;font-size:0.7rem;">📍 海圖定位</button>
                 </div>
-                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;">
-                    <div>
-                        <span style="font-size:2rem;font-weight:900;" id="hko-live-temp">--°C</span>
-                        <span style="font-size:0.8rem;color:var(--sub-text);margin-left:6px;" id="hko-live-rh">相對濕度 --%</span>
-                    </div>
-                    <div style="text-align:right;font-size:0.78rem;font-weight:700;color:var(--accent-color);" id="hko-live-warn-badge">
-                        現時無生效熱帶氣旋警告
-                    </div>
-                </div>
-                <div style="font-size:0.76rem;color:var(--sub-text);margin-top:6px;line-height:1.4;" id="hko-live-tcinfo">
-                    正在讀取香港天文台最新本港地區天氣預報及熱帶氣旋消息...
+                <div id="threat-agency-tags" style="display:flex;gap:6px;margin-top:8px;"></div>
+                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px;font-size:0.78rem;line-height:1.5;">
+                    <div><span style="color:var(--sub-text);">強度：</span><b id="threat-info-intensity">熱帶風暴</b></div>
+                    <div><span style="color:var(--sub-text);">最近公報：</span><b id="threat-info-bulletin">16/10 08:00</b></div>
+                    <div><span style="color:var(--sub-text);">最新位置：</span><b id="threat-info-pos" style="color:var(--accent-color);">11.3°N, 154.6°E</b></div>
+                    <div><span style="color:var(--sub-text);">預測最近距港：</span><b id="threat-info-cpa" style="color:#FF2E63;">1705 km ( CWA )</b></div>
                 </div>
             </div>
 
-            <!-- Cyclone CPA & Signal Recommendation Summary Card -->
-            <div class="clean-card">
+            <!-- Live HKO Weather & Warning Strip -->
+            <div class="clean-card" style="background:linear-gradient(135deg, rgba(2,132,199,0.16), rgba(15,23,42,0.85));border-color:rgba(56,189,248,0.28);">
                 <div class="card-header-row">
-                    <div class="card-title" id="threat-card-storm-title">🎯 氣旋距港距離與防風評估</div>
+                    <div class="card-title">🇭🇰 香港天文台實時天氣與防風信號</div>
                     <span class="card-badge" id="threat-rec-signal" style="color:#10B981;">無需發出信號</span>
                 </div>
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;text-align:center;">
-                    <div style="background:rgba(255,255,255,0.04);padding:8px;border-radius:10px;">
-                        <div style="font-size:0.65rem;color:var(--sub-text);">目前距港</div>
-                        <div style="font-size:1.05rem;font-weight:800;margin-top:2px;" id="threat-curr-dist">--</div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;">
+                    <div>
+                        <span style="font-size:1.85rem;font-weight:900;" id="hko-live-temp">26°C</span>
+                        <span style="font-size:0.78rem;color:var(--sub-text);margin-left:6px;" id="hko-live-rh">相對濕度 78%</span>
                     </div>
-                    <div style="background:rgba(255,255,255,0.04);padding:8px;border-radius:10px;">
-                        <div style="font-size:0.65rem;color:var(--sub-text);">最接近 CPA</div>
-                        <div style="font-size:1.05rem;font-weight:800;color:#FF2E63;margin-top:2px;" id="threat-cpa-dist">--</div>
-                    </div>
-                    <div style="background:rgba(255,255,255,0.04);padding:8px;border-radius:10px;">
-                        <div style="font-size:0.65rem;color:var(--sub-text);">八站風力達標</div>
-                        <div style="font-size:0.95rem;font-weight:800;color:#10B981;margin-top:2px;" id="threat-8sta-summary">0 / 8 站</div>
+                    <div style="text-align:right;font-size:0.76rem;font-weight:700;color:var(--accent-color);" id="hko-live-warn-badge">
+                        🟢 現時無生效熱帶氣旋警告
                     </div>
                 </div>
-
                 <div class="signal-prob-list" id="signal-prob-list"></div>
             </div>
 
             <!-- Collapsible Accordion 1: 8 Reference Anemometer Stations -->
-            <div class="clean-card open" id="acc-card-stations">
+            <div class="clean-card" id="acc-card-stations">
                 <div class="card-header-row accordion-header" onclick="document.getElementById('acc-card-stations').classList.toggle('open')">
                     <div class="card-title">🚩 天文台八大參考測風站風力</div>
-                    <span class="card-badge" id="sta-source-badge">實時 Open-Meteo ▾</span>
+                    <span class="card-badge" id="threat-8sta-summary">強風 0/8 • 展開 ▾</span>
                 </div>
                 <div class="accordion-body">
                     <div style="font-size:0.72rem;color:var(--sub-text);margin-bottom:8px;">
@@ -175,10 +174,10 @@
             </div>
 
             <!-- Collapsible Accordion 2: Situation Analysis -->
-            <div class="clean-card" id="acc-card-analysis">
+            <div class="clean-card open" id="acc-card-analysis">
                 <div class="card-header-row accordion-header" onclick="document.getElementById('acc-card-analysis').classList.toggle('open')">
-                    <div class="card-title">🧠 香港防風形勢與半圓效應分析</div>
-                    <span class="card-badge">點擊展開 ▾</span>
+                    <div class="card-title">🧠 香港防風形勢與路徑研判</div>
+                    <span class="card-badge">收合 ▾</span>
                 </div>
                 <div class="accordion-body">
                     <div id="situation-analysis-bullets" style="display:flex;flex-direction:column;gap:8px;font-size:0.78rem;line-height:1.5;"></div>
@@ -194,11 +193,12 @@
                 <div class="horizon-pill" data-h="24" onclick="AgencyLabManager.setHorizon(24)">+24h</div>
                 <div class="horizon-pill" data-h="48" onclick="AgencyLabManager.setHorizon(48)">+48h</div>
                 <div class="horizon-pill" data-h="72" onclick="AgencyLabManager.setHorizon(72)">+72h</div>
+                <div class="horizon-pill" data-h="96" onclick="AgencyLabManager.setHorizon(96)">+96h</div>
             </div>
 
             <div class="clean-card">
                 <div class="card-header-row" style="margin-bottom:8px;">
-                    <div class="card-title">📋 各大氣象機構預報座標與強度</div>
+                    <div class="card-title">📋 各大氣象機構預報座標與強度 (HKO×CMA×JMA×CWA)</div>
                     <span class="card-badge" id="consensus-spread-badge">分歧度：--</span>
                 </div>
                 <div style="overflow-x:auto;">
@@ -206,10 +206,10 @@
                         <thead>
                             <tr>
                                 <th>機構</th>
-                                <th>座標</th>
+                                <th>預報位置</th>
                                 <th>中心風速</th>
                                 <th>氣壓</th>
-                                <th>距港</th>
+                                <th>距港 HKO</th>
                             </tr>
                         </thead>
                         <tbody id="agency-compare-tbody"></tbody>
@@ -228,25 +228,15 @@
             </div>
         </div>
 
-        <!-- PAGE 3: LIVE MODE & HISTORICAL STORM ARCHIVE -->
+        <!-- PAGE 3: ACTIVE STORMS & HISTORICAL ARCHIVE -->
         <div class="pivot-page" id="page-replay">
-            <!-- Real-Time Live Cyclone Monitor Card -->
-            <div class="clean-card" id="live-mode-selector-card" onclick="StormApp.activateLiveMode()" style="cursor:pointer;border-color:var(--success-color);background:linear-gradient(135deg, rgba(16,185,129,0.16), rgba(15,23,42,0.85));">
-                <div class="card-header-row">
-                    <div class="card-title">🟢 實時西北太平洋及南海氣旋監測 (Live)</div>
-                    <span class="card-badge" id="live-card-status-badge" style="background:rgba(16,185,129,0.22);color:#34D399;">免 API Key 直連</span>
-                </div>
-                <div style="font-size:0.78rem;color:var(--sub-text);margin-top:8px;line-height:1.45;" id="live-card-desc">
-                    自動同步 storm.max-yu.workers.dev、日本氣象廳 (JMA Bosai 實時颱風 JSON)、香港天文台開放數據與 Open-Meteo 八大測風站實時風速。
-                </div>
-                <div style="display:flex;gap:8px;margin-top:10px;">
-                    <button class="chip-btn primary" onclick="event.stopPropagation();StormApp.activateLiveMode()">📡 切換至實時氣旋監測</button>
-                    <button class="chip-btn" onclick="event.stopPropagation();StormApp.syncLiveAll(true)">↻ 立即刷新實況</button>
-                </div>
+            <div style="font-size:0.74rem;font-weight:800;color:var(--accent-color);margin:2px 4px 8px 4px;text-transform:uppercase;letter-spacing:0.8px;">
+                🔴 活躍風暴 (ACTIVE STORMS • 實時同步 HKO × CMA × JMA × CWA)
             </div>
+            <div id="live-active-storms-list"></div>
 
-            <div style="font-size:0.74rem;font-weight:800;color:var(--sub-text);margin:14px 4px 8px 4px;text-transform:uppercase;letter-spacing:0.8px;">
-                ⏪ 歷史經典颱風模擬重演庫 (離線秒開 • 供無風球時段測試)
+            <div style="font-size:0.74rem;font-weight:800;color:var(--sub-text);margin:16px 4px 8px 4px;text-transform:uppercase;letter-spacing:0.8px;">
+                ⏪ 歷史經典颱風檔案庫 (STORM ARCHIVE • 離線重演)
             </div>
             <div id="replay-cases-list"></div>
         </div>
@@ -261,18 +251,19 @@
     </div>
     <div class="nav-tab" data-index="1" onclick="AppNav.goTo(1)">
         <span class="nav-icon">🛡️</span>
-        <span class="nav-label">香港防風</span>
+        <span class="nav-label">風暴與防風</span>
     </div>
     <div class="nav-tab" data-index="2" onclick="AppNav.goTo(2)">
         <span class="nav-icon">📊</span>
-        <span class="nav-label">路徑數據</span>
+        <span class="nav-label">機構數據</span>
     </div>
     <div class="nav-tab" data-index="3" onclick="AppNav.goTo(3)">
         <span class="nav-icon">🗂️</span>
-        <span class="nav-label">風暴庫</span>
+        <span class="nav-label">活躍與歷史</span>
     </div>
 </div>
 
+<script src="js/live_bridge.js"></script>
 <script src="js/data.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/app.js"></script>
