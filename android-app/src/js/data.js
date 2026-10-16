@@ -1,5 +1,6 @@
 // ==========================================================================
-// Storm-Track Ultra 2.0 - Meteorological Domain Data & Historical Case Archive
+// Storm-Track Ultra 2.1 - Meteorological Data, Built-in Keyless Coastline GeoJSON
+// & Historical Case Archive
 // ==========================================================================
 
 const HKO_HQ = {
@@ -9,26 +10,47 @@ const HKO_HQ = {
     lon: 114.1746
 };
 
+// Default only HKO and CONSENSUS enabled on map so initial map view is super clean!
 const STORM_AGENCIES = [
-    { id: 'CONSENSUS', name: '共識路徑 Beta', short: 'CONSENSUS', color: '#00F5D4', weight: 1.0, dashed: false, isConsensus: true },
-    { id: 'HKO',       name: '香港天文台',   short: 'HKO',       color: '#FF2E63', weight: 1.25, dashed: false },
-    { id: 'JMA',       name: '日本氣象廳',   short: 'JMA',       color: '#38BDF8', weight: 1.10, dashed: true  },
-    { id: 'CMA',       name: '中央氣象台',   short: 'CMA',       color: '#FBBF24', weight: 1.00, dashed: true  },
-    { id: 'CWA',       name: '台灣氣象署',   short: 'CWA',       color: '#A855F7', weight: 0.95, dashed: true  },
-    { id: 'JTWC',      name: '美軍聯颱中心', short: 'JTWC',      color: '#FB923C', weight: 1.05, dashed: true  }
+    { id: 'CONSENSUS', name: '多機構共識', short: 'CONSENSUS', color: '#00F5D4', weight: 1.0, dashed: false, isConsensus: true, defaultOn: true },
+    { id: 'HKO',       name: '香港天文台', short: 'HKO',       color: '#FF2E63', weight: 1.25, dashed: false, defaultOn: true },
+    { id: 'JMA',       name: '日本氣象廳', short: 'JMA',       color: '#38BDF8', weight: 1.10, dashed: true,  defaultOn: false },
+    { id: 'CMA',       name: '中央氣象台', short: 'CMA',       color: '#FBBF24', weight: 1.00, dashed: true,  defaultOn: false },
+    { id: 'CWA',       name: '台灣氣象署', short: 'CWA',       color: '#A855F7', weight: 0.95, dashed: true,  defaultOn: false },
+    { id: 'JTWC',      name: '美軍聯颱',   short: 'JTWC',      color: '#FB923C', weight: 1.05, dashed: true,  defaultOn: false }
 ];
 
 const HKO_REFERENCE_STATIONS = [
-    { id: 'CCH', name: '長洲',     en: 'Cheung Chau',   lat: 22.2011, lon: 114.0267, role: '八大參考站', exposure: 1.26, elevation: '72m' },
-    { id: 'CLK', name: '赤鱲角',   en: 'Chek Lap Kok',  lat: 22.3094, lon: 113.9219, role: '八大參考站', exposure: 1.15, elevation: '14m' },
-    { id: 'TY1', name: '青衣',     en: 'Tsing Yi',      lat: 22.3453, lon: 114.0861, role: '八大參考站', exposure: 0.96, elevation: '50m' },
-    { id: 'SE1', name: '啟德',     en: 'Kai Tak',       lat: 22.3097, lon: 114.2133, role: '八大參考站', exposure: 0.94, elevation: '16m' },
-    { id: 'SKG', name: '西貢',     en: 'Sai Kung',      lat: 22.3756, lon: 114.2744, role: '八大參考站', exposure: 1.08, elevation: '10m' },
-    { id: 'SHA', name: '沙田',     en: 'Sha Tin',       lat: 22.4025, lon: 114.2100, role: '八大參考站', exposure: 0.78, elevation: '16m' },
-    { id: 'WLP', name: '濕地公園', en: 'Wetland Park',  lat: 22.4667, lon: 114.0086, role: '八大參考站', exposure: 0.82, elevation: '11m' },
-    { id: 'TKL', name: '打鼓嶺',   en: 'Ta Kwu Ling',   lat: 22.5286, lon: 114.1567, role: '八大參考站', exposure: 0.75, elevation: '28m' },
-    { id: 'WGL', name: '橫瀾島',   en: 'Waglan Island', lat: 22.1822, lon: 114.3033, role: '離岸前哨站', exposure: 1.38, elevation: '83m', isOutpost: true },
-    { id: 'NGP', name: '昂坪',     en: 'Ngong Ping',    lat: 22.2586, lon: 113.9128, role: '高地前哨站', exposure: 1.52, elevation: '593m', isOutpost: true }
+    { id: 'CCH', name: '長洲',     en: 'Cheung Chau',   lat: 22.2011, lon: 114.0267, role: '八大參考站', exposure: 1.26 },
+    { id: 'CLK', name: '赤鱲角',   en: 'Chek Lap Kok',  lat: 22.3094, lon: 113.9219, role: '八大參考站', exposure: 1.15 },
+    { id: 'TY1', name: '青衣',     en: 'Tsing Yi',      lat: 22.3453, lon: 114.0861, role: '八大參考站', exposure: 0.96 },
+    { id: 'SE1', name: '啟德',     en: 'Kai Tak',       lat: 22.3097, lon: 114.2133, role: '八大參考站', exposure: 0.94 },
+    { id: 'SKG', name: '西貢',     en: 'Sai Kung',      lat: 22.3756, lon: 114.2744, role: '八大參考站', exposure: 1.08 },
+    { id: 'SHA', name: '沙田',     en: 'Sha Tin',       lat: 22.4025, lon: 114.2100, role: '八大參考站', exposure: 0.78 },
+    { id: 'WLP', name: '濕地公園', en: 'Wetland Park',  lat: 22.4667, lon: 114.0086, role: '八大參考站', exposure: 0.82 },
+    { id: 'TKL', name: '打鼓嶺',   en: 'Ta Kwu Ling',   lat: 22.5286, lon: 114.1567, role: '八大參考站', exposure: 0.75 }
+];
+
+// Built-in Zero-Key Vector Coastlines for South China Sea, HK, Taiwan, Philippines, Hainan, Vietnam & Japan
+// Guarantees the map is ALWAYS visible even if all external tile servers are blocked or offline!
+const BUILTIN_COASTLINE_POLYLINES = [
+    // South China / Guangdong / Fujian / Zhejiang Coastline
+    [[21.5, 108.0], [21.6, 109.1], [21.2, 109.8], [20.3, 110.1], [21.1, 110.4], [21.5, 111.8], [21.8, 112.9], [22.1, 113.5], [22.5, 113.9], [22.25, 114.15], [22.35, 114.35], [22.6, 114.5], [22.7, 115.6], [23.3, 116.7], [23.8, 117.5], [24.5, 118.1], [25.4, 119.5], [26.6, 120.0], [28.0, 121.2], [30.0, 121.8], [31.2, 121.9]],
+    // Hong Kong Lantau & HK Island Detail
+    [[22.21, 113.84], [22.28, 113.92], [22.33, 114.01], [22.25, 114.04], [22.21, 113.84]],
+    [[22.28, 114.13], [22.28, 114.24], [22.21, 114.25], [22.23, 114.14], [22.28, 114.13]],
+    // Hainan Island
+    [[20.0, 110.1], [20.1, 110.9], [19.6, 111.0], [18.8, 110.5], [18.2, 109.5], [18.5, 108.7], [19.3, 108.6], [19.9, 109.5], [20.0, 110.1]],
+    // Taiwan Island
+    [[25.3, 121.5], [25.0, 122.0], [24.0, 121.6], [22.9, 121.2], [21.9, 120.8], [22.6, 120.3], [23.5, 120.1], [24.6, 120.7], [25.3, 121.5]],
+    // Luzon & Philippines
+    [[18.5, 120.6], [18.4, 122.2], [16.5, 122.4], [15.0, 121.6], [14.0, 122.5], [12.6, 124.1], [13.1, 123.0], [14.5, 120.9], [14.8, 120.2], [16.0, 119.8], [17.5, 120.4], [18.5, 120.6]],
+    // Mindanao / Visayas简化
+    [[11.5, 125.0], [10.0, 125.5], [8.0, 126.3], [6.2, 125.2], [7.0, 122.1], [9.5, 122.5], [11.5, 125.0]],
+    // Vietnam Coast
+    [[21.5, 108.0], [20.5, 106.6], [18.8, 105.8], [16.5, 107.6], [15.0, 108.9], [12.2, 109.2], [10.3, 107.1]],
+    // Okinawa & Kyushu (Japan)
+    [[26.1, 127.7], [26.8, 128.3], [28.3, 129.5], [30.4, 130.5], [31.2, 130.6], [32.8, 130.0], [33.9, 130.9], [33.0, 131.8], [31.4, 131.4]]
 ];
 
 const STORM_CASES_ARCHIVE = [
@@ -38,11 +60,11 @@ const STORM_CASES_ARCHIVE = [
         nameZh: '樺加沙',
         nameEn: 'RAGASA',
         category: 'SuperTY',
-        categoryName: '超強颱風 (Super Typhoon)',
+        categoryName: '超強颱風',
         badgeColor: '#C084FC',
-        peakSignal: '十號颶風信號 (T10) / 八號烈風信號',
+        peakSignal: '十號颶風信號 (T10)',
         baseTime: '2025-09-23T08:00:00+08:00',
-        summary: '2025 年南海巔峰秋颱代表個案。環流緊密且強度極高（中心風速達 205 km/h），由呂宋海峽移入南海北部後以西北偏西路徑逼近珠江口南側約 105–125 公里，令香港處於極具破壞力的右半圓（危險半圓）東南烈風至暴風區。',
+        summary: '2025 年南海巔峰秋颱個案（中心風速 205 km/h），於珠江口南側約 110 公里掠過，香港處於危險半圓東南烈風至暴風區。',
         agencies: {
             HKO: [
                 { h: -12, lat: 19.6, lon: 118.4, windKmh: 185, pres: 925 },
@@ -102,11 +124,11 @@ const STORM_CASES_ARCHIVE = [
         nameZh: '紅霞',
         nameEn: 'NOUL',
         category: 'STS',
-        categoryName: '強烈熱帶風暴 (Severe Tropical Storm)',
+        categoryName: '強烈熱帶風暴',
         badgeColor: '#F59E0B',
-        peakSignal: '三號強風信號 / 八號邊緣評估',
+        peakSignal: '三號強風 / 八號邊緣',
         baseTime: '2026-07-18T14:00:00+08:00',
-        summary: '2026 年夏季南海季風槽生成個案。外圍強風圈廣闊但中心整合受垂直風切變制約，於香港西南偏南約 235 公里掠過，考驗八大測風站「強風高企但烈風僅離岸達標」之 T3 / T8 臨界決策基準。',
+        summary: '2026 年夏季南海季風槽個案，於香港西南偏南約 235 公里掠過，呈現「強風普遍達標、離岸烈風」之 T3/T8 臨界型態。',
         agencies: {
             HKO: [
                 { h: -12, lat: 17.8, lon: 116.5, windKmh: 85,  pres: 988 },
@@ -166,11 +188,11 @@ const STORM_CASES_ARCHIVE = [
         nameZh: '蘇拉',
         nameEn: 'SAOLA',
         category: 'SuperTY',
-        categoryName: '超強颱風 (Super Typhoon)',
+        categoryName: '超強颱風',
         badgeColor: '#EF4444',
         peakSignal: '十號颶風信號 (T10)',
         baseTime: '2023-09-01T08:00:00+08:00',
-        summary: '2023 年正面襲港十號風球經典案例。蘇拉擁有極為緊密且完整的雙眼牆結構，中心於香港天文台以南約 40 公里近距離掠過，本港多處錄得颶風程度風力。',
+        summary: '2023 年正面襲港十號風球經典案例，中心於香港天文台以南約 40 公里掠過。',
         agencies: {
             HKO: [
                 { h: -12, lat: 21.3, lon: 116.8, windKmh: 210, pres: 915 },
@@ -230,11 +252,11 @@ const STORM_CASES_ARCHIVE = [
         nameZh: '山竹',
         nameEn: 'MANGKHUT',
         category: 'SuperTY',
-        categoryName: '超強颱風 (Super Typhoon)',
+        categoryName: '超強颱風',
         badgeColor: '#EC4899',
-        peakSignal: '十號颶風信號 (T10 • 持續 10 小時)',
+        peakSignal: '十號颶風信號 (T10)',
         baseTime: '2018-09-16T02:00:00+08:00',
-        summary: '2018 年破壞力驚人之巨型環流指標個案。山竹雖然曾橫過呂宋北部，但重組後烈風圈半徑仍逾 400 公里，並以時速 30 公里高速於香港西南偏南約 100 公里掠過，引發破紀錄風暴潮及全港廣泛颶風。',
+        summary: '2018 年巨型環流指標個案，烈風圈半徑逾 400 公里，於香港西南偏南約 100 公里掠過。',
         agencies: {
             HKO: [
                 { h: -12, lat: 18.8, lon: 119.2, windKmh: 195, pres: 920 },
@@ -293,4 +315,5 @@ const STORM_CASES_ARCHIVE = [
 window.HKO_HQ = HKO_HQ;
 window.STORM_AGENCIES = STORM_AGENCIES;
 window.HKO_REFERENCE_STATIONS = HKO_REFERENCE_STATIONS;
+window.BUILTIN_COASTLINE_POLYLINES = BUILTIN_COASTLINE_POLYLINES;
 window.STORM_CASES_ARCHIVE = STORM_CASES_ARCHIVE;

@@ -1,9 +1,10 @@
 // ==========================================================================
-// Storm-Track Ultra 2.0 - Core Application, Map & UI Controllers
+// Storm-Track Ultra 2.1 - De-cluttered Map, 100% Keyless Multi-Tile Engine
+// & Real-Time Live Cyclone + HKO / JMA / Open-Meteo Telemetry Controller
 // ==========================================================================
 
 async function fetchWithTimeout(resource, options = {}) {
-    const { timeout = 4200 } = options;
+    const { timeout = 4500 } = options;
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
     try {
@@ -22,11 +23,11 @@ function showUltraToast(msg) {
     el.innerText = msg;
     el.classList.add('show');
     clearTimeout(window._ultraToastTimer);
-    window._ultraToastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+    window._ultraToastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
 // ==========================================================================
-// 1. THEME & LIVE CLOCK MANAGER
+// 1. THEME MANAGER
 // ==========================================================================
 const ThemeManager = {
     isLight: false,
@@ -35,7 +36,6 @@ const ThemeManager = {
             this.isLight = localStorage.getItem('storm_ultra_theme') === 'light';
         } catch (e) {}
         this.apply();
-        this.startClock();
     },
     toggle() {
         this.isLight = !this.isLight;
@@ -44,187 +44,197 @@ const ThemeManager = {
         } catch (e) {}
         this.apply();
         if (window.RadarMapManager) {
-            RadarMapManager.updateTileTheme(this.isLight);
+            RadarMapManager.setBaseMapStyle(this.isLight ? 'street' : 'dark');
         }
     },
     apply() {
         document.body.classList.toggle('light-theme', this.isLight);
         const btn = document.getElementById('theme-toggle-btn');
         if (btn) btn.innerText = this.isLight ? '🌙' : '☀️';
-    },
-    startClock() {
-        const tick = () => {
-            const el = document.getElementById('live-clock');
-            if (!el) return;
-            const d = new Date();
-            el.innerText = d.toTimeString().slice(0, 8) + ' HKT';
-        };
-        tick();
-        setInterval(tick, 1000);
     }
 };
 
 // ==========================================================================
-// 2. NEO-METRO PIVOT + FLOATING BOTTOM DOCK NAVIGATION
+// 2. NAVIGATION CONTROLLER
 // ==========================================================================
 const AppNav = {
     currentIndex: 0,
-    touchStartX: 0,
-    touchStartY: 0,
-    touchEndX: 0,
-    touchEndY: 0,
-    swipeThreshold: 85,
-    isAnimating: false,
     pageCount: 4,
 
     init() {
-        const headers = document.getElementById('pivot-headers');
-        const body = document.getElementById('pivot-content');
-
-        headers.addEventListener('click', (e) => {
-            const h = e.target.closest('.pivot-header');
-            if (!h) return;
-            this.goTo(Number(h.dataset.index));
-        });
-
-        body.addEventListener('touchstart', (e) => {
-            if (e.target.closest('#page-radar, .leaflet-container, button, input, .horizon-pills-bar, .agency-compare-table')) return;
-            const t = e.touches[0];
-            this.touchStartX = t.clientX;
-            this.touchStartY = t.clientY;
-            this.touchEndX = t.clientX;
-            this.touchEndY = t.clientY;
-        }, { passive: true });
-
-        body.addEventListener('touchend', (e) => {
-            if (e.target.closest('#page-radar, .leaflet-container, button, input, .horizon-pills-bar, .agency-compare-table')) return;
-            const t = e.changedTouches[0];
-            this.touchEndX = t.clientX;
-            this.touchEndY = t.clientY;
-            this.handleSwipe();
-        }, { passive: true });
-
-        this.applyState(0, 'right', true);
+        this.goTo(0, true);
     },
 
-    handleSwipe() {
-        const dx = this.touchEndX - this.touchStartX;
-        const dy = this.touchEndY - this.touchStartY;
-        if (Math.abs(dx) < this.swipeThreshold || Math.abs(dx) <= Math.abs(dy) * 1.3) return;
-        if (dx < 0) this.goTo((this.currentIndex + 1) % this.pageCount, 'right');
-        else if (dx > 0) this.goTo((this.currentIndex - 1 + this.pageCount) % this.pageCount, 'left');
-    },
-
-    goTo(index, direction) {
+    goTo(index, immediate = false) {
         if (!Number.isInteger(index) || index < 0 || index >= this.pageCount) return;
-        if (index === this.currentIndex || this.isAnimating) return;
-        if (!direction) direction = index > this.currentIndex ? 'right' : 'left';
-        this.applyState(index, direction, false);
-    },
-
-    applyState(index, direction, immediate) {
-        this.isAnimating = !immediate;
         const pages = Array.from(document.querySelectorAll('.pivot-page'));
-        const headers = Array.from(document.querySelectorAll('.pivot-header'));
         const navTabs = Array.from(document.querySelectorAll('.nav-tab'));
-        const incoming = pages[index];
 
         pages.forEach((p, i) => {
-            if (i !== index) {
-                p.classList.remove('active', 'slide-from-left');
-                p.setAttribute('aria-hidden', 'true');
-            }
+            p.classList.toggle('active', i === index);
         });
-
-        if (incoming) {
-            incoming.classList.toggle('slide-from-left', direction === 'left');
-            if (!immediate) void incoming.offsetWidth;
-            incoming.classList.add('active');
-            incoming.classList.remove('slide-from-left');
-            incoming.setAttribute('aria-hidden', 'false');
-        }
-
-        headers.forEach(h => {
-            const act = Number(h.dataset.index) === index;
-            h.classList.toggle('active', act);
-            if (act && h.scrollIntoView) {
-                h.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            }
-        });
-
-        navTabs.forEach(t => {
-            t.classList.toggle('active', Number(t.dataset.index) === index);
+        navTabs.forEach((t, i) => {
+            t.classList.toggle('active', i === index);
         });
 
         this.currentIndex = index;
         if (index === 0 && window.RadarMapManager) {
             requestAnimationFrame(() => RadarMapManager.resizeMap());
-            setTimeout(() => RadarMapManager.resizeMap(), 320);
+            setTimeout(() => RadarMapManager.resizeMap(), 180);
         }
-
-        clearTimeout(this._unlockTimer);
-        this._unlockTimer = setTimeout(() => { this.isAnimating = false; }, immediate ? 0 : 300);
     }
 };
 
 // ==========================================================================
-// 3. TACTICAL RADAR MAP & DYNAMIC WIND PARTICLE ENGINE
+// 3. 100% KEYLESS TACTICAL SEA CHART ENGINE (Esri + OSM + Built-in Vector Coast)
 // ==========================================================================
 const RadarMapManager = (function() {
     let map = null;
     let tileLayer = null;
+    let coastlineLayer = null;
     let cordonLayer = null;
     let coneLayer = null;
     let tracksLayer = null;
     let stationsLayer = null;
-    let activeEyeMarker = null;
+    let currentStyle = 'dark';
+    let sheetExpanded = false;
 
-    const enabledAgencies = new Set(['CONSENSUS', 'HKO', 'JMA', 'CMA', 'CWA', 'JTWC']);
-    const layersState = {
-        windField: true,
+    // Default only HKO + CONSENSUS on so the map is super clean!
+    const enabledAgencies = new Set(['CONSENSUS', 'HKO']);
+    const auxLayers = {
         windCone: true,
         cordonRings: true,
         hkStations: false
     };
 
-    // Animated Canvas Wind Streamlines
-    let particleCanvas = null;
-    let particleCtx = null;
-    let particles = [];
-    let animFrameId = null;
+    // 100% Free, Keyless Tile Providers that NEVER show "API Key Required" in Android WebView
+    const TILE_PROVIDERS = {
+        dark: [
+            'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+            'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+        ],
+        sat: [
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+        ],
+        street: [
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+            'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+        ]
+    };
 
     function initMap() {
-        if (typeof L === 'undefined') return;
+        const container = document.getElementById('storm-map');
+        if (!container || typeof L === 'undefined') return;
+
         map = L.map('storm-map', {
             zoomControl: false,
-            minZoom: 4,
+            attributionControl: false,
+            minZoom: 3,
             maxZoom: 13,
             zoomSnap: 0.25
-        }).setView([20.8, 115.2], 6.2);
+        }).setView([20.8, 115.2], 5.6);
 
-        updateTileTheme(ThemeManager.isLight);
-
+        coastlineLayer = L.layerGroup().addTo(map);
         cordonLayer = L.layerGroup().addTo(map);
         coneLayer = L.layerGroup().addTo(map);
         tracksLayer = L.layerGroup().addTo(map);
         stationsLayer = L.layerGroup().addTo(map);
 
+        // Always draw built-in vector coastlines & lat/lon grid so map is NEVER blank even offline!
+        drawBuiltinVectorCoastline();
+        setBaseMapStyle(ThemeManager.isLight ? 'street' : 'dark');
         renderAgencyFilterPills();
         drawHkoCordonRings();
-        initWindParticleCanvas();
 
-        map.on('move zoom resize', () => {
-            resizeParticleCanvas();
+        // Automatically fix map size whenever container resizes in Android WebView
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(() => {
+                if (map) map.invalidateSize();
+            });
+            ro.observe(container);
+        }
+        setTimeout(() => { if (map) map.invalidateSize(); }, 120);
+        setTimeout(() => { if (map) map.invalidateSize(); }, 500);
+    }
+
+    function drawBuiltinVectorCoastline() {
+        if (!coastlineLayer) return;
+        coastlineLayer.clearLayers();
+
+        // Subtle Lat/Lon Tactical Graticule Grid (10°N–35°N, 105°E–135°E)
+        for (let lat = 10; lat <= 35; lat += 5) {
+            L.polyline([[lat, 100], [lat, 140]], {
+                color: '#38BDF8',
+                weight: 0.5,
+                opacity: 0.16,
+                interactive: false
+            }).addTo(coastlineLayer);
+        }
+        for (let lon = 105; lon <= 135; lon += 5) {
+            L.polyline([[5, lon], [38, lon]], {
+                color: '#38BDF8',
+                weight: 0.5,
+                opacity: 0.16,
+                interactive: false
+            }).addTo(coastlineLayer);
+        }
+
+        // Crisp Built-in East Asia & South China Sea Coastlines
+        (window.BUILTIN_COASTLINE_POLYLINES || []).forEach(poly => {
+            L.polyline(poly, {
+                color: '#38BDF8',
+                weight: 1.4,
+                opacity: 0.42,
+                lineJoin: 'round',
+                interactive: false
+            }).addTo(coastlineLayer);
         });
     }
 
-    function updateTileTheme(isLight) {
-        if (!map || typeof L === 'undefined') return;
-        if (tileLayer) map.removeLayer(tileLayer);
-        const url = isLight
-            ? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
-            : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-        tileLayer = L.tileLayer(url).addTo(map);
+    function setBaseMapStyle(style) {
+        currentStyle = style;
+        document.querySelectorAll('#basemap-style-chips .layer-chip').forEach(el => {
+            el.classList.toggle('active', el.dataset.style === style);
+        });
+
+        if (!map) return;
+        if (tileLayer) {
+            map.removeLayer(tileLayer);
+            tileLayer = null;
+        }
+
+        if (style === 'vector') {
+            drawBuiltinVectorCoastline();
+            return;
+        }
+
+        const urls = TILE_PROVIDERS[style] || TILE_PROVIDERS.dark;
+        let providerIdx = 0;
+
+        const attachTileUrl = (idx) => {
+            if (tileLayer) map.removeLayer(tileLayer);
+            if (idx >= urls.length) return; // Fallback to built-in vector coastline
+            let errorCount = 0;
+            tileLayer = L.tileLayer(urls[idx], {
+                maxZoom: 13,
+                crossOrigin: true
+            });
+            tileLayer.on('tileerror', () => {
+                errorCount++;
+                if (errorCount > 4 && idx + 1 < urls.length) {
+                    attachTileUrl(idx + 1);
+                }
+            });
+            tileLayer.addTo(map);
+            tileLayer.bringToBack();
+        };
+
+        attachTileUrl(providerIdx);
+    }
+
+    function ToggleLayerPopover() {
+        const pop = document.getElementById('map-layer-popover');
+        if (pop) pop.classList.toggle('hidden');
     }
 
     function renderAgencyFilterPills() {
@@ -232,9 +242,9 @@ const RadarMapManager = (function() {
         if (!container) return;
         container.innerHTML = window.STORM_AGENCIES.map(ag => {
             const isAct = enabledAgencies.has(ag.id);
-            return `<div class="agency-toggle-pill ${isAct ? 'active' : ''}" onclick="RadarMapManager.toggleAgency('${ag.id}')">
-                <span class="agency-dot" style="background:${ag.color};box-shadow:0 0 6px ${ag.color};"></span>
-                <span>${ag.name}</span>
+            return `<div class="layer-chip ${isAct ? 'active' : ''}" onclick="RadarMapManager.toggleAgency('${ag.id}')">
+                <span class="agency-dot" style="background:${ag.color};"></span>
+                <span>${ag.short}</span>
             </div>`;
         }).join('');
     }
@@ -250,101 +260,95 @@ const RadarMapManager = (function() {
         StormApp.refreshAllViews();
     }
 
-    function toggleLayer(key) {
-        layersState[key] = !layersState[key];
-        const btnMap = {
-            windField: 'btn-layer-wind',
-            windCone: 'btn-layer-cone',
-            cordonRings: 'btn-layer-rings',
-            hkStations: 'btn-layer-stations'
+    function toggleAuxLayer(key) {
+        auxLayers[key] = !auxLayers[key];
+        const mapId = {
+            windCone: 'chip-toggle-cone',
+            cordonRings: 'chip-toggle-rings',
+            hkStations: 'chip-toggle-stations'
         };
-        const btn = document.getElementById(btnMap[key]);
-        if (btn) btn.classList.toggle('active', layersState[key]);
-
-        if (key === 'windField' && particleCanvas) {
-            particleCanvas.style.display = layersState.windField ? 'block' : 'none';
-        }
+        const chip = document.getElementById(mapId[key]);
+        if (chip) chip.classList.toggle('active', auxLayers[key]);
         drawHkoCordonRings();
         StormApp.refreshAllViews();
     }
 
+    function toggleBottomSheet() {
+        sheetExpanded = !sheetExpanded;
+        const body = document.getElementById('sheet-expanded-body');
+        const pill = document.getElementById('sheet-toggle-pill');
+        if (body) body.classList.toggle('hidden', !sheetExpanded);
+        if (pill) pill.innerText = sheetExpanded ? '收起 ▾' : '展開詳情 ▴';
+    }
+
+    // Minimalist HKO Cordon Rings (Only 400km and 800km subtle dashed lines, no giant text boxes)
     function drawHkoCordonRings() {
         if (!cordonLayer) return;
         cordonLayer.clearLayers();
 
-        // Always mark HKO HQ
         const hkoIcon = L.divIcon({
             className: '',
-            html: `<div class="hko-hq-badge">🇭🇰 HKO 天文台</div>`,
-            iconSize: [76, 20],
-            iconAnchor: [38, 10]
+            html: `<div class="hko-hq-dot" title="香港天文台 HKO"></div>`,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
         });
-        L.marker([window.HKO_HQ.lat, window.HKO_HQ.lon], { icon: hkoIcon }).addTo(cordonLayer);
+        L.marker([window.HKO_HQ.lat, window.HKO_HQ.lon], { icon: hkoIcon })
+            .bindPopup('<b>🇭🇰 香港天文台總部</b><br>22.3022°N, 114.1746°E')
+            .addTo(cordonLayer);
 
-        if (!layersState.cordonRings) return;
+        if (!auxLayers.cordonRings) return;
 
-        const rings = [
-            { rKm: 100, color: '#EF4444', label: '100km 核心暴風警戒' },
-            { rKm: 300, color: '#F59E0B', label: '300km 烈風警戒圈' },
-            { rKm: 500, color: '#38BDF8', label: '500km 強風警戒圈' },
-            { rKm: 800, color: '#64748B', label: '800km 一號戒備圈' }
-        ];
-
-        rings.forEach(rg => {
+        [400, 800].forEach(rKm => {
             L.circle([window.HKO_HQ.lat, window.HKO_HQ.lon], {
-                radius: rg.rKm * 1000,
-                color: rg.color,
-                weight: 1.2,
-                opacity: 0.45,
-                fillOpacity: 0.01,
-                dashArray: '5, 6',
+                radius: rKm * 1000,
+                color: rKm === 400 ? '#F59E0B' : '#64748B',
+                weight: 1,
+                opacity: 0.35,
+                fillOpacity: 0,
+                dashArray: '4, 6',
                 interactive: false
             }).addTo(cordonLayer);
-
-            const labelLat = window.HKO_HQ.lat - (rg.rKm / 111.32);
-            const labelIcon = L.divIcon({
-                className: '',
-                html: `<span class="ring-dist-label" style="border-color:${rg.color};color:${rg.color};">${rg.label}</span>`,
-                iconSize: [110, 18],
-                iconAnchor: [55, 9]
-            });
-            L.marker([labelLat, window.HKO_HQ.lon], { icon: labelIcon, interactive: false }).addTo(cordonLayer);
         });
     }
 
-    function renderStormOnMap(stormCase, consensusTrack, currentIdx, threatEval) {
+    function renderMapContent(mode, stormCase, consensusTrack, currentIdx, threatEval) {
         if (!map || !tracksLayer || !coneLayer || !stationsLayer) return;
         tracksLayer.clearLayers();
         coneLayer.clearLayers();
         stationsLayer.clearLayers();
 
-        const currentPt = consensusTrack[currentIdx] || consensusTrack[1];
-
-        // 1. Draw 70% Probability Uncertainty Cone & Active Wind Radii (30kt / 50kt / 64kt)
-        if (layersState.windCone && currentPt) {
-            consensusTrack.forEach((pt, idx) => {
-                if (idx >= currentIdx) {
-                    L.circle([pt.lat, pt.lon], {
-                        radius: pt.coneRadiusKm * 1000,
-                        color: '#00F5D4',
-                        weight: 1,
-                        opacity: 0.22,
-                        fillColor: '#00F5D4',
-                        fillOpacity: 0.05,
-                        interactive: false
-                    }).addTo(coneLayer);
-                }
+        // Always render HK 8 stations if toggled OR when in Live Quiet Mode
+        if ((auxLayers.hkStations || mode === 'LIVE_QUIET') && threatEval && threatEval.localWinds) {
+            threatEval.localWinds.stations.forEach(sta => {
+                const col = sta.level === 'storm' ? '#C084FC' : (sta.level === 'gale' ? '#EF4444' : (sta.level === 'strong' ? '#F59E0B' : '#10B981'));
+                const icon = L.divIcon({
+                    className: '',
+                    html: `<div style="background:rgba(10,15,28,0.88);border:1px solid ${col};color:#fff;padding:1px 4px;border-radius:5px;font-size:0.6rem;font-weight:700;white-space:nowrap;">${sta.name} ${sta.sustainedKmh}</div>`,
+                    iconSize: [52, 16],
+                    iconAnchor: [26, 8]
+                });
+                L.marker([sta.lat, sta.lon], { icon }).addTo(stationsLayer);
             });
+        }
 
-            const { r30, r50, r64 } = currentPt.radii;
+        // If Live Mode has NO active tropical cyclones in NW Pacific, keep the map super clean!
+        if (mode === 'LIVE_QUIET' || !stormCase || !consensusTrack || consensusTrack.length === 0) {
+            return;
+        }
+
+        const currentPt = consensusTrack[currentIdx] || consensusTrack[0];
+
+        // 1. Subtle 70% Cone & Active Gale/Storm Radii
+        if (auxLayers.windCone && currentPt) {
+            const { r30, r50 } = currentPt.radii;
             if (r30 > 0) {
                 L.circle([currentPt.lat, currentPt.lon], {
                     radius: r30 * 1000,
                     color: '#F59E0B',
-                    weight: 1.4,
+                    weight: 1.2,
                     dashArray: '4,4',
                     fillColor: '#F59E0B',
-                    fillOpacity: 0.08,
+                    fillOpacity: 0.06,
                     interactive: false
                 }).addTo(coneLayer);
             }
@@ -352,225 +356,104 @@ const RadarMapManager = (function() {
                 L.circle([currentPt.lat, currentPt.lon], {
                     radius: r50 * 1000,
                     color: '#EF4444',
-                    weight: 1.6,
+                    weight: 1.5,
                     fillColor: '#EF4444',
-                    fillOpacity: 0.14,
+                    fillOpacity: 0.12,
                     interactive: false
                 }).addTo(coneLayer);
             }
-            if (r64 > 0) {
-                L.circle([currentPt.lat, currentPt.lon], {
-                    radius: r64 * 1000,
-                    color: '#D946EF',
-                    weight: 2.0,
-                    fillColor: '#D946EF',
-                    fillOpacity: 0.22,
-                    interactive: false
-                }).addTo(coneLayer);
-            }
-
-            // Tactical Distance Vector Line between HKO and Storm Center
-            L.polyline([[window.HKO_HQ.lat, window.HKO_HQ.lon], [currentPt.lat, currentPt.lon]], {
-                color: '#00E5FF',
-                weight: 1.8,
-                dashArray: '4, 6',
-                opacity: 0.75
-            }).addTo(coneLayer);
         }
 
-        // 2. Draw Individual Agency Tracks
+        // 2. Draw Selected Agency Tracks (Only HKO + Consensus by default)
         window.STORM_AGENCIES.forEach(ag => {
             if (!enabledAgencies.has(ag.id)) return;
             const pts = ag.isConsensus ? consensusTrack : (stormCase.agencies[ag.id] || []);
-            if (pts.length === 0) return;
+            if (!pts || pts.length === 0) return;
 
             const latlngs = pts.map(p => [p.lat, p.lon]);
             L.polyline(latlngs, {
                 color: ag.color,
-                weight: ag.isConsensus ? 4.2 : 2.2,
-                opacity: ag.isConsensus ? 0.96 : 0.78,
-                dashArray: ag.dashed ? '6, 5' : null
+                weight: ag.isConsensus ? 3.5 : 2.0,
+                opacity: ag.isConsensus ? 0.95 : 0.75,
+                dashArray: ag.dashed ? '5, 5' : null
             }).addTo(tracksLayer);
 
             pts.forEach((p, idx) => {
                 const cat = StormEngine.classifyHkoCategory(p.windKmh);
-                const radiusPx = ag.isConsensus ? 5.5 : 3.5;
-                const marker = L.circleMarker([p.lat, p.lon], {
-                    radius: radiusPx,
-                    color: '#060913',
-                    weight: 1.5,
+                const m = L.circleMarker([p.lat, p.lon], {
+                    radius: ag.isConsensus ? 4.5 : 3.0,
+                    color: '#060A14',
+                    weight: 1.2,
                     fillColor: ag.isConsensus ? cat.color : ag.color,
                     fillOpacity: 0.95
                 }).addTo(tracksLayer);
 
-                const hLabel = p.h === 0 ? '實況 OBS' : (p.h > 0 ? `+${p.h}h 預報` : `${p.h}h 過去`);
-                marker.bindPopup(`
-                    <div style="font-family:Inter,sans-serif;min-width:165px;color:#0F172A;">
-                        <div style="font-weight:800;font-size:0.86rem;border-bottom:1px solid #cbd5e1;padding-bottom:4px;margin-bottom:5px;">
-                            ${ag.name} • ${hLabel}
-                        </div>
-                        <div style="font-size:0.78rem;line-height:1.5;">
-                            <b>強度：</b>${cat.nameZh} (${p.windKmh} km/h)<br>
-                            <b>氣壓：</b>${p.pres} hPa<br>
-                            <b>座標：</b>${p.lat.toFixed(1)}°N, ${p.lon.toFixed(1)}°E
-                        </div>
-                    </div>
-                `);
+                const hLbl = p.h === 0 ? '實況 OBS' : (p.h > 0 ? `+${p.h}h` : `${p.h}h`);
+                m.bindPopup(`<b>${ag.name} (${hLbl})</b><br>中心風速：${p.windKmh} km/h<br>中心氣壓：${p.pres} hPa`);
                 if (ag.isConsensus) {
-                    marker.on('click', () => StormApp.setTimelineIndex(idx));
+                    m.on('click', () => StormApp.setTimelineIndex(idx));
                 }
             });
         });
 
-        // 3. Draw Rotating Cyclone Eye Marker at Current Scrubber Timestamp
+        // 3. Cyclone Eye Icon at Current Position
         if (currentPt) {
             const eyeHtml = `
                 <div class="typhoon-eye-marker">
-                    <div class="typhoon-eye-pulse" style="border-color:${currentPt.category.color};"></div>
                     <svg class="typhoon-core-svg" viewBox="0 0 64 64">
                         <path d="M32 6 C16 6 6 20 10 36 C12 22 22 16 32 16 C42 16 48 24 46 34 C54 20 46 6 32 6 Z" fill="${currentPt.category.color}"/>
                         <path d="M32 58 C48 58 58 44 54 28 C52 42 42 48 32 48 C22 48 16 40 18 30 C10 44 18 58 32 58 Z" fill="${currentPt.category.color}"/>
-                        <circle cx="32" cy="32" r="9" fill="#060913" stroke="#ffffff" stroke-width="3"/>
+                        <circle cx="32" cy="32" r="9" fill="#060A14" stroke="#ffffff" stroke-width="3"/>
                     </svg>
                 </div>
             `;
             const eyeIcon = L.divIcon({
                 className: '',
                 html: eyeHtml,
-                iconSize: [36, 36],
-                iconAnchor: [18, 18]
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
             });
-            activeEyeMarker = L.marker([currentPt.lat, currentPt.lon], { icon: eyeIcon, zIndexOffset: 1000 }).addTo(tracksLayer);
-        }
-
-        // 4. Optional HK 8-Reference Anemometer Station Markers
-        if (layersState.hkStations && threatEval && threatEval.localWinds) {
-            threatEval.localWinds.stations.forEach(sta => {
-                const col = sta.level === 'storm' ? '#D946EF' : (sta.level === 'gale' ? '#EF4444' : (sta.level === 'strong' ? '#F59E0B' : '#10B981'));
-                const icon = L.divIcon({
-                    className: '',
-                    html: `<div style="background:rgba(6,9,19,0.88);border:1.5px solid ${col};color:#fff;padding:1px 5px;border-radius:6px;font-size:0.62rem;font-weight:800;white-space:nowrap;">${sta.name} ${sta.sustainedKmh}</div>`,
-                    iconSize: [56, 18],
-                    iconAnchor: [28, 9]
-                });
-                L.marker([sta.lat, sta.lon], { icon }).addTo(stationsLayer);
-            });
+            L.marker([currentPt.lat, currentPt.lon], { icon: eyeIcon, zIndexOffset: 1000 }).addTo(tracksLayer);
         }
     }
 
-    // Canvas Wind Field Streamlines Driven by Active Cyclone Vortex
-    function initWindParticleCanvas() {
-        particleCanvas = document.getElementById('wind-particle-canvas');
-        if (!particleCanvas) return;
-        particleCtx = particleCanvas.getContext('2d');
-        resizeParticleCanvas();
-
-        particles = Array.from({ length: 135 }, () => resetParticle({}));
-        if (animFrameId) cancelAnimationFrame(animFrameId);
-        animateWindParticles();
-    }
-
-    function resizeParticleCanvas() {
-        if (!particleCanvas) return;
-        const rect = particleCanvas.parentElement.getBoundingClientRect();
-        particleCanvas.width = rect.width || window.innerWidth;
-        particleCanvas.height = rect.height || window.innerHeight;
-    }
-
-    function resetParticle(p) {
-        const w = particleCanvas ? particleCanvas.width : 400;
-        const h = particleCanvas ? particleCanvas.height : 600;
-        p.x = Math.random() * w;
-        p.y = Math.random() * h;
-        p.age = Math.floor(Math.random() * 75);
-        p.maxAge = 65 + Math.floor(Math.random() * 45);
-        return p;
-    }
-
-    function animateWindParticles() {
-        animFrameId = requestAnimationFrame(animateWindParticles);
-        if (!layersState.windField || !particleCtx || !map || AppNav.currentIndex !== 0) return;
-
-        const w = particleCanvas.width;
-        const h = particleCanvas.height;
-        particleCtx.fillStyle = 'rgba(6, 9, 19, 0.14)';
-        particleCtx.globalCompositeOperation = 'destination-in';
-        particleCtx.fillRect(0, 0, w, h);
-        particleCtx.globalCompositeOperation = 'source-over';
-
-        const currentPt = StormApp.getCurrentPoint();
-        if (!currentPt) return;
-
-        const eyeContainerPt = map.latLngToContainerPoint([currentPt.lat, currentPt.lon]);
-        const ex = eyeContainerPt.x;
-        const ey = eyeContainerPt.y;
-
-        particles.forEach(p => {
-            if (p.age >= p.maxAge || p.x < 0 || p.x > w || p.y < 0 || p.y > h) {
-                resetParticle(p);
-            }
-            const dx = p.x - ex;
-            const dy = p.y - ey;
-            const rPx = Math.sqrt(dx * dx + dy * dy) + 1;
-
-            // Counter-clockwise cyclonic tangential angle in screen coordinates (y down):
-            // Screen counter-clockwise around (ex, ey): tangent is (dy, -dx) plus slight inward spiral (-0.22 * dx, -0.22 * dy)
-            const ux = (dy / rPx) - 0.22 * (dx / rPx);
-            const uy = (-dx / rPx) - 0.22 * (dy / rPx);
-
-            // Speed profile peaking around eye wall
-            const speed = Math.min(4.2, Math.max(0.9, (currentPt.windKmh / 65) * Math.exp(-Math.abs(rPx - 48) / 170)));
-            const nx = p.x + ux * speed;
-            const ny = p.y + uy * speed;
-
-            particleCtx.beginPath();
-            particleCtx.moveTo(p.x, p.y);
-            particleCtx.lineTo(nx, ny);
-            particleCtx.strokeStyle = rPx < 85 ? 'rgba(255, 46, 99, 0.72)' : (rPx < 165 ? 'rgba(251, 191, 36, 0.58)' : 'rgba(0, 229, 255, 0.42)');
-            particleCtx.lineWidth = rPx < 90 ? 1.8 : 1.2;
-            particleCtx.stroke();
-
-            p.x = nx;
-            p.y = ny;
-            p.age++;
-        });
-    }
-
-    function zoomIn() { if (map) map.zoomIn(0.8); }
-    function zoomOut() { if (map) map.zoomOut(0.8); }
-    function resizeMap() {
-        if (map) map.invalidateSize();
-        resizeParticleCanvas();
-    }
-
-    function focusHKAndStorm() {
+    function focusDefaultView() {
         if (!map) return;
+        const pop = document.getElementById('map-layer-popover');
+        if (pop) pop.classList.add('hidden');
+
         const pt = StormApp.getCurrentPoint();
         if (pt) {
             map.flyToBounds([
                 [window.HKO_HQ.lat, window.HKO_HQ.lon],
                 [pt.lat, pt.lon]
-            ], { padding: [55, 55], maxZoom: 7.5, duration: 0.75 });
+            ], { padding: [60, 60], maxZoom: 7.2, duration: 0.65 });
         } else {
-            map.flyTo([20.8, 115.2], 6.2, { duration: 0.7 });
+            map.flyTo([21.8, 114.2], 6.2, { duration: 0.65 });
         }
     }
 
+    function zoomIn() { if (map) map.zoomIn(0.8); }
+    function zoomOut() { if (map) map.zoomOut(0.8); }
+    function resizeMap() { if (map) map.invalidateSize(); }
+
     return {
         initMap,
-        updateTileTheme,
+        setBaseMapStyle,
+        ToggleLayerPopover,
         toggleAgency,
-        toggleLayer,
-        renderStormOnMap,
+        toggleAuxLayer,
+        toggleBottomSheet,
+        renderMapContent,
+        focusDefaultView,
         zoomIn,
         zoomOut,
-        resizeMap,
-        focusHKAndStorm
+        resizeMap
     };
 })();
 
 // ==========================================================================
-// 4. MULTI-AGENCY CONSENSUS LAB CONTROLLER
+// 4. AGENCY TABLE CONTROLLER
 // ==========================================================================
 const AgencyLabManager = {
     selectedHorizon: 0,
@@ -580,51 +463,46 @@ const AgencyLabManager = {
         document.querySelectorAll('#agency-horizon-bar .horizon-pill').forEach(el => {
             el.classList.toggle('active', Number(el.dataset.h) === h);
         });
-        this.render(StormApp.getActiveCase(), StormApp.getConsensusTrack());
+        StormApp.refreshAllViews();
     },
 
-    render(stormCase, consensusTrack) {
+    render(mode, stormCase, consensusTrack) {
         const tbody = document.getElementById('agency-compare-tbody');
         const spreadBadge = document.getElementById('consensus-spread-badge');
-        const horizonLabel = document.getElementById('agency-table-horizon-label');
         const cpaBarsEl = document.getElementById('agency-cpa-bars');
-        if (!tbody || !stormCase) return;
+        if (!tbody) return;
 
-        const h = this.selectedHorizon;
-        if (horizonLabel) horizonLabel.innerText = h === 0 ? '時段：實況 OBS' : `時段：+${h}h 預報`;
-
-        const consPt = consensusTrack.find(p => p.h === h) || consensusTrack[1];
-        if (spreadBadge && consPt) {
-            spreadBadge.innerText = `模式分歧度：±${consPt.spreadKm} km`;
+        if (mode === 'LIVE_QUIET' || !stormCase || !consensusTrack || consensusTrack.length === 0) {
+            if (spreadBadge) spreadBadge.innerText = '目前無生效氣旋';
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--sub-text);">
+                🟢 目前西北太平洋及南海無生效熱帶氣旋。<br>如需檢視多機構路徑對比，請於「風暴庫」選擇歷史颱風個案。
+            </td></tr>`;
+            if (cpaBarsEl) {
+                cpaBarsEl.innerHTML = `<div style="color:var(--sub-text);font-size:0.78rem;">暫無活動氣旋 CPA 數據</div>`;
+            }
+            return;
         }
 
-        const rowsHtml = window.STORM_AGENCIES.map(ag => {
-            let pt = null;
-            if (ag.isConsensus) {
-                pt = consPt;
-            } else {
-                pt = StormEngine.interpolateAgencyAtHour(stormCase.agencies[ag.id], h);
-            }
+        const h = this.selectedHorizon;
+        const consPt = consensusTrack.find(p => p.h === h) || consensusTrack[0];
+        if (spreadBadge && consPt) {
+            spreadBadge.innerText = `分歧 ±${consPt.spreadKm} km`;
+        }
+
+        tbody.innerHTML = window.STORM_AGENCIES.map(ag => {
+            const pt = ag.isConsensus ? consPt : StormEngine.interpolateAgencyAtHour(stormCase.agencies[ag.id], h);
             if (!pt) return '';
             const distHk = Math.round(StormEngine.haversineKm(window.HKO_HQ.lat, window.HKO_HQ.lon, pt.lat, pt.lon));
             const cat = StormEngine.classifyHkoCategory(pt.windKmh);
-
             return `<tr style="${ag.isConsensus ? 'background:rgba(0,245,212,0.08);font-weight:700;' : ''}">
-                <td>
-                    <span class="agency-badge-cell">
-                        <span class="agency-dot" style="background:${ag.color};"></span>
-                        <span>${ag.name}</span>
-                    </span>
-                </td>
+                <td><span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;"><span class="agency-dot" style="background:${ag.color};"></span>${ag.short}</span></td>
                 <td>${pt.lat.toFixed(1)}°N, ${pt.lon.toFixed(1)}°E</td>
-                <td><span style="color:${cat.color};font-weight:800;">${pt.windKmh} km/h</span></td>
+                <td style="color:${cat.color};font-weight:800;">${pt.windKmh} km/h</td>
                 <td>${pt.pres} hPa</td>
-                <td style="font-weight:800;color:var(--accent-color);">${distHk} km</td>
+                <td style="color:var(--accent-color);font-weight:800;">${distHk} km</td>
             </tr>`;
         }).join('');
-        tbody.innerHTML = rowsHtml;
 
-        // Render CPA by Agency Comparison Bars
         if (cpaBarsEl) {
             const cpaList = window.STORM_AGENCIES.map(ag => {
                 const tr = ag.isConsensus ? consensusTrack : (stormCase.agencies[ag.id] || []);
@@ -636,11 +514,8 @@ const AgencyLabManager = {
                 const pct = Math.max(12, Math.min(100, Math.round((1 - Math.min(cpa.cpaDistKm, 500) / 500) * 100)));
                 return `<div class="signal-prob-row">
                     <div class="signal-prob-top">
-                        <span style="display:flex;align-items:center;gap:6px;">
-                            <span class="agency-dot" style="background:${ag.color};"></span>
-                            <b>${ag.name} (${ag.short})</b>
-                        </span>
-                        <span style="color:${ag.color};">香港${cpa.cpaBearingZh} <b>${cpa.cpaDistKm} km</b> (${cpa.cpaTimeStr})</span>
+                        <span><span class="agency-dot" style="background:${ag.color};display:inline-block;margin-right:5px;"></span>${ag.name}</span>
+                        <span style="color:${ag.color};">${cpa.cpaBearingZh} ${cpa.cpaDistKm} km (${cpa.cpaTimeStr})</span>
                     </div>
                     <div class="signal-prob-track">
                         <div class="signal-prob-fill" style="width:${pct}%;background:${ag.color};"></div>
@@ -652,35 +527,271 @@ const AgencyLabManager = {
 };
 
 // ==========================================================================
-// 5. MAIN STORM-TRACK ULTRA ORCHESTRATOR
+// 5. REAL-TIME LIVE CYCLONE + HKO + JMA + OPEN-METEO ORCHESTRATOR
 // ==========================================================================
 const StormApp = (function() {
-    let activeCaseId = '2025-ragasa';
+    // appMode: 'LIVE_ACTIVE' | 'LIVE_QUIET' | 'REPLAY'
+    let appMode = 'LIVE_QUIET';
+    let liveStormCase = null;
+    let activeReplayId = '2025-ragasa';
     let consensusTrack = [];
-    let currentTimelineIdx = 1; // Default to h = 0 (OBS)
+    let currentTimelineIdx = 1;
     let playTimer = null;
 
-    function getActiveCase() {
-        return window.STORM_CASES_ARCHIVE.find(c => c.id === activeCaseId) || window.STORM_CASES_ARCHIVE[0];
-    }
-
-    function getConsensusTrack() {
-        return consensusTrack;
-    }
-
-    function getCurrentPoint() {
-        return consensusTrack[currentTimelineIdx] || consensusTrack[0];
-    }
+    // Live HKO & Open-Meteo 8-station cache
+    let liveHkoState = {
+        temp: 26,
+        rh: 78,
+        warningText: '現時無生效熱帶氣旋警告',
+        tcInfoText: '目前西北太平洋及南海無生效熱帶氣旋影響本港。',
+        updatedAt: ''
+    };
+    let liveStationsWinds = null;
 
     function init() {
         RadarMapManager.initMap();
-        loadStormCase(activeCaseId, false);
-        syncLiveBackend(false);
+        renderReplayArchiveList();
+        // Start in Live Mode and immediately query real-time cyclones & HKO weather!
+        syncLiveAll(false);
     }
 
-    function loadStormCase(caseId, notify = true) {
+    function getActiveCase() {
+        if (appMode === 'LIVE_ACTIVE' && liveStormCase) return liveStormCase;
+        if (appMode === 'REPLAY') {
+            return window.STORM_CASES_ARCHIVE.find(c => c.id === activeReplayId) || window.STORM_CASES_ARCHIVE[0];
+        }
+        return null;
+    }
+
+    function getCurrentPoint() {
+        if (appMode === 'LIVE_QUIET' || !consensusTrack || consensusTrack.length === 0) return null;
+        return consensusTrack[currentTimelineIdx] || consensusTrack[0];
+    }
+
+    // Parse live cyclones from Worker JSON or JMA Bosai JSON
+    function parseWorkerStormData(json) {
+        if (!json) return null;
+        const list = json.storms || json.activeStorms || json.cyclones || (Array.isArray(json) ? json : null);
+        if (list && list.length > 0) {
+            const s = list[0];
+            if (s.agencies && Object.keys(s.agencies).length > 0) {
+                return {
+                    id: s.id || 'live-storm',
+                    code: s.code || 'LIVE',
+                    nameZh: s.nameZh || s.name || '實時熱帶氣旋',
+                    nameEn: s.nameEn || s.id || 'ACTIVE TC',
+                    categoryName: s.categoryName || '熱帶氣旋',
+                    badgeColor: '#EF4444',
+                    peakSignal: '實時監測中',
+                    baseTime: s.baseTime || new Date().toISOString(),
+                    summary: s.summary || '來自 storm.max-yu.workers.dev 實時多機構路徑數據。',
+                    agencies: s.agencies
+                };
+            }
+        }
+        return null;
+    }
+
+    async function fetchJmaLiveCyclone() {
+        try {
+            const res = await fetchWithTimeout('https://www.jma.go.jp/bosai/typhoon/data/targetTc.json', { timeout: 4000 });
+            if (!res.ok) return null;
+            const list = await res.json();
+            if (!Array.isArray(list) || list.length === 0) return null;
+
+            const tc = list[0];
+            const tcId = tc.tcId || tc.id;
+            if (!tcId) return null;
+
+            const fRes = await fetchWithTimeout(`https://www.jma.go.jp/bosai/typhoon/data/${tcId}/forecast.json`, { timeout: 4000 });
+            if (!fRes.ok) return null;
+            const fJson = await fRes.json();
+            if (!Array.isArray(fJson) || fJson.length === 0) return null;
+
+            const pts = [];
+            fJson.forEach((entry, idx) => {
+                const center = entry.center || entry.part?.center;
+                if (center && center.lat !== undefined && center.lon !== undefined) {
+                    const windKt = Number(entry.maxWindSpeed || entry.windSpeed || 45);
+                    const pres = Number(entry.centralPressure || entry.pressure || 990);
+                    pts.push({
+                        h: idx * 12,
+                        lat: Number(center.lat),
+                        lon: Number(center.lon),
+                        windKmh: Math.round(windKt * 1.852),
+                        pres
+                    });
+                }
+            });
+            if (pts.length === 0) return null;
+
+            return {
+                id: `jma-${tcId}`,
+                code: tc.typhoonNumber || tcId,
+                nameZh: tc.name?.jp || tc.name?.en || '實時熱帶氣旋',
+                nameEn: (tc.name?.en || tcId).toUpperCase(),
+                categoryName: '實時生效氣旋',
+                badgeColor: '#FF2E63',
+                peakSignal: 'JMA 實時發布',
+                baseTime: new Date().toISOString(),
+                summary: '來自日本氣象廳 (JMA Bosai) 實時熱帶氣旋報文。',
+                agencies: {
+                    JMA: pts,
+                    HKO: pts
+                }
+            };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function fetchLiveHkoAndOpenMeteo() {
+        // 1. Fetch HKO Official Open Data (No API Key required)
+        try {
+            const [rhrRes, warnRes, flwRes] = await Promise.allSettled([
+                fetchWithTimeout('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=tc', { timeout: 4000 }),
+                fetchWithTimeout('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc', { timeout: 4000 }),
+                fetchWithTimeout('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=flw&lang=tc', { timeout: 4000 })
+            ]);
+
+            if (rhrRes.status === 'fulfilled' && rhrRes.value.ok) {
+                const rhr = await rhrRes.value.json();
+                if (rhr.temperature?.data?.length > 0) {
+                    const hkoT = rhr.temperature.data.find(d => d.place === '香港天文台') || rhr.temperature.data[0];
+                    liveHkoState.temp = hkoT.value;
+                }
+                if (rhr.humidity?.data?.length > 0) {
+                    liveHkoState.rh = rhr.humidity.data[0].value;
+                }
+            }
+
+            if (warnRes.status === 'fulfilled' && warnRes.value.ok) {
+                const warn = await warnRes.value.json();
+                const keys = Object.keys(warn || {});
+                if (keys.length > 0) {
+                    const names = keys.map(k => warn[k].name || warn[k].type || k).join('、');
+                    liveHkoState.warningText = `⚠️ 生效警告：${names}`;
+                } else {
+                    liveHkoState.warningText = '🟢 現時無生效熱帶氣旋警告';
+                }
+            }
+
+            if (flwRes.status === 'fulfilled' && flwRes.value.ok) {
+                const flw = await flwRes.value.json();
+                liveHkoState.tcInfoText = flw.tcInfo || flw.generalSituation || '目前西北太平洋及南海無生效熱帶氣旋影響本港。';
+            }
+
+            const d = new Date();
+            liveHkoState.updatedAt = d.toTimeString().slice(0, 5) + ' 更新';
+        } catch (e) {}
+
+        // 2. Fetch Open-Meteo Real-Time Winds for all 8 HK Reference Anemometer Stations (No API Key required)
+        try {
+            const lats = window.HKO_REFERENCE_STATIONS.map(s => s.lat).join(',');
+            const lons = window.HKO_REFERENCE_STATIONS.map(s => s.lon).join(',');
+            const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m&timezone=Asia%2FHong_Kong`;
+            const omRes = await fetchWithTimeout(omUrl, { timeout: 4200 });
+            if (omRes.ok) {
+                const omJson = await omRes.json();
+                const arr = Array.isArray(omJson) ? omJson : [omJson];
+                let strongCount = 0, galeCount = 0, stormCount = 0;
+
+                const stations = window.HKO_REFERENCE_STATIONS.map((sta, i) => {
+                    const cur = (arr[i] && arr[i].current) ? arr[i].current : (arr[0]?.current || {});
+                    const sustainedKmh = Math.max(4, Math.round(Number(cur.wind_speed_10m ?? 16)));
+                    const gustKmh = Math.max(sustainedKmh + 5, Math.round(Number(cur.wind_gusts_10m ?? (sustainedKmh * 1.4))));
+                    const windDirZh = StormEngine.compass16Zh(Number(cur.wind_direction_10m ?? 90));
+
+                    let level = 'normal';
+                    let statusZh = '清勁 (<41)';
+                    if (sustainedKmh >= 88) { level = 'storm'; statusZh = '暴風 (≥88)'; stormCount++; galeCount++; strongCount++; }
+                    else if (sustainedKmh >= 63) { level = 'gale'; statusZh = '烈風 (≥63)'; galeCount++; strongCount++; }
+                    else if (sustainedKmh >= 41) { level = 'strong'; statusZh = '強風 (≥41)'; strongCount++; }
+
+                    return {
+                        ...sta,
+                        sustainedKmh,
+                        gustKmh,
+                        windDirZh,
+                        level,
+                        statusZh
+                    };
+                });
+
+                liveStationsWinds = { stations, strongCount, galeCount, stormCount };
+            }
+        } catch (e) {}
+    }
+
+    async function syncLiveAll(manual = false) {
+        const topTxt = document.getElementById('top-mode-text');
+        if (topTxt && manual) topTxt.innerText = '正在同步實時氣旋...';
+
+        // 1. Check Worker & JMA for live active tropical cyclones
+        let detectedLiveStorm = null;
+        try {
+            const workerUrls = [
+                'https://storm.max-yu.workers.dev/api/storms',
+                'https://storm.max-yu.workers.dev'
+            ];
+            for (const u of workerUrls) {
+                try {
+                    const r = await fetchWithTimeout(u, { timeout: 3500 });
+                    if (r.ok) {
+                        const j = await r.json();
+                        detectedLiveStorm = parseWorkerStormData(j);
+                        if (detectedLiveStorm) break;
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
+
+        if (!detectedLiveStorm) {
+            detectedLiveStorm = await fetchJmaLiveCyclone();
+        }
+
+        // 2. Fetch Live HKO Weather & Open-Meteo 8-Station Winds
+        await fetchLiveHkoAndOpenMeteo();
+
+        if (detectedLiveStorm) {
+            liveStormCase = detectedLiveStorm;
+            appMode = 'LIVE_ACTIVE';
+            consensusTrack = StormEngine.buildConsensusTrack(liveStormCase.agencies, [0, 12, 24, 36, 48, 72]);
+            currentTimelineIdx = 0;
+            if (manual) showUltraToast(`🔴 偵測到實時生效氣旋：${liveStormCase.nameZh}`);
+        } else if (appMode !== 'REPLAY') {
+            appMode = 'LIVE_QUIET';
+            consensusTrack = [];
+            if (manual) showUltraToast('🟢 已更新實時狀態：目前西北太平洋及南海無生效氣旋');
+        } else if (manual) {
+            showUltraToast('✅ 已同步最新香港天文台與八大測風站實況數據');
+        }
+
+        refreshAllViews();
+        RadarMapManager.focusDefaultView();
+    }
+
+    function activateLiveMode() {
         stopTimelinePlay();
-        activeCaseId = caseId;
+        if (liveStormCase) {
+            appMode = 'LIVE_ACTIVE';
+            consensusTrack = StormEngine.buildConsensusTrack(liveStormCase.agencies, [0, 12, 24, 36, 48, 72]);
+            currentTimelineIdx = 0;
+            showUltraToast(`🔴 已切換至實時生效氣旋：${liveStormCase.nameZh}`);
+        } else {
+            appMode = 'LIVE_QUIET';
+            consensusTrack = [];
+            showUltraToast('🟢 已切換至實時監測模式（目前無生效氣旋）');
+        }
+        refreshAllViews();
+        AppNav.goTo(0);
+        RadarMapManager.focusDefaultView();
+    }
+
+    function selectCaseFromArchive(caseId) {
+        stopTimelinePlay();
+        appMode = 'REPLAY';
+        activeReplayId = caseId;
         const sc = getActiveCase();
         consensusTrack = StormEngine.buildConsensusTrack(sc.agencies, [-12, 0, 12, 24, 36, 48, 72, 96]);
         currentTimelineIdx = Math.max(0, consensusTrack.findIndex(p => p.h === 0));
@@ -692,14 +803,13 @@ const StormApp = (function() {
         }
 
         refreshAllViews();
-        RadarMapManager.focusHKAndStorm();
-        if (notify) {
-            showUltraToast(`🌀 已切換至：${sc.code} ${sc.nameZh} (${sc.nameEn})`);
-        }
+        AppNav.goTo(0);
+        RadarMapManager.focusDefaultView();
+        showUltraToast(`⏪ 歷史重演模式：${sc.code} ${sc.nameZh} (${sc.nameEn})`);
     }
 
     function setTimelineIndex(idx) {
-        if (idx < 0 || idx >= consensusTrack.length) return;
+        if (!consensusTrack || idx < 0 || idx >= consensusTrack.length) return;
         currentTimelineIdx = idx;
         const slider = document.getElementById('timeline-scrubber');
         if (slider) slider.value = String(idx);
@@ -707,6 +817,7 @@ const StormApp = (function() {
     }
 
     function toggleTimelinePlay() {
+        if (appMode === 'LIVE_QUIET' || consensusTrack.length === 0) return;
         if (playTimer) {
             stopTimelinePlay();
             return;
@@ -716,7 +827,7 @@ const StormApp = (function() {
         playTimer = setInterval(() => {
             const nextIdx = (currentTimelineIdx + 1) % consensusTrack.length;
             setTimelineIndex(nextIdx);
-        }, 1250);
+        }, 1200);
     }
 
     function stopTimelinePlay() {
@@ -729,111 +840,148 @@ const StormApp = (function() {
     }
 
     function jumpToCPA() {
+        if (!consensusTrack || consensusTrack.length === 0) return;
         stopTimelinePlay();
-        let bestIdx = 0;
-        let minD = Infinity;
+        let bestIdx = 0, minD = Infinity;
         consensusTrack.forEach((pt, idx) => {
-            if (pt.distHk < minD) {
-                minD = pt.distHk;
-                bestIdx = idx;
-            }
+            if (pt.distHk < minD) { minD = pt.distHk; bestIdx = idx; }
         });
         setTimelineIndex(bestIdx);
-        showUltraToast(`⚡ 已跳至最接近香港時刻 (距離 HKO ${minD} km)`);
+        showUltraToast(`⚡ 已跳至最接近香港時刻 (CPA ${minD} km)`);
     }
 
     function refreshAllViews() {
+        // 1. Update HKO Live Weather Card
+        const tempEl = document.getElementById('hko-live-temp');
+        const rhEl = document.getElementById('hko-live-rh');
+        const warnEl = document.getElementById('hko-live-warn-badge');
+        const tcInfoEl = document.getElementById('hko-live-tcinfo');
+        const updEl = document.getElementById('hko-live-update-tag');
+        if (tempEl) tempEl.innerText = `${liveHkoState.temp}°C`;
+        if (rhEl) rhEl.innerText = `相對濕度 ${liveHkoState.rh}%`;
+        if (warnEl) warnEl.innerText = liveHkoState.warningText;
+        if (tcInfoEl) tcInfoEl.innerText = liveHkoState.tcInfoText;
+        if (updEl && liveHkoState.updatedAt) updEl.innerText = liveHkoState.updatedAt;
+
+        const topDot = document.getElementById('top-mode-dot');
+        const topTxt = document.getElementById('top-mode-text');
+        const sheetIcon = document.getElementById('sheet-status-icon');
+        const sheetTitle = document.getElementById('sheet-title-text');
+        const scrubRow = document.getElementById('scrubber-controls-row');
+
+        // Default fallback live winds if Open-Meteo hasn't returned yet
+        const fallbackLiveWinds = liveStationsWinds || {
+            strongCount: 0,
+            galeCount: 0,
+            stormCount: 0,
+            stations: window.HKO_REFERENCE_STATIONS.map(s => ({
+                ...s, sustainedKmh: 18, gustKmh: 28, windDirZh: '東', level: 'normal', statusZh: '清勁 (<41)'
+            }))
+        };
+
+        if (appMode === 'LIVE_QUIET') {
+            if (topDot) topDot.className = 'live-dot';
+            if (topTxt) topTxt.innerText = `實時：目前無生效氣旋 • 香港 ${liveHkoState.temp}°C`;
+            if (sheetIcon) sheetIcon.innerText = '🟢';
+            if (sheetTitle) sheetTitle.innerText = `西北太平洋無生效氣旋 • 實時氣溫 ${liveHkoState.temp}°C`;
+            if (scrubRow) scrubRow.classList.add('hidden');
+
+            document.getElementById('hud-dist-hk').innerText = '無氣旋';
+            document.getElementById('hud-max-wind').innerText = '--';
+            document.getElementById('hud-min-pres').innerText = '1012 hPa';
+            document.getElementById('hud-cpa-val').innerText = '--';
+
+            const quietThreat = {
+                recSignal: '無需發出信號',
+                recBadgeColor: '#10B981',
+                localWinds: fallbackLiveWinds,
+                probabilities: [
+                    { code: 'T1',  name: '一號戒備信號',     prob: 0, color: '#38BDF8', desc: '800km 內無氣旋' },
+                    { code: 'T3',  name: '三號強風信號',     prob: 0, color: '#F59E0B', desc: `強風站數 ${fallbackLiveWinds.strongCount}/8` },
+                    { code: 'T8',  name: '八號烈風或暴風信號', prob: 0, color: '#EF4444', desc: `烈風站數 ${fallbackLiveWinds.galeCount}/8` }
+                ],
+                bullets: [
+                    `🟢 <b>實時西北太平洋及南海監測：</b>目前洋面上沒有生效的熱帶氣旋。系統正持續連線香港天文台與日本氣象廳實時報文。`,
+                    `🚩 <b>八大參考測風站實時風力：</b>目前本港八大參考測風站中，共有 <b>${fallbackLiveWinds.strongCount} / 8 站達強風</b>、<b>${fallbackLiveWinds.galeCount} / 8 站達烈風</b>。如需測試颱風襲港路徑，可點擊頂部切換至「歷史模擬重演」。`
+                ]
+            };
+
+            RadarMapManager.renderMapContent('LIVE_QUIET', null, [], 0, quietThreat);
+            renderThreatPage('LIVE_QUIET', null, null, null, quietThreat);
+            AgencyLabManager.render('LIVE_QUIET', null, []);
+            renderReplayArchiveList();
+            return;
+        }
+
+        // Active Storm (Either LIVE_ACTIVE or REPLAY)
         const sc = getActiveCase();
         const currentPt = getCurrentPoint();
         if (!sc || !currentPt) return;
 
         const cpaInfo = StormEngine.computeCPA(consensusTrack, sc.baseTime);
         const threatEval = StormEngine.evaluateHkThreatV2(currentPt, consensusTrack, cpaInfo);
+        const hTag = currentPt.h === 0 ? '實況 OBS' : (currentPt.h > 0 ? `+${currentPt.h}h` : `${currentPt.h}h`);
 
-        // 1. Update Top Storm Ribbon
-        const catDot = document.getElementById('ribbon-cat-dot');
-        const nameEl = document.getElementById('ribbon-storm-name');
-        const sigText = document.getElementById('ribbon-signal-text');
-        if (catDot) {
-            catDot.style.background = currentPt.category.color;
-            catDot.style.boxShadow = `0 0 8px ${currentPt.category.color}`;
+        if (topDot) topDot.className = appMode === 'LIVE_ACTIVE' ? 'live-dot alert' : 'live-dot sim';
+        if (topTxt) {
+            const prefix = appMode === 'LIVE_ACTIVE' ? '🔴 實時氣旋' : '⏪ 模擬重演';
+            topTxt.innerText = `${prefix}：${sc.nameZh} (${hTag}) • 距港 ${currentPt.distHk}km`;
         }
-        if (nameEl) {
-            const hTag = currentPt.h === 0 ? 'OBS' : (currentPt.h > 0 ? `+${currentPt.h}h` : `${currentPt.h}h`);
-            nameEl.innerText = `${sc.code} ${currentPt.category.short} ${sc.nameZh} ${sc.nameEn} (${hTag})`;
+        if (sheetIcon) sheetIcon.innerText = '🌀';
+        if (sheetTitle) {
+            sheetTitle.innerText = `${sc.nameZh} (${currentPt.category.short}) • 距港 ${currentPt.distHk}km • ${threatEval.recSignal}`;
         }
-        if (sigText) {
-            sigText.innerText = `⚠️ ${threatEval.recSignal}`;
-        }
+        if (scrubRow) scrubRow.classList.remove('hidden');
 
-        // 2. Update Radar HUD & Scrubber Labels
-        const hudDist = document.getElementById('hud-dist-hk');
-        const hudWind = document.getElementById('hud-max-wind');
-        const hudPres = document.getElementById('hud-min-pres');
-        const hudCpa = document.getElementById('hud-cpa-val');
-        if (hudDist) hudDist.innerText = `${currentPt.distHk} km (${currentPt.bearingZh})`;
-        if (hudWind) hudWind.innerText = `${currentPt.windKmh} km/h`;
-        if (hudPres) hudPres.innerText = `${currentPt.pres} hPa`;
-        if (hudCpa && cpaInfo) hudCpa.innerText = `${cpaInfo.cpaDistKm} km`;
+        document.getElementById('hud-dist-hk').innerText = `${currentPt.distHk} km`;
+        document.getElementById('hud-max-wind').innerText = `${currentPt.windKmh} km/h`;
+        document.getElementById('hud-min-pres').innerText = `${currentPt.pres} hPa`;
+        document.getElementById('hud-cpa-val').innerText = cpaInfo ? `${cpaInfo.cpaDistKm} km` : '--';
 
-        const labelsWrap = document.getElementById('timeline-step-labels');
-        if (labelsWrap) {
-            labelsWrap.innerHTML = consensusTrack.map((p, i) => {
-                const lbl = p.h === 0 ? 'OBS' : (p.h > 0 ? `+${p.h}h` : `${p.h}h`);
-                return `<span class="${i === currentTimelineIdx ? 'active' : ''}" onclick="StormApp.setTimelineIndex(${i})" style="cursor:pointer;">${lbl}</span>`;
-            }).join('');
-        }
-
-        // 3. Render Map Layers
-        RadarMapManager.renderStormOnMap(sc, consensusTrack, currentTimelineIdx, threatEval);
-
-        // 4. Render Page 1: HK Threat & Signal V2 Dashboard
-        renderThreatDashboard(sc, currentPt, cpaInfo, threatEval);
-
-        // 5. Render Page 2: Multi-Agency Consensus Lab
-        AgencyLabManager.render(sc, consensusTrack);
-
-        // 6. Render Page 3: Historical Case Replay Archive
+        RadarMapManager.renderMapContent(appMode, sc, consensusTrack, currentTimelineIdx, threatEval);
+        renderThreatPage(appMode, sc, currentPt, cpaInfo, threatEval);
+        AgencyLabManager.render(appMode, sc, consensusTrack);
         renderReplayArchiveList();
     }
 
-    function renderThreatDashboard(sc, currentPt, cpaInfo, threatEval) {
-        const currDistEl = document.getElementById('threat-curr-dist');
-        const brgEl = document.getElementById('threat-curr-bearing');
+    function renderThreatPage(mode, sc, currentPt, cpaInfo, threatEval) {
+        const titleEl = document.getElementById('threat-card-storm-title');
         const recSigEl = document.getElementById('threat-rec-signal');
-        const semiEl = document.getElementById('threat-semicircle-badge');
+        const currDistEl = document.getElementById('threat-curr-dist');
         const cpaDistEl = document.getElementById('threat-cpa-dist');
-        const cpaTimeEl = document.getElementById('threat-cpa-time');
         const staSumEl = document.getElementById('threat-8sta-summary');
+        const staSourceEl = document.getElementById('sta-source-badge');
 
-        if (currDistEl) currDistEl.innerHTML = `${currentPt.distHk}<span>km</span>`;
-        if (brgEl) brgEl.innerText = `方位：香港天文台${currentPt.bearingZh} (${currentPt.bearingDeg}°) • 強度：${currentPt.windKmh} km/h`;
-        if (recSigEl) {
-            recSigEl.innerText = threatEval.recSignal;
-            recSigEl.style.color = threatEval.recBadgeColor;
+        if (mode === 'LIVE_QUIET') {
+            if (titleEl) titleEl.innerText = '🎯 實時氣旋威脅評估 (目前無生效氣旋)';
+            if (recSigEl) { recSigEl.innerText = '無需發出信號'; recSigEl.style.color = '#10B981'; }
+            if (currDistEl) currDistEl.innerText = '無氣旋';
+            if (cpaDistEl) cpaDistEl.innerText = '--';
+            if (staSourceEl) staSourceEl.innerText = '實時 Open-Meteo ▾';
+        } else {
+            if (titleEl) titleEl.innerText = `🎯 ${sc.code} ${sc.nameZh} 防風評估`;
+            if (recSigEl) {
+                recSigEl.innerText = threatEval.recSignal;
+                recSigEl.style.color = threatEval.recBadgeColor;
+            }
+            if (currDistEl) currDistEl.innerText = `${currentPt.distHk} km`;
+            if (cpaDistEl && cpaInfo) cpaDistEl.innerText = `${cpaInfo.cpaDistKm} km`;
+            if (staSourceEl) staSourceEl.innerText = mode === 'LIVE_ACTIVE' ? '實時風場推演 ▾' : '歷史渦旋推演 ▾';
         }
-        if (semiEl && cpaInfo) {
-            semiEl.innerText = cpaInfo.isDangerousSemicircle ? '⚠️ 危險半圓 (東南偏東無地形遮蔽)' : '🛡️ 可航半圓 (受內陸山脈地形屏障)';
-        }
-        if (cpaDistEl && cpaInfo) cpaDistEl.innerText = `${cpaInfo.cpaBearingZh} ${cpaInfo.cpaDistKm} km`;
-        if (cpaTimeEl && cpaInfo) cpaTimeEl.innerText = cpaInfo.cpaTimeStr;
-        if (staSumEl) {
-            const lw = threatEval.localWinds;
+
+        const lw = threatEval.localWinds;
+        if (staSumEl && lw) {
             staSumEl.innerText = `強風 ${lw.strongCount}/8 • 烈風 ${lw.galeCount}/8`;
             staSumEl.style.color = lw.galeCount >= 4 ? '#EF4444' : (lw.strongCount >= 4 ? '#F59E0B' : '#10B981');
         }
 
-        // Signal Probability Gauges
         const probListEl = document.getElementById('signal-prob-list');
         if (probListEl) {
             probListEl.innerHTML = threatEval.probabilities.map(s => `
                 <div class="signal-prob-row">
                     <div class="signal-prob-top">
-                        <div>
-                            <span class="signal-badge-icon" style="background:${s.color};">${s.code}</span>
-                            <span>${s.name}</span>
-                        </div>
-                        <span style="color:${s.color};font-weight:900;">${s.prob}% <span style="font-size:0.68rem;color:var(--sub-text);font-weight:600;">(${s.desc})</span></span>
+                        <span><b style="color:${s.color};margin-right:6px;">${s.code}</b>${s.name}</span>
+                        <span style="color:${s.color};">${s.prob}%</span>
                     </div>
                     <div class="signal-prob-track">
                         <div class="signal-prob-fill" style="width:${s.prob}%;background:${s.color};"></div>
@@ -842,32 +990,26 @@ const StormApp = (function() {
             `).join('');
         }
 
-        // Situation Analysis Bullets
-        const bulletsEl = document.getElementById('situation-analysis-bullets');
-        if (bulletsEl) {
-            bulletsEl.innerHTML = threatEval.bullets.map(b => `
-                <div style="padding:9px 12px;border-radius:12px;background:rgba(255,255,255,0.04);border-left:3px solid var(--accent-color);">
-                    ${b}
+        const staGridEl = document.getElementById('ref-stations-grid');
+        if (staGridEl && lw) {
+            staGridEl.innerHTML = lw.stations.map(st => `
+                <div class="ref-sta-card ${st.level}">
+                    <div style="display:flex;justify-content:space-between;font-size:0.78rem;font-weight:800;">
+                        <span>${st.name}</span>
+                        <span style="color:var(--sub-text);font-size:0.68rem;">${st.windDirZh}風</span>
+                    </div>
+                    <div style="font-size:1.05rem;font-weight:900;margin-top:2px;">
+                        ${st.sustainedKmh} <span style="font-size:0.66rem;font-weight:600;color:var(--sub-text);">km/h (陣風 ${st.gustKmh})</span>
+                    </div>
                 </div>
             `).join('');
         }
 
-        // 8-Reference Anemometer Stations Grid
-        const staGridEl = document.getElementById('ref-stations-grid');
-        if (staGridEl) {
-            staGridEl.innerHTML = threatEval.localWinds.stations.map(st => `
-                <div class="ref-sta-card ${st.level}">
-                    <div class="ref-sta-header">
-                        <span class="ref-sta-name">${st.name} <span style="font-size:0.68rem;color:var(--sub-text);font-weight:500;">${st.en}</span></span>
-                        <span class="ref-sta-tag">${st.role}</span>
-                    </div>
-                    <div class="ref-sta-wind">
-                        ${st.sustainedKmh} <span>km/h • 陣風 ${st.gustKmh}</span>
-                    </div>
-                    <div style="font-size:0.7rem;color:var(--sub-text);display:flex;justify-content:space-between;">
-                        <span>風向：${st.windDirZh}</span>
-                        <span style="font-weight:700;">${st.statusZh}</span>
-                    </div>
+        const bulletsEl = document.getElementById('situation-analysis-bullets');
+        if (bulletsEl) {
+            bulletsEl.innerHTML = threatEval.bullets.map(b => `
+                <div style="padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.04);border-left:3px solid var(--accent-color);">
+                    ${b}
                 </div>
             `).join('');
         }
@@ -875,80 +1017,38 @@ const StormApp = (function() {
 
     function renderReplayArchiveList() {
         const listEl = document.getElementById('replay-cases-list');
+        const liveCard = document.getElementById('live-mode-selector-card');
+        if (liveCard) {
+            liveCard.style.borderColor = (appMode === 'LIVE_QUIET' || appMode === 'LIVE_ACTIVE') ? '#10B981' : 'var(--glass-border)';
+        }
         if (!listEl) return;
 
         listEl.innerHTML = window.STORM_CASES_ARCHIVE.map(c => {
-            const isAct = c.id === activeCaseId;
-            const cons = StormEngine.buildConsensusTrack(c.agencies, [-12, 0, 12, 24, 36, 48, 72, 96]);
-            const cpa = StormEngine.computeCPA(cons, c.baseTime);
-            return `<div class="case-card ${isAct ? 'active-case' : ''}" onclick="StormApp.selectCaseFromArchive('${c.id}')">
-                <div class="case-card-top">
-                    <div class="case-title">
-                        <span>🌀 ${c.code} ${c.nameZh} (${c.nameEn})</span>
-                    </div>
-                    <span class="case-signal-badge" style="background:${c.badgeColor};">${c.peakSignal}</span>
+            const isAct = (appMode === 'REPLAY' && c.id === activeReplayId);
+            return `<div class="clean-card" onclick="StormApp.selectCaseFromArchive('${c.id}')" style="cursor:pointer;border-color:${isAct ? 'var(--accent-color)' : 'var(--glass-border)'};">
+                <div class="card-header-row">
+                    <div class="card-title">🌀 ${c.code} ${c.nameZh} (${c.nameEn})</div>
+                    <span class="card-badge" style="background:${c.badgeColor};color:#fff;">${c.peakSignal}</span>
                 </div>
-                <div class="case-desc">${c.summary}</div>
-                <div class="case-metrics-row">
-                    <span>🎯 最接近香港 CPA：<b style="color:var(--accent-color);">${cpa ? cpa.cpaDistKm : '--'} km (${cpa ? cpa.cpaBearingZh : ''})</b></span>
-                    <span>💨 巔峰強度：<b>${c.categoryName}</b></span>
-                    <span style="margin-left:auto;color:var(--accent-color);">${isAct ? '● 當前載入中' : '點擊載入重演 ➔'}</span>
+                <div style="font-size:0.76rem;color:var(--sub-text);margin-top:6px;line-height:1.4;">${c.summary}</div>
+                <div style="font-size:0.72rem;font-weight:700;color:var(--accent-color);margin-top:8px;">
+                    ${isAct ? '● 當前正在重演此個案' : '點擊載入路徑與八大測風站模擬 ➔'}
                 </div>
             </div>`;
         }).join('');
     }
 
-    function selectCaseFromArchive(caseId) {
-        loadStormCase(caseId, true);
-        AppNav.goTo(0);
-    }
-
-    function triggerEmergencyDrill() {
-        if (navigator.vibrate) {
-            navigator.vibrate([120, 80, 180, 80, 260]);
-        }
-        loadStormCase('2025-ragasa', false);
-        jumpToCPA();
-        AppNav.goTo(1);
-        showUltraToast('🚨 防風演習啟動：八號東南烈風或暴風信號生效 (CPA 極近距模式)');
-    }
-
-    async function syncLiveBackend(manual = false) {
-        const dot = document.getElementById('api-status-dot');
-        const txt = document.getElementById('api-status-text');
-        if (txt) txt.innerText = '同步中...';
-        try {
-            const [workerRes, hkoRes] = await Promise.allSettled([
-                fetchWithTimeout('https://storm.max-yu.workers.dev/api/storms', { timeout: 3500 }),
-                fetchWithTimeout('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc', { timeout: 3500 })
-            ]);
-            if (dot) dot.style.background = '#10B981';
-            if (txt) txt.innerText = 'HKO + Worker 就緒';
-            if (manual) {
-                showUltraToast('✅ 已同步 storm.max-yu.workers.dev 與香港天文台最新開放數據');
-            }
-        } catch (e) {
-            if (dot) dot.style.background = '#38BDF8';
-            if (txt) txt.innerText = '離線風暴庫模式';
-            if (manual) {
-                showUltraToast('📡 當前處於離線封裝模式，已載入內建高精度多機構路徑庫');
-            }
-        }
-    }
-
     return {
         init,
         getActiveCase,
-        getConsensusTrack,
         getCurrentPoint,
-        loadStormCase,
+        syncLiveAll,
+        activateLiveMode,
+        selectCaseFromArchive,
         setTimelineIndex,
         toggleTimelinePlay,
         jumpToCPA,
-        refreshAllViews,
-        selectCaseFromArchive,
-        triggerEmergencyDrill,
-        syncLiveBackend
+        refreshAllViews
     };
 })();
 
