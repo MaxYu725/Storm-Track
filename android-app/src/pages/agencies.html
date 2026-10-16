@@ -1,0 +1,51 @@
+<!-- Multi-Agency Consensus Summary Card -->
+<div class="glass-section-card" style="background:linear-gradient(135deg, rgba(0, 245, 212, 0.14), rgba(99, 102, 241, 0.14));border-color:rgba(0, 245, 212, 0.35);">
+    <div class="card-header-line" style="margin-bottom:8px;">
+        <div class="card-title">🧭 Consensus Track Beta • 多機構時間對齊共識引擎</div>
+        <span class="card-subtitle-pill" id="consensus-spread-badge" style="color:var(--agency-consensus);">分歧度：-- km</span>
+    </div>
+    <div style="font-size:0.8rem;color:var(--sub-text);line-height:1.45;" id="consensus-summary-desc">
+        自動對齊 HKO、JMA、CMA、CWA 與 JTWC 預報時間節點，透過球面向量插值計算加權共識路徑與 70% 機率誤差半徑。
+    </div>
+</div>
+
+<!-- Forecast Horizon Selector Pills -->
+<div class="horizon-pills-bar" id="agency-horizon-bar">
+    <div class="horizon-pill active" data-h="0" onclick="AgencyLabManager.setHorizon(0)">實況 OBS</div>
+    <div class="horizon-pill" data-h="12" onclick="AgencyLabManager.setHorizon(12)">+12h</div>
+    <div class="horizon-pill" data-h="24" onclick="AgencyLabManager.setHorizon(24)">+24h</div>
+    <div class="horizon-pill" data-h="48" onclick="AgencyLabManager.setHorizon(48)">+48h</div>
+    <div class="horizon-pill" data-h="72" onclick="AgencyLabManager.setHorizon(72)">+72h</div>
+    <div class="horizon-pill" data-h="96" onclick="AgencyLabManager.setHorizon(96)">+96h</div>
+</div>
+
+<!-- Side-by-Side Agency Position & Intensity Matrix -->
+<div class="glass-section-card">
+    <div class="card-header-line">
+        <div class="card-title">📋 各大氣象機構預報座標與強度對比表</div>
+        <span class="card-subtitle-pill" id="agency-table-horizon-label">時段：實況 OBS</span>
+    </div>
+    <div style="overflow-x:auto;">
+        <table class="agency-compare-table">
+            <thead>
+                <tr>
+                    <th>氣象機構</th>
+                    <th>預報位置</th>
+                    <th>中心風速</th>
+                    <th>最低氣壓</th>
+                    <th>距港 HKO</th>
+                </tr>
+            </thead>
+            <tbody id="agency-compare-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Agency CPA Ranking & Track Divergence -->
+<div class="glass-section-card">
+    <div class="card-header-line">
+        <div class="card-title">🎯 各機構預測「最接近香港距離 (CPA)」排行</div>
+        <span class="card-subtitle-pill">全路徑幾何投影</span>
+    </div>
+    <div id="agency-cpa-bars" style="display:flex;flex-direction:column;gap:10px;"></div>
+</div>

@@ -1,0 +1,60 @@
+<!-- CPA Closest Point of Approach Hero Card -->
+<div class="cpa-hero-card">
+    <div class="cpa-hero-top">
+        <div>
+            <div class="cpa-tag" id="threat-storm-subtitle">📍 香港天文台總部 (22.3022°N, 114.1746°E) 戰術防風評估</div>
+            <div class="cpa-distance-huge" id="threat-curr-dist">--<span>km</span></div>
+            <div style="font-size:0.8rem;font-weight:700;color:var(--text-color);margin-top:4px;" id="threat-curr-bearing">方位：-- • 移速：--</div>
+        </div>
+        <div class="cpa-signal-box">
+            <div style="font-size:0.64rem;color:var(--sub-text);font-weight:700;">V2 綜合防風信號研判</div>
+            <div style="font-size:1.35rem;font-weight:900;color:#FF2E63;margin-top:2px;" id="threat-rec-signal">八號烈風 T8</div>
+            <div style="font-size:0.68rem;color:var(--accent-color);font-weight:700;margin-top:2px;" id="threat-semicircle-badge">⚠️ 危險半圓效應</div>
+        </div>
+    </div>
+
+    <div class="cpa-grid-stats">
+        <div class="cpa-stat-item">
+            <span class="cpa-stat-label">預測最接近距離 (CPA)</span>
+            <span class="cpa-stat-value" id="threat-cpa-dist" style="color:#FF2E63;">-- km</span>
+        </div>
+        <div class="cpa-stat-item">
+            <span class="cpa-stat-label">最接近香港時間 (CPA)</span>
+            <span class="cpa-stat-value" id="threat-cpa-time">--</span>
+        </div>
+        <div class="cpa-stat-item">
+            <span class="cpa-stat-label">八大測風站達標數</span>
+            <span class="cpa-stat-value" id="threat-8sta-summary" style="color:#10B981;">-- / 8 站</span>
+        </div>
+    </div>
+</div>
+
+<!-- HK Tropical Cyclone Signal V2 Probability Matrix -->
+<div class="glass-section-card">
+    <div class="card-header-line">
+        <div class="card-title">📊 香港熱帶氣旋警告信號機率矩陣 (Signal V2 Engine)</div>
+        <span class="card-subtitle-pill" id="signal-timing-window">時效：實時推演</span>
+    </div>
+    <div class="signal-prob-list" id="signal-prob-list"></div>
+</div>
+
+<!-- AI & Meteorological Situation Analysis -->
+<div class="glass-section-card">
+    <div class="card-header-line">
+        <div class="card-title">🧠 香港風力結構與防風形勢研判</div>
+        <span class="card-subtitle-pill" id="situation-quadrant-tag">半圓與地形分析</span>
+    </div>
+    <div id="situation-analysis-bullets" style="display:flex;flex-direction:column;gap:8px;font-size:0.81rem;line-height:1.5;color:var(--text-color);"></div>
+</div>
+
+<!-- HKO 8 Official Reference Anemometer Stations -->
+<div class="glass-section-card">
+    <div class="card-header-line">
+        <div class="card-title">🚩 天文台八大參考測風站及離岸高地風力 (10分鐘平均)</div>
+        <span class="card-subtitle-pill">門檻：8 站中 4 站達標</span>
+    </div>
+    <div style="font-size:0.74rem;color:var(--sub-text);margin-bottom:10px;">
+        三號強風信號門檻：<b style="color:#F59E0B;">41–62 km/h</b> • 八號烈風信號門檻：<b style="color:#EF4444;">63–117 km/h</b> • 暴風/颶風：<b style="color:#D946EF;">≥118 km/h</b>
+    </div>
+    <div class="ref-stations-grid" id="ref-stations-grid"></div>
+</div>

@@ -1,0 +1,48 @@
+<div id="storm-map"></div>
+<canvas id="wind-particle-canvas"></canvas>
+
+<!-- Top Agency Filter Pills -->
+<div class="radar-top-bar">
+    <div class="agency-pills-scroll" id="agency-layer-pills"></div>
+</div>
+
+<!-- Right Floating Tactical Controls -->
+<div class="radar-floating-tools">
+    <button class="map-tool-btn" title="放大海圖" onclick="RadarMapManager.zoomIn()">＋</button>
+    <button class="map-tool-btn" title="縮小海圖" onclick="RadarMapManager.zoomOut()">－</button>
+    <button class="map-tool-btn active" id="btn-layer-wind" title="切換 Open-Meteo 動態流線風場" onclick="RadarMapManager.toggleLayer('windField')">💨</button>
+    <button class="map-tool-btn active" id="btn-layer-cone" title="切換 70% 機率圓錐與 30/50/64kt 風圈" onclick="RadarMapManager.toggleLayer('windCone')">⭕</button>
+    <button class="map-tool-btn active" id="btn-layer-rings" title="切換香港 100/300/500/800km 警戒同心圓" onclick="RadarMapManager.toggleLayer('cordonRings')">🎯</button>
+    <button class="map-tool-btn" id="btn-layer-stations" title="切換香港八大參考測風站地標" onclick="RadarMapManager.toggleLayer('hkStations')">🚩</button>
+</div>
+
+<!-- Bottom Tactical Telemetry & Timeline Scrubber Dock -->
+<div id="radar-bottom-dock">
+    <div class="hud-telemetry-row">
+        <div class="hud-metric-box">
+            <span class="hud-metric-label">距離香港 HKO</span>
+            <span class="hud-metric-val" id="hud-dist-hk" style="color:var(--accent-color);">-- km</span>
+        </div>
+        <div class="hud-metric-box">
+            <span class="hud-metric-label">中心持續風速</span>
+            <span class="hud-metric-val" id="hud-max-wind" style="color:#FBBF24;">-- km/h</span>
+        </div>
+        <div class="hud-metric-box">
+            <span class="hud-metric-label">中心最低氣壓</span>
+            <span class="hud-metric-val" id="hud-min-pres">-- hPa</span>
+        </div>
+        <div class="hud-metric-box" onclick="AppNav.goTo(1)" style="cursor:pointer;">
+            <span class="hud-metric-label">最接近 CPA ➔</span>
+            <span class="hud-metric-val" id="hud-cpa-val" style="color:#FF2E63;">-- km</span>
+        </div>
+    </div>
+
+    <div class="scrubber-controls-row">
+        <button class="play-scrubber-btn" id="btn-play-scrubber" onclick="StormApp.toggleTimelinePlay()" title="自動播放路徑推演">▶</button>
+        <div class="scrubber-slider-wrap">
+            <input type="range" class="scrubber-slider" id="timeline-scrubber" min="0" max="6" step="1" value="0" oninput="StormApp.setTimelineIndex(Number(this.value))">
+            <div class="scrubber-steps-labels" id="timeline-step-labels"></div>
+        </div>
+        <span class="chip-btn" id="scrubber-time-badge" onclick="StormApp.jumpToCPA()" title="點擊直接跳至最接近香港 (CPA) 時刻" style="padding:4px 9px;font-size:0.68rem;">⚡ 跳至 CPA</span>
+    </div>
+</div>

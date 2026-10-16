@@ -1,0 +1,22 @@
+<!-- Replay Controller & Live API Sync Card -->
+<div class="glass-section-card" style="background:linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(14, 165, 233, 0.15));border-color:rgba(99, 102, 241, 0.38);">
+    <div class="card-header-line">
+        <div class="card-title">⏪ 歷史經典個案重演與防風演練引擎</div>
+        <button class="chip-btn primary" onclick="StormApp.triggerEmergencyDrill()">🔔 觸發八號風球震動預警</button>
+    </div>
+    <div style="font-size:0.8rem;color:var(--sub-text);line-height:1.45;margin-bottom:12px;">
+        支援一鍵載入 `Storm-Track` 內建歷史個案（2025 樺加沙、2026 紅霞、2023 蘇拉、2018 山竹）或切換至雲端實時 API (`storm.max-yu.workers.dev`)。選擇任一個案後，海圖、香港防風看板與多機構共識表將全系統同步重演！
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="chip-btn primary" onclick="StormApp.syncLiveBackend(true)">🌐 立即同步雲端實況 API</button>
+        <button class="chip-btn" onclick="AppNav.goTo(0);StormApp.jumpToCPA()">⚡ 海圖跳至最接近香港 (CPA) 時刻</button>
+        <button class="chip-btn" onclick="AppNav.goTo(0);StormApp.toggleTimelinePlay()">▶️ 啟動海圖動態時間軸推演</button>
+    </div>
+</div>
+
+<!-- Storm Archive Case List -->
+<div class="section-header-row" style="display:flex;justify-content:space-between;align-items:center;margin:10px 4px;">
+    <span style="font-size:0.8rem;font-weight:800;color:var(--sub-text);text-transform:uppercase;letter-spacing:1px;">📂 內建完整風暴資料庫 (支援 100% 離線秒開)</span>
+</div>
+
+<div id="replay-cases-list"></div>
