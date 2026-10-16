@@ -218,12 +218,14 @@ docs/CONSENSUS_TRACK_ROADMAP.md    CT evidence-gated roadmap
 - HKO warning truth recorder
 - HK Signal evaluator / closeout（仍只評 V1）
 - Consensus Track prospective recorder + stable case reconciliation
-- CT read-only verification-readiness audit
+- CT truth-readiness read-only audit（已取代完成階段的 CT-1B archive verification-readiness workflow）
 - Prospective agency forecast baseline recorder
 - historical replay inputs / audits
 - approved experimental shadow recorders（例如 local wind / situation analysis）
 
 已完成使命的一次性 feasibility / probe workflow 不應重新加入 main。
+
+2026-10-16 workflow cleanup：移除會自我排隊並重複派發 recorder / evaluator 的 Coverage Keeper；保留各正式 recorder / evaluator 自身的 Cron 與必要的 workflow_run，避免重複觸發。既有長時間執行中的舊 Keeper run 需要另外取消。
 
 ## Legacy / withdrawn work
 
