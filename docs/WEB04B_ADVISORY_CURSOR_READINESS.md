@@ -92,6 +92,28 @@ Next gate:
    implementation stage**, with rollback and no schema or data modifications
    until approved.
 
+## WEB-04B-3 source audit — owner-exported multipart (2026-10-17)
+
+Status: extracted Worker source inspected and matched to GitHub; the source-to-traffic-serving-Version-17 association is NOT yet independently verified.
+
+- Cloudflare `/content/v2` response: multipart/form-data, 97,221 bytes, SHA-256 `b21c11bb2d68449e3766422043fe13aca17797ed726fa6df63a9f7bedfde3d9d`.
+- One `worker.js` JavaScript module part: 96,970 bytes; SHA-256 `333d9405b1c4322ec09815f1d1bb19c8746933dcc18557904dc8f8c913255c80`.
+- The main-branch `backend/worker.js` is 96,971 bytes. Appending only one terminal newline to the extracted module yields exact Git blob SHA-1 `8958e6c13a5ea04cf7bcbbbc261ea4689bd8c131`. Therefore downloaded script code equals repository code except terminal LF.
+- Exported code constant `VERSION = '3.3.0-alpha.4'`; opening header comment still says `alpha.2`, a stale comment. `node --check` passes.
+- Limited static secret scan found no hardcoded key, token or private key. It is not a full security audit; secrets stored as bindings are not part of this export.
+- Owner metadata identifies a 100%-traffic Version 17 deployment, but the reported Cloudflare `resources.script.etag` does not equal raw-response or extracted JavaScript SHA-256. Its hashing/representation has not been established, so `deployedVersionSourceMatch: NOT_VERIFIED` remains mandatory. Do not claim version-to-source cryptographic proof.
+
+Actual handler `historyAdvisories()` resolves canonical storm ID, optionally filters HKO/CMA/JMA/CWA, requires `ingest_status='complete'`, caps `limit` at 200, and executes `ORDER BY issued_at DESC LIMIT ?`. It returns `{version, stormId, advisories}` without cursor or pagination metadata, matching the observed read-only Production API capability probe.
+
+Proposed additive backend change, **not yet implemented or authorized for rollout**:
+1. Stable `ORDER BY issued_at DESC, id DESC`, preserving legacy response fields.
+2. Strict bounded versioned opaque cursor, validated against canonical storm identity, agency filter and requested page size; reject malformed or cross-context cursors instead of silently restarting.
+3. Parameterized D1 keyset predicate `issued_at < ? OR (issued_at = ? AND id < ?)` with `LIMIT limit+1`; return contract/order/count/hasMore/nextCursor metadata.
+4. `normalizeIsoTime` normalizes newly parsed timestamps to UTC, but verify historical/backfilled D1 timestamp formats before lexicographic comparison. Audit actual indexes and query plans read-only.
+5. Document concurrency/backfill behavior (keyset alone is not a snapshot). Ensure legacy clients and archived data remain unmodified; UI integration stays disabled until Worker contract verified.
+
+Remaining gates: independently verify exact deployed-Version-17 source association, read-only D1 schema/index inspection, separate reviewed Worker implementation and rollback plan. No Worker, D1, R2, Android or Production modifications occurred.
+
 ## Safety boundary
 
 Production Cloudflare Worker: https://storm.max-yu.workers.dev
