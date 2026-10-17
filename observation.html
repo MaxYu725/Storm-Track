@@ -100,8 +100,10 @@
 
       const $ = id => document.getElementById(id);
       const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-      const n = (value, digits = 2) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '—';
-      const round = value => Number.isFinite(Number(value)) ? Math.round(Number(value)) : '—';
+      const numeric = value => value == null || (typeof value === 'string' && value.trim() === '')
+        ? null : (Number.isFinite(Number(value)) ? Number(value) : null);
+      const n = (value, digits = 2) => numeric(value) === null ? '—' : numeric(value).toFixed(digits);
+      const round = value => numeric(value) === null ? '—' : Math.round(numeric(value));
       const hkt = value => {
         const d = new Date(value || ''); if (!Number.isFinite(d.getTime())) return '—';
         return new Intl.DateTimeFormat('zh-HK',{timeZone:'Asia/Hong_Kong',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(d).replace(',','');
@@ -109,8 +111,8 @@
       const windowText = item => item?.start && item?.end ? `${hkt(item.start)} – ${hkt(item.end)}` : '—';
       const likelihoodText = value => value === 'likely' ? '較高' : value === 'possible' ? '可能' : value === 'unlikely' ? '較低' : '—';
       const likelihoodClass = value => ['likely','possible','unlikely'].includes(value) ? value : '';
-      const signed = (value, digits = 1, unit = '') => Number.isFinite(Number(value)) ? `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(digits)}${unit}` : '—';
-      const deltaClass = value => !Number.isFinite(Number(value)) || Number(value) === 0 ? '' : Number(value) < 0 ? 'delta-neg' : 'delta-pos';
+      const signed = (value, digits = 1, unit = '') => numeric(value) === null ? '—' : `${numeric(value) > 0 ? '+' : ''}${numeric(value).toFixed(digits)}${unit}`;
+      const deltaClass = value => numeric(value) === null || numeric(value) === 0 ? '' : numeric(value) < 0 ? 'delta-neg' : 'delta-pos';
 
       function parseNdjson(text) { return text.split(/\r?\n/).map(x => x.trim()).filter(Boolean).map(line => JSON.parse(line)); }
       async function fetchText(path) {
