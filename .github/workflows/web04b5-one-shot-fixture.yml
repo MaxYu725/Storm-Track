@@ -24,3 +24,7 @@ jobs:
         run: node --test tests/web04b-keyset-proposal.test.cjs
       - name: Compare synthetic SQLite index plans and replay
         run: python3 scripts/web04b5-sqlite-index-fixture.py
+      - name: Check full-history audit syntax and exercise only mocked D1 API
+        run: |
+          node --check scripts/audit-web04b5-full-history.mjs
+          node --test tests/web04b5-full-history.test.mjs
