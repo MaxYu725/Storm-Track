@@ -1,6 +1,6 @@
 {
   "schemaVersion": "hko-warning-truth/v1",
-  "retrievedAt": "2026-10-17T01:27:43.483Z",
+  "retrievedAt": "2026-10-17T05:53:24.593Z",
   "sourceCommit": "7e475a8f4a5dda7679f3dd8d7012be6bde91ffb9",
   "authority": "Hong Kong Observatory Open Data API",
   "truth": {
@@ -20,8 +20,8 @@
     "specialWeatherTips": []
   },
   "sourceHashes": {
-    "warnsum": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-    "warningInfo": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "warnsum": "db7f62c698af21b5772c9704986f23c0b9f7e101642af17779a565ac7ce09be5",
+    "warningInfo": "b2456ec0f5a3eda23fcdc49cc6d579266288e33e1053312467771c6faf3e932e",
     "swt": "cb0f6fc10f8448b2e38bd5227e96377a0d34c0faea4c886ed52fc581235e38f0"
   },
   "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
@@ -31,14 +31,14 @@
     {
       "name": "warnsum",
       "url": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc",
-      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-      "bytes": 2
+      "sha256": "db7f62c698af21b5772c9704986f23c0b9f7e101642af17779a565ac7ce09be5",
+      "bytes": 173
     },
     {
       "name": "warningInfo",
       "url": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warningInfo&lang=tc",
-      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-      "bytes": 2
+      "sha256": "b2456ec0f5a3eda23fcdc49cc6d579266288e33e1053312467771c6faf3e932e",
+      "bytes": 191
     },
     {
       "name": "swt",
@@ -48,8 +48,28 @@
     }
   ],
   "sourcePayloads": {
-    "warnsum": {},
-    "warningInfo": {},
+    "warnsum": {
+      "WFIRE": {
+        "name": "火災危險警告",
+        "code": "WFIREY",
+        "type": "黃色",
+        "actionCode": "ISSUE",
+        "issueTime": "2026-10-17T09:45:00+08:00",
+        "updateTime": "2026-10-17T09:45:00+08:00"
+      }
+    },
+    "warningInfo": {
+      "details": [
+        {
+          "contents": [
+            "現時之火災危險警告為黃色，表示火災危險性頗高。"
+          ],
+          "warningStatementCode": "WFIRE",
+          "subtype": "WFIREY",
+          "updateTime": "2026-10-17T09:45:00+08:00"
+        }
+      ]
+    },
     "swt": {
       "swt": []
     }
