@@ -31,6 +31,67 @@ could not resolve this host; the hosted Runner could reach it.
 The temporary, branch-only one-shot workflow is removed after capturing
 the completed run in Actions history; nothing new is installed into `main`.
 
+## WEB-04B-3 — deployed Worker provenance capture prepared (NOT executed)
+
+GitHub branch: `feature/web-04b-advisory-cursor-readiness`.
+
+The local-only tool `scripts/audit-web04b-worker-provenance.mjs` has
+isolated mocked tests. It cannot execute against Cloudflare without the
+account owner's **explicitly provided** read-only token and exact account/script
+identity. Neither a production deployment nor an authorized Cloudflare source
+export has occurred.
+
+Cloudflare documents these GET APIs:
+- [Deployments](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/list/)
+- [Specific version metadata](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/methods/get/)
+- [Worker script content](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/content/methods/get/)
+
+The tool: requires an explicit 32-hex account ID and exact script name (not
+guessed from workers.dev), uses only HTTPS GET calls, reads the currently latest
+traffic-serving deployment and per-version metadata, downloads script content,
+then re-reads the deployment to catch rollouts during capture. The local output
+is stored with private file permissions in an **OS temporary directory outside
+Git**, never checked in. The capture records the raw-response SHA256 and
+Cloudflare's returned per-version script etags *separately*.
+
+**Crucial:** Cloudflare `GET /content/v2` does not, by itself, prove that the
+downloaded bytes correspond to each active deployment version. The tool
+always emits `deployedVersionSourceMatch: NOT_VERIFIED`; source/version
+provenance and secrets inspection remain a **manual hard release gate**.
+For weighted deployments, inspect every traffic-serving version separately
+through an approved method. Never patch the old repository Worker as if it
+were proven production code.
+
+Run locally on Windows PowerShell with Node.js 22+ (not GitHub Actions):
+```powershell
+$account = Read-Host 'Cloudflare account ID'
+$script = Read-Host 'Exact deployed Worker script name'
+$secure = Read-Host 'Workers Content Read-Only API token' -AsSecureString
+try {
+  $env:CLOUDFLARE_API_TOKEN = [System.Net.NetworkCredential]::new('', $secure).Password
+  node scripts/audit-web04b-worker-provenance.mjs --account-id $account --script-name $script
+} finally {
+  Remove-Item Env:\CLOUDFLARE_API_TOKEN -ErrorAction SilentlyContinue
+  Remove-Variable secure -ErrorAction SilentlyContinue
+}
+```
+Create the token with minimum Worker content-read permissions and only the
+specific account/Worker scope where possible. Do not place the token in Git,
+Actions secrets, shell history, chat, or any generated artifact. Never upload
+`worker-content.private.bin` before reviewing the source for embedded secrets.
+Do not share the private output directory publicly. The manifest only contains
+metadata and hashes; check it before sharing.
+
+Next gate:
+1. Owner supplies the exact Cloudflare Worker identity and runs the local
+   read-only capture (or authorizes an equivalent connected Cloudflare service).
+2. Verify production deployment IDs, traffic percentages, content hashes and
+   source/version association. If source versions cannot be matched,
+   **do not** claim the source is authoritative.
+3. Review verified handler, D1 storage and query ordering in a **separate
+   implementation stage**, with rollback and no schema or data modifications
+   until approved.
+
 ## Safety boundary
 
 Production Cloudflare Worker: https://storm.max-yu.workers.dev
