@@ -1,0 +1,41 @@
+name: Audit legacy Actions runs (dry run only)
+
+# Manual and read-only: no schedule, no deletion endpoints, no deploy.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  dry-run:
+    if: github.repository == 'MaxYu725/Storm-Track' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Verify tool and tests
+        run: |
+          node --check scripts/audit-legacy-actions-runs.cjs
+          node --test tests/audit-legacy-actions-runs.test.cjs
+
+      - name: Enumerate candidate Runs and Artifacts — NO DELETION
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { runAudit } = require('./scripts/audit-legacy-actions-runs.cjs');
+            await runAudit({ github, context, core });
+
+      - name: Upload full candidate IDs for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-actions-dry-run-report
+          path: legacy-actions-audit/
+          if-no-files-found: error
+          retention-days: 7
