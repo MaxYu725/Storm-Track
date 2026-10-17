@@ -4,6 +4,71 @@ Status: **TOOL PREPARED; real Production D1 NOT YET AUDITED**.
 Scope: Storm-Track browser/archive history only. No Android, AI, HK Signal
 models, Worker deployment, D1/R2 writes, migrations, deletes or index creation.
 
+## Owner-provided Production D1 audit result — 2026-10-17
+
+The owner ran the local read-only D1 audit and supplied its summary
+(`contract: storm-web04b-d1-readonly-audit/v1`, recorded at
+`2026-10-17T15:29:34.722Z`). **No private audit JSON, raw advisory data,
+Cloudflare account ID, database UUID or credentials are committed.**
+
+- API read target: D1 database reported as `storm-track-db`.
+  The account hash prefix matches the earlier Worker metadata review;
+  this is NOT independent proof of the production Worker `DB` binding.
+- `advisories` contains required `id`, `storm_id`, `agency`,
+  `issued_at` and `ingest_status` columns. `id` is primary-key text.
+- Index inventory: four explicitly named indexes plus two SQLite
+  autoindexes (six total). Relevant existing SQL:
+  `idx_advisories_storm_time ON advisories(storm_id, issued_at DESC)`,
+  `idx_advisories_agency_time ON advisories(agency, issued_at DESC)`,
+  and `idx_advisories_status ON advisories(ingest_status)`.
+  **No current index explicitly covers** `(storm_id, ingest_status,
+  issued_at DESC, id DESC)`.
+- `EXPLAIN QUERY PLAN` summaries for proposed stable `issued_at DESC,
+  id DESC` sorting:
+  - base storm list: index search yes, table scan no, **tempSort yes**;
+  - agency filter: index search yes, table scan no, tempSort no;
+  - cursor keyset: index search yes, table scan no, **tempSort yes**.
+  Agency's lack of temp sort does not prove good selectivity or low latency,
+  because the summary does not retain the actual index/plan details.
+- Fixed 128-row un-ordered sample: 0 invalid timestamps, 0 non-canonical
+  timestamps, 0 invalid advisory IDs, 0 invalid storm IDs.
+  Agency counts HKO=18, CMA=34, JMA=59, CWA=17. There were 32
+  *repeat occurrences of a timestamp value across all 128 sampled rows*;
+  the sample does NOT establish that these were same-storm duplicates.
+  No full-table timestamp or tie-frequency assurance is implied.
+- `readiness: REVIEW_REQUIRED`, `writesAttempted: 0`,
+  `releaseGate: BLOCKED_NO_PRODUCTION_CHANGES`.
+  One metadata GET and seven fixed read-only SQL POST calls were reported.
+
+**Review verdict:** WEB-04B-4's bounded production read-only
+inspection is complete, but the schema/index release gates are NOT met.
+There is a concrete ordering/index mismatch for proposed cursor paging.
+Keep PR #118 Draft. Do not add indexes, run migrations, change Worker,
+R2 or Archive UI as part of this review.
+
+## WEB-04B-5 proposed next steps (not executed)
+
+1. Independently confirm `storm` Worker production `DB` binding UUID
+   and Version-17 source identity; the audit only verified the selected
+   D1 UUID exists, not the live Worker binding.
+2. Complete a narrowly scoped read-only examination of historical
+   timestamp distributions and same-storm/same-time ties across agencies.
+   Do not infer complete-data consistency from the 128-row sample.
+3. Obtain exact `EXPLAIN QUERY PLAN` detail and representative workload
+   profile; bench candidate indexes in isolated local/staging SQLite/D1,
+   **never in production**.
+4. Start with an isolated candidate such as
+   `(storm_id, ingest_status, issued_at DESC, id DESC)`. Compare
+   an optional agency-specific index only after agency query selectivity
+   and write overhead have been measured. Index statements are
+   PROPOSALS, not approved migrations.
+5. Design the versioned keyset endpoint with canonical storm/agency
+   scoping, bound and validated cursors, deterministic tie breaks,
+   paginated `limit+1`, strict fail-closed behavior and compatibility
+   with legacy consumers. Test against 0/1/199/200/201/>200 rows,
+   same-time ties, backfills and concurrent writes before a separate
+   reviewed production rollout.
+
 ## Why a read-only audit is needed
 
 The owner-exported `storm` Worker source (version constant
