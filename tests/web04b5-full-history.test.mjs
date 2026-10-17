@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {auditFullHistory,parseArgs,SQL,PLAN_PARAMS,numberField} from '../scripts/audit-web04b5-full-history.mjs';
+import {auditFullHistory,parseArgs,SQL,PLAN_PARAMS,numberField,GLOB_PARTS,errorCategory,safeCodes} from '../scripts/audit-web04b5-full-history.mjs';
 const ACCOUNT='0123456789abcdef0123456789abcdef';
 const DB='12345678-1234-4123-a456-123456789abc';
 const TOKEN='SYNTHETIC-READ-ONLY-TOKEN-DO-NOT-LOG';
@@ -98,4 +98,36 @@ test('write indicator, failing D1 and inconsistent counts do not produce success
     formats:[{...responses.formats[0],n:747}]
   }});
   await assert.rejects(()=>auditFullHistory({accountId:ACCOUNT,databaseId:DB,token:TOKEN,fetchImpl:changedFetch}),/count changed/);
+});
+
+test('all canonical timestamp GLOB fragments stay below Cloudflare D1 50-byte ceiling',()=>{
+  assert.equal(GLOB_PARTS.length,3);
+  assert.deepEqual(GLOB_PARTS.map(x=>Buffer.byteLength(x,'utf8')),[42,33,17]);
+  assert.ok(GLOB_PARTS.every(x=>Buffer.byteLength(x,'utf8')<=50));
+  const matches=[...SQL.formats.matchAll(/NOT GLOB '([^']+)'/g)].map(x=>x[1]);
+  assert.deepEqual(matches,GLOB_PARTS);
+  assert.match(SQL.formats,/substr\(issued_at,1,10\)/);
+  assert.match(SQL.formats,/substr\(issued_at,11,9\)/);
+  assert.match(SQL.formats,/substr\(issued_at,20,5\)/);
+});
+test('HTTP 400 error reports failing SQL stage and sanitized Cloudflare code',async()=>{
+  const {fetchImpl,calls}=mock();
+  const badFetch=async(url,opts)=>{
+    if(calls.length===2) return reply({
+      success:false,errors:[{code:7500,message:'LIKE or GLOB pattern too complex; internal value SECRET-DO-NOT-REVEAL'}]
+    },400);
+    return fetchImpl(url,opts);
+  };
+  const promise=auditFullHistory({accountId:ACCOUNT,databaseId:DB,token:TOKEN,fetchImpl:badFetch});
+  await assert.rejects(promise,e=>{
+    assert.match(e.message,/stage=formats HTTP 400/);
+    assert.match(e.message,/CF codes=\[7500\]/);
+    assert.match(e.message,/category=GLOB_PATTERN_LIMIT/);
+    assert.ok(!e.message.includes('SECRET-DO-NOT-REVEAL'));
+    assert.ok(!e.message.includes(TOKEN));
+    return true;
+  });
+  assert.equal(calls.length,2);
+  assert.equal(errorCategory({errors:[{message:'syntax error near SELECT'}]}),'SQL_REJECTED');
+  assert.deepEqual(safeCodes({errors:[{code:7500},{code:'not-a-number'}]}),[7500]);
 });
