@@ -8,12 +8,22 @@ import {assertIdentifiers} from './audit-web04b-d1-readonly.mjs';
 const API='https://api.cloudflare.com/client/v4';
 const MAX_COMPLETE_ROWS=50000;
 const MAX_RESPONSE=512000;
-const REGEXP_CANONICAL="[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9].[0-9][0-9][0-9]Z";
+// Cloudflare D1 caps LIKE/GLOB patterns at 50 bytes. Each fragment must fit.
+const DATE_GLOB='[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]';
+const CLOCK_GLOB='T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]';
+const FRACTION_GLOB='.[0-9][0-9][0-9]Z';
+const GLOB_PARTS=Object.freeze([DATE_GLOB,CLOCK_GLOB,FRACTION_GLOB]);
+if(GLOB_PARTS.some(x=>Buffer.byteLength(x,'utf8')>50))
+  throw Error('D1 GLOB fragment exceeds 50-byte pattern limit');
 const SQL=Object.freeze({
   count:"SELECT COUNT(*) AS n FROM advisories WHERE ingest_status='complete'",
   formats:`SELECT COUNT(*) AS n,
     COALESCE(SUM(CASE WHEN issued_at IS NULL OR julianday(issued_at) IS NULL THEN 1 ELSE 0 END),0) AS invalidTime,
-    COALESCE(SUM(CASE WHEN issued_at IS NULL OR length(issued_at)<>24 OR issued_at NOT GLOB '${REGEXP_CANONICAL}' THEN 1 ELSE 0 END),0) AS nonCanonicalShape,
+    COALESCE(SUM(CASE WHEN issued_at IS NULL OR length(issued_at)<>24
+      OR substr(issued_at,1,10) NOT GLOB '${DATE_GLOB}'
+      OR substr(issued_at,11,9) NOT GLOB '${CLOCK_GLOB}'
+      OR substr(issued_at,20,5) NOT GLOB '${FRACTION_GLOB}'
+      THEN 1 ELSE 0 END),0) AS nonCanonicalShape,
     COALESCE(SUM(CASE WHEN id IS NULL OR trim(id)='' THEN 1 ELSE 0 END),0) AS invalidId,
     COALESCE(SUM(CASE WHEN storm_id IS NULL OR trim(storm_id)='' THEN 1 ELSE 0 END),0) AS invalidStormId
     FROM advisories WHERE ingest_status='complete'`,
@@ -42,6 +52,20 @@ function numberField(value,label) {
   return n;
 }
 function shortHash(s){return createHash('sha256').update(s).digest('hex').slice(0,16);}
+function errorCategory(apiBody) {
+  const errors=Array.isArray(apiBody?.errors)?apiBody.errors:[];
+  const joined=errors.map(x=>typeof x?.message==='string'?x.message:'').join(' ').toLowerCase();
+  // Do not echo arbitrary error messages: they could contain SQL or account details.
+  if(/like or glob pattern too complex|glob pattern|like pattern/.test(joined))return 'GLOB_PATTERN_LIMIT';
+  if(/not authorized|permission|forbidden|access denied/.test(joined))return 'AUTHORIZATION';
+  if(/syntax error|sqlite_error|sql statement/.test(joined))return 'SQL_REJECTED';
+  if(/quota|limit exceeded|too many/.test(joined))return 'RESOURCE_LIMIT';
+  return 'UNCLASSIFIED';
+}
+function safeCodes(apiBody) {
+  return [...new Set((Array.isArray(apiBody?.errors)?apiBody.errors:[])
+    .map(x=>x?.code).filter(x=>Number.isSafeInteger(x)&&x>=1000))].slice(0,4);
+}
 async function readJson(res) {
   const len=Number(res.headers.get('content-length'));
   if(Number.isFinite(len)&&len>MAX_RESPONSE)throw Error('Oversized response');
@@ -73,7 +97,7 @@ async function auditFullHistory({accountId,databaseId,token,fetchImpl=fetch,pers
   if(typeof token!=='string'||!token.trim())throw Error('D1 Read API token required');
   const url=API+'/accounts/'+accountId+'/d1/database/'+databaseId;
   let calls=0;
-  async function api(path,method,body=null){
+  async function api(path,method,body=null,stage='metadata'){
     calls++;
     const response=await fetchImpl(url+path,{
       method,redirect:'error',signal:AbortSignal.timeout(15000),
@@ -81,7 +105,13 @@ async function auditFullHistory({accountId,databaseId,token,fetchImpl=fetch,pers
         ...(method==='POST'?{'Content-Type':'application/json'}:{})},
       ...(body?{body:JSON.stringify(body)}:{})
     });
-    if(!response.ok)throw Error('Cloudflare D1 read request HTTP '+response.status);
+    if(!response.ok){
+      let parsed=null;
+      try{parsed=await readJson(response);}catch{/* Non-JSON errors remain classified by HTTP code. */}
+      throw Error('Cloudflare D1 stage='+stage+' HTTP '+response.status
+        +' CF codes='+JSON.stringify(safeCodes(parsed))
+        +' category='+errorCategory(parsed));
+    }
     return readJson(response);
   }
   const database=await api('','GET');
@@ -89,7 +119,7 @@ async function auditFullHistory({accountId,databaseId,token,fetchImpl=fetch,pers
     throw Error('D1 database identity mismatch; no queries issued');
   async function query(name) {
     const sql=SQL[name];
-    return unwrap(await api('/query','POST',{sql,params:PLAN_PARAMS[name]}),
+    return unwrap(await api('/query','POST',{sql,params:PLAN_PARAMS[name]},name),
       name,name==='agency'?16:32);
   }
   const preflight=await query('count');
@@ -173,4 +203,4 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
     if(report.outcome!=='aggregates-read-no-snapshot')process.exitCode=2;
   }catch(error){console.error('WEB-04B-5 aggregate audit blocked:',error.message);process.exitCode=1;}
 }
-export {auditFullHistory,parseArgs,SQL,PLAN_PARAMS,numberField};
+export {auditFullHistory,parseArgs,SQL,PLAN_PARAMS,numberField,GLOB_PARTS,errorCategory,safeCodes};
