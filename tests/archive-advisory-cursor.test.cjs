@@ -89,6 +89,17 @@ test('incorrect chronology, tie-break order and wrong storm cannot slip through'
   }],2,false,null),{stormId:STORM,limit:2}),/其他風暴/);
 });
 
+test('UTC offset representations are compared as instants and then by stable ID', () => {
+  const newest={id:'Z',storm_id:STORM,issued_at:'2026-10-17T03:00:00Z'};
+  const older={id:'Y',storm_id:STORM,issued_at:'2026-10-17T09:00:00+08:00'};
+  const equalButSmallerId={id:'A',storm_id:STORM,issued_at:'2026-10-17T09:00:00+08:00'};
+  const accepted=api.appendAdvisoryPage([],page([newest,older,equalButSmallerId],3,false,null),{
+    stormId:STORM,limit:3
+  });
+  assert.equal(accepted.complete,true);
+  assert.equal(accepted.advisories.length,3);
+});
+
 test('invalid contract metadata, oversized pages and unsafe cursor fail closed', () => {
   assert.throws(() => api.appendAdvisoryPage([],page([sample(0)],2,true,null),{
     stormId:STORM,limit:2
