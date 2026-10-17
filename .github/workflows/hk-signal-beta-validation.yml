@@ -17,6 +17,7 @@ on:
       - scripts/audit-web04b-production-api.mjs
       - scripts/audit-web04b-worker-provenance.mjs
       - scripts/audit-web04b-d1-readonly.mjs
+      - scripts/web04b5-sqlite-index-fixture.py
       - scripts/reconcile-beta-case-identities.mjs
       - scripts/validate-consensus-track-observation-ui.mjs
       - scripts/build-hk-situation-analysis-shadow-packets.mjs
@@ -62,6 +63,7 @@ jobs:
           node --check analysis/consensus-track-observation-ui.js
           node --check analysis/archive-pagination.js
           node --check analysis/archive-advisory-cursor.js
+          node --check analysis/archive-advisory-keyset-proposal.js
           node --check scripts/audit-web04b-production-api.mjs
           node --check scripts/audit-web04b-worker-provenance.mjs
           node --check scripts/audit-web04b-d1-readonly.mjs
@@ -123,6 +125,9 @@ jobs:
           grep -F 'SAUDEL' docs/HK_SIGNAL_V2_SHADOW.md
           grep -F '**Status: complete / read-only production observation surface.**' docs/CONSENSUS_TRACK_ROADMAP.md
 
+      - name: Verify offline SQLite advisory keyset and index fixture
+        run: python3 scripts/web04b5-sqlite-index-fixture.py
+
       - name: Run HK signal regression suite
         shell: bash
         run: |
@@ -134,6 +139,7 @@ jobs:
             tests/web04b-production-api-audit.test.mjs
             tests/web04b-worker-provenance.test.mjs
             tests/web04b-d1-readonly.test.mjs
+            tests/web04b-keyset-proposal.test.cjs
             tests/storm-analysis-core.test.cjs
             tests/consensus-track-dateline.test.cjs
             tests/hk-impact-engine.test.cjs
