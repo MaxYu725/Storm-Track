@@ -3207,7 +3207,13 @@ const WeatherApp = (() => {
         archiveState.advisories = [];
         archiveState.filteredAdvisories = [];
         archiveState.stormDetail = null;
+        archiveState.currentBounds = null;
         historyLayer.clearLayers();
+        document.getElementById('archive-slider').disabled = true;
+        document.getElementById('archive-slider').value = 0;
+        document.getElementById('archive-frame-count').textContent = '0 / 0';
+        document.getElementById('archive-frame-title').textContent = '正在讀取公報…';
+        document.getElementById('archive-frame-meta').textContent = '--';
         document.getElementById('archive-advisory-coverage').textContent = '正在讀取公報清單…';
         archiveState.selectedStormId = stormId;
         archiveState.agency = 'ALL';
