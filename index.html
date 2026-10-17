@@ -1014,7 +1014,7 @@ const WeatherApp = (() => {
     function bindAppLifecycle() {
         if (liveAutoRefreshTimer === null) {
             liveAutoRefreshTimer = window.setInterval(() => {
-                if (shouldAutoRefreshLive()) refreshData();
+                if (shouldAutoRefreshLive()) refreshData({ preserveMapView: true });
             }, LIVE_AUTO_REFRESH_TICK_MS);
         }
         document.addEventListener('visibilitychange', () => {
@@ -1229,12 +1229,12 @@ const WeatherApp = (() => {
     }
 
 
-    async function refreshData() {
+    async function refreshData(options = {}) {
         if (currentMode === 'archive') return refreshArchive();
         lastLiveRefreshStartedAt = Date.now();
         const serial = ++requestSerial;
         activeFetchCount = 4;
-        autoFitCompleted = false;
+        if (!options.preserveMapView) autoFitCompleted = false;
         hideOverlays();
         setLoading(true);
         ['HKO', 'CMA', 'JMA', 'CWA'].forEach(source => {
