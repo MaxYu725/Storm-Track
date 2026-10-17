@@ -3243,6 +3243,7 @@ const WeatherApp = (() => {
             await saveHistoryCache(`storm-${stormId}`, { detail, advisories });
             setArchiveStatus(`已載入 ${advisories.length} 份公報 · ${formatNow()}`);
         } catch (error) {
+            if (serial !== archiveState.stormSerial) return;
             setArchiveStatus(`公報讀取失敗：${error.message}`);
             if (!archiveState.advisories.length) {
                 document.getElementById('archive-frame-title').textContent = '沒有可用公報';
