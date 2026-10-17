@@ -177,7 +177,15 @@ jobs:
           fi
 
           cp /tmp/hk-signal-evaluation.json latest.json
-          jq -c '{schemaVersion,generatedAt,evaluationFingerprint,sourceCommit,status,rubricVersion,eventPolicyVersion,evidenceCoveragePolicyVersion,closeoutPolicyVersion,prospective,hkoTruth,awaiting:{status:.awaiting.status,activeHkoCaseIds:.awaiting.activeHkoCaseIds,pendingSignalsByCase:.awaiting.pendingSignalsByCase},closeoutSummary,closeouts:[.closeouts[]|{caseId,signal,closedAt,closeoutReason,forecastOutcome,evidenceCoverage}],evaluations:[.evaluations[]|{status,signal,caseId,truth,grades,lifecycle,evidenceCoverage}]}' /tmp/hk-signal-evaluation.json >> index.ndjson
+          # Preserve the legacy index unchanged; append new snapshots to bounded monthly shards.
+          # This avoids GitHub's 100 MiB per-file push limit without deleting historical evidence.
+          shard="indexes/$(date -u +%Y/%m)"
+          mkdir -p "$shard"
+          jq -c '{schemaVersion,generatedAt,evaluationFingerprint,sourceCommit,status,rubricVersion,eventPolicyVersion,evidenceCoveragePolicyVersion,closeoutPolicyVersion,prospective,hkoTruth,awaiting:{status:.awaiting.status,activeHkoCaseIds:.awaiting.activeHkoCaseIds,pendingSignalsByCase:.awaiting.pendingSignalsByCase},closeoutSummary,closeouts:[.closeouts[]|{caseId,signal,closedAt,closeoutReason,forecastOutcome,evidenceCoverage}],evaluations:[.evaluations[]|{status,signal,caseId,truth,grades,lifecycle,evidenceCoverage}]}' /tmp/hk-signal-evaluation.json >> "$shard/index.ndjson"
+          # Rotate by file size as well as month, since evaluations can grow rapidly.
+          if [[ $(wc -c < "$shard/index.ndjson") -gt 52428800 ]]; then
+            mv "$shard/index.ndjson" "$shard/index-$(date -u +%Y%m%dT%H%M%SZ)-${fingerprint:0:12}.ndjson"
+          fi
 
           while IFS= read -r evaluation; do
             case_id="$(jq -r '.caseId' <<<"$evaluation")"
@@ -207,7 +215,7 @@ jobs:
               /tmp/hk-signal-evaluation.json > "cases/$case_id/${signal}-closeout-$stamp.json"
           done < <(jq -c '.closeouts[]' /tmp/hk-signal-evaluation.json)
 
-          git add latest.json index.ndjson cases 2>/dev/null || git add latest.json index.ndjson
+          git add latest.json indexes cases
           git commit -m "Evaluate HK signal Beta ${fingerprint:0:12}"
           git push origin "HEAD:${EVALUATION_BRANCH}"
           echo "HK_SIGNAL_EVALUATION_STORED=true"
