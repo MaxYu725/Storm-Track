@@ -115,4 +115,28 @@ const narraStorm = board.storms.find(storm => storm.caseId === 'STC-2026-JMA-TC2
 assert.ok(narraStorm.hasT1Window);
 assert.equal(boardApi.observationPath('2026-08-22T01:37:22.817Z', '9e6b3cd71895abcdef'), 'observations/2026/08/22/20260822T013722Z-9e6b3cd71895.json');
 
+
+// Missing evidence must remain unavailable, not become a numeric zero.
+const missing = record('2026-08-22T07:00:00Z', 'missing', [
+  observation('MISSING', '缺失證據', ['HKO'], signal('possible', null, '', null, null))
+]);
+const missingBoard = boardApi.deriveObservationBoard({
+  records: [missing],
+  caseIndex: [{ capturedAt: missing.capturedAt, captureFingerprint: 'missing', rawGroupKey: 'MISSING', caseId: 'STC-2026-MISSING-TEST' }]
+});
+const missingSignals = missingBoard.storms[0].latest.signals.T1;
+assert.equal(missingSignals.riskIndex, null, 'missing risk is not zero');
+assert.equal(missingSignals.confidenceIndex, null, 'blank confidence is not zero');
+assert.equal(missingSignals.persistenceHours, null, 'missing persistence is not zero');
+
+const genuineZero = record('2026-08-22T07:01:00Z', 'zero', [
+  observation('ZERO', '真實零風險', ['HKO'], signal('unlikely', 0, 0, null, 0))
+]);
+const zeroBoard = boardApi.deriveObservationBoard({
+  records: [genuineZero],
+  caseIndex: [{ capturedAt: genuineZero.capturedAt, captureFingerprint: 'zero', rawGroupKey: 'ZERO', caseId: 'STC-2026-ZERO-TEST' }]
+});
+assert.equal(zeroBoard.storms[0].latest.signals.T1.riskIndex, 0, 'real zero remains zero');
+assert.equal(zeroBoard.storms[0].latest.signals.T1.confidenceIndex, 0, 'real zero confidence remains zero');
+
 console.log('hk signal observation board tests: OK');
