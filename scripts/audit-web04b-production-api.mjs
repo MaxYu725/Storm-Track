@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {pathToFileURL} from 'node:url';
 import cursorApi from '../analysis/archive-advisory-cursor.js';
 
 const DEFAULT_ORIGIN = 'https://storm.max-yu.workers.dev';
@@ -89,7 +90,7 @@ function parseArgs(argv) {
   return options;
 }
 
-if (process.argv[1] && import.meta.url === new URL('file://' + process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const result = await probeArchiveAdvisoryApi(parseArgs(process.argv.slice(2)));
     console.log(JSON.stringify(result, null, 2));
