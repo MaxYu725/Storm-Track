@@ -36,6 +36,7 @@ const PLAN_PARAMS=Object.freeze({
   cursorPlan:[PLAN_STORM,PLAN_TIME,PLAN_TIME,'STC-NO-REAL-ADVISORY-ID']
 });
 function numberField(value,label) {
+  if(value == null || typeof value==='boolean') throw Error('Invalid aggregate count: '+label);
   const n=Number(value);
   if(!Number.isSafeInteger(n)||n<0) throw Error('Invalid aggregate count: '+label);
   return n;
