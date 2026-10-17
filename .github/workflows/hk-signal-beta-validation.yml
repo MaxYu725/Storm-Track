@@ -14,6 +14,7 @@ on:
       - observation.html
       - sw.js
       - analysis/**
+      - scripts/audit-web04b-production-api.mjs
       - scripts/reconcile-beta-case-identities.mjs
       - scripts/validate-consensus-track-observation-ui.mjs
       - scripts/build-hk-situation-analysis-shadow-packets.mjs
@@ -58,6 +59,8 @@ jobs:
           node --check analysis/consensus-track-observation-board.js
           node --check analysis/consensus-track-observation-ui.js
           node --check analysis/archive-pagination.js
+          node --check analysis/archive-advisory-cursor.js
+          node --check scripts/audit-web04b-production-api.mjs
           node --check scripts/reconcile-beta-case-identities.mjs
           node --check scripts/validate-consensus-track-observation-ui.mjs
           node --check scripts/build-hk-situation-analysis-shadow-packets.mjs
@@ -123,6 +126,8 @@ jobs:
           tests=(
             tests/service-worker-cache-policy.test.cjs
             tests/archive-pagination.test.cjs
+            tests/archive-advisory-cursor.test.cjs
+            tests/web04b-production-api-audit.test.mjs
             tests/storm-analysis-core.test.cjs
             tests/consensus-track-dateline.test.cjs
             tests/hk-impact-engine.test.cjs
