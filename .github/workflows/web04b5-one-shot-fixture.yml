@@ -1,0 +1,26 @@
+name: WEB-04B-5 isolated fixture smoke tests (one shot)
+on:
+  push:
+    branches:
+      - feature/web-04b-advisory-cursor-readiness
+    paths:
+      - .github/workflows/web04b5-one-shot-fixture.yml
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Check isolated proposed keyset JavaScript
+        run: node --check analysis/archive-advisory-keyset-proposal.js
+      - name: Exercise synthetic cursor boundaries and mixed agencies
+        run: node --test tests/web04b-keyset-proposal.test.cjs
+      - name: Compare synthetic SQLite index plans and replay
+        run: python3 scripts/web04b5-sqlite-index-fixture.py
