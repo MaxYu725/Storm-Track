@@ -1,14 +1,14 @@
 {
   "schemaVersion": "storm-consensus-track-prospective/v2",
-  "capturedAt": "2026-10-17T21:16:01.986Z",
+  "capturedAt": "2026-10-17T23:12:11.854Z",
   "targetUrl": "https://maxyu725.github.io/Storm-Track/?beta=hk-signal",
   "sourceCommit": "f6eb9b42677cfa185914fb268b68ec2d0bc194f5",
-  "captureFingerprint": "85784c1ff981cf7534c1adc601dea685347eceacd65bacdb6f9e0f0caeacfdc2",
+  "captureFingerprint": "31e7cecfb9abab25b997b6e8602527f0855d7ed36cccac440bc44c18d876b9dc",
   "pageTitle": "香港天氣｜HKO × CMA × JMA × CWA 熱帶氣旋路徑 v3.3 PWA",
   "sourceStates": [
     {
       "agency": "CMA",
-      "state": "error"
+      "state": "ok"
     },
     {
       "agency": "CWA",
@@ -34,10 +34,22 @@
       "nameTc": "薔琵",
       "nameEn": "CHAMPI",
       "sourceAgencies": [
+        "CMA",
         "CWA",
         "JMA"
       ],
       "sourceReferences": {
+        "CMA": {
+          "agency": "CMA",
+          "sourceId": "3359119",
+          "bulletinTime": "2026-10-17T21:00:00Z",
+          "currentTime": "2026-10-17T21:00:00Z",
+          "forecastBaseTime": "2026-10-17T21:00:00Z",
+          "forecastFirstValidTime": "2026-10-18T09:00:00.000Z",
+          "forecastLastValidTime": "2026-10-22T21:00:00.000Z",
+          "positionCount": 22,
+          "forecastCount": 8
+        },
         "CWA": {
           "agency": "CWA",
           "sourceId": "2026-29",
@@ -52,10 +64,10 @@
         "JMA": {
           "agency": "JMA",
           "sourceId": "TC2636",
-          "bulletinTime": "2026-10-18T03:45:00+09:00",
-          "currentTime": "2026-10-18T03:00:00+09:00",
+          "bulletinTime": "2026-10-18T06:45:00+09:00",
+          "currentTime": "2026-10-18T06:00:00+09:00",
           "forecastBaseTime": null,
-          "forecastFirstValidTime": "2026-10-18T15:00:00+09:00",
+          "forecastFirstValidTime": "2026-10-18T18:00:00+09:00",
           "forecastLastValidTime": "2026-10-23T03:00:00+09:00",
           "positionCount": 1,
           "forecastCount": 6
@@ -63,371 +75,409 @@
       },
       "trackSchemaVersion": "storm-consensus-track/v0",
       "state": "ok",
-      "referenceAgency": "JMA",
-      "referenceBaseTime": "2026-10-17T18:00:00.000Z",
+      "referenceAgency": "CMA",
+      "referenceBaseTime": "2026-10-17T21:00:00.000Z",
       "referenceMethod": "latest-analysis-valid-time",
       "configuredHorizonHours": 120,
       "stepHours": 6,
-      "consensusPointCount": 21,
-      "supportedThroughHours": 120,
-      "continuousConsensusThroughHours": 120,
+      "consensusPointCount": 20,
+      "supportedThroughHours": 114,
+      "continuousConsensusThroughHours": 114,
       "samples": [
         {
           "leadHours": 0,
-          "validTime": "2026-10-17T18:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-17T21:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 0,
+          "interpolatedAgencyCount": 1,
           "provenanceByAgency": {
-            "CWA": "exact-analysis",
+            "CMA": "exact-analysis",
+            "CWA": "analysis-to-forecast-interpolation",
             "JMA": "exact-analysis"
           },
-          "consensusLat": 13.1,
-          "consensusLon": 144.85,
-          "spreadKm": 10.8
+          "consensusLat": 13.017,
+          "consensusLon": 144.133,
+          "spreadKm": 12.2
         },
         {
           "leadHours": 6,
-          "validTime": "2026-10-18T00:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-18T03:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 1,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
-            "CWA": "exact-forecast",
+            "CMA": "analysis-to-forecast-interpolation",
+            "CWA": "forecast-to-forecast-interpolation",
             "JMA": "analysis-to-forecast-interpolation"
           },
-          "consensusLat": 13.075,
-          "consensusLon": 143.725,
-          "spreadKm": 31.8
+          "consensusLat": 13.15,
+          "consensusLon": 143.133,
+          "spreadKm": 19.7
         },
         {
           "leadHours": 12,
-          "validTime": "2026-10-18T06:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-18T09:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 0,
+          "interpolatedAgencyCount": 1,
           "provenanceByAgency": {
-            "CWA": "exact-forecast",
+            "CMA": "exact-forecast",
+            "CWA": "forecast-to-forecast-interpolation",
             "JMA": "exact-forecast"
           },
-          "consensusLat": 13.2,
-          "consensusLon": 142.65,
-          "spreadKm": 32.5
+          "consensusLat": 13.35,
+          "consensusLon": 142.15,
+          "spreadKm": 38.3
         },
         {
           "leadHours": 18,
-          "validTime": "2026-10-18T12:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-18T15:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 1,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
-            "CWA": "exact-forecast",
+            "CMA": "forecast-to-forecast-interpolation",
+            "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 13.55,
-          "consensusLon": 141.6,
-          "spreadKm": 44.6
+          "consensusLat": 13.733,
+          "consensusLon": 141.167,
+          "spreadKm": 46.3
         },
         {
           "leadHours": 24,
-          "validTime": "2026-10-18T18:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-18T21:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
-            "CWA",
-            "JMA"
-          ],
-          "interpolatedAgencyCount": 0,
-          "provenanceByAgency": {
-            "CWA": "exact-forecast",
-            "JMA": "exact-forecast"
-          },
-          "consensusLat": 13.95,
-          "consensusLon": 140.6,
-          "spreadKm": 44.6
-        },
-        {
-          "leadHours": 30,
-          "validTime": "2026-10-19T00:00:00.000Z",
-          "agencyCount": 2,
-          "agencies": [
-            "CWA",
-            "JMA"
-          ],
-          "interpolatedAgencyCount": 2,
-          "provenanceByAgency": {
-            "CWA": "forecast-to-forecast-interpolation",
-            "JMA": "forecast-to-forecast-interpolation"
-          },
-          "consensusLat": 14.413,
-          "consensusLon": 139.6,
-          "spreadKm": 45.3
-        },
-        {
-          "leadHours": 36,
-          "validTime": "2026-10-19T06:00:00.000Z",
-          "agencyCount": 2,
-          "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
           "interpolatedAgencyCount": 1,
           "provenanceByAgency": {
-            "CWA": "exact-forecast",
+            "CMA": "exact-forecast",
+            "CWA": "forecast-to-forecast-interpolation",
+            "JMA": "exact-forecast"
+          },
+          "consensusLat": 14.142,
+          "consensusLon": 140.2,
+          "spreadKm": 55.7
+        },
+        {
+          "leadHours": 30,
+          "validTime": "2026-10-19T03:00:00.000Z",
+          "agencyCount": 3,
+          "agencies": [
+            "CMA",
+            "CWA",
+            "JMA"
+          ],
+          "interpolatedAgencyCount": 3,
+          "provenanceByAgency": {
+            "CMA": "forecast-to-forecast-interpolation",
+            "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 14.875,
-          "consensusLon": 138.6,
-          "spreadKm": 46.1
+          "consensusLat": 14.594,
+          "consensusLon": 139.217,
+          "spreadKm": 60.8
+        },
+        {
+          "leadHours": 36,
+          "validTime": "2026-10-19T09:00:00.000Z",
+          "agencyCount": 3,
+          "agencies": [
+            "CMA",
+            "CWA",
+            "JMA"
+          ],
+          "interpolatedAgencyCount": 2,
+          "provenanceByAgency": {
+            "CMA": "exact-forecast",
+            "CWA": "forecast-to-forecast-interpolation",
+            "JMA": "forecast-to-forecast-interpolation"
+          },
+          "consensusLat": 15.055,
+          "consensusLon": 138.225,
+          "spreadKm": 69.2
         },
         {
           "leadHours": 42,
-          "validTime": "2026-10-19T12:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-19T15:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 2,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
+            "CMA": "forecast-to-forecast-interpolation",
             "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 15.363,
-          "consensusLon": 137.575,
-          "spreadKm": 50.2
+          "consensusLat": 15.524,
+          "consensusLon": 137.175,
+          "spreadKm": 65.5
         },
         {
           "leadHours": 48,
-          "validTime": "2026-10-19T18:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-19T21:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 0,
+          "interpolatedAgencyCount": 2,
           "provenanceByAgency": {
-            "CWA": "exact-forecast",
-            "JMA": "exact-forecast"
+            "CMA": "exact-forecast",
+            "CWA": "forecast-to-forecast-interpolation",
+            "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 15.85,
-          "consensusLon": 136.55,
-          "spreadKm": 54.6
+          "consensusLat": 15.996,
+          "consensusLon": 136.058,
+          "spreadKm": 72.9
         },
         {
           "leadHours": 54,
-          "validTime": "2026-10-20T00:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-20T03:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 2,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
+            "CMA": "forecast-to-forecast-interpolation",
             "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 16.337,
-          "consensusLon": 135.325,
-          "spreadKm": 58.8
+          "consensusLat": 16.488,
+          "consensusLon": 134.825,
+          "spreadKm": 73.9
         },
         {
           "leadHours": 60,
-          "validTime": "2026-10-20T06:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-20T09:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
           "interpolatedAgencyCount": 2,
           "provenanceByAgency": {
+            "CMA": "exact-forecast",
             "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 16.825,
-          "consensusLon": 134.1,
-          "spreadKm": 64.1
+          "consensusLat": 16.979,
+          "consensusLon": 133.592,
+          "spreadKm": 75
         },
         {
           "leadHours": 66,
-          "validTime": "2026-10-20T12:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-20T15:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 2,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
+            "CMA": "forecast-to-forecast-interpolation",
             "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 17.313,
-          "consensusLon": 132.875,
-          "spreadKm": 70.4
+          "consensusLat": 17.488,
+          "consensusLon": 132.308,
+          "spreadKm": 73.8
         },
         {
           "leadHours": 72,
-          "validTime": "2026-10-20T18:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-20T21:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 0,
+          "interpolatedAgencyCount": 2,
           "provenanceByAgency": {
-            "CWA": "exact-forecast",
-            "JMA": "exact-forecast"
+            "CMA": "exact-forecast",
+            "CWA": "forecast-to-forecast-interpolation",
+            "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 17.8,
-          "consensusLon": 131.65,
-          "spreadKm": 77.4
+          "consensusLat": 17.988,
+          "consensusLon": 131.071,
+          "spreadKm": 75.8
         },
         {
           "leadHours": 78,
-          "validTime": "2026-10-21T00:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-21T03:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 2,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
+            "CMA": "forecast-to-forecast-interpolation",
             "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 18.262,
-          "consensusLon": 130.563,
-          "spreadKm": 76.9
+          "consensusLat": 18.429,
+          "consensusLon": 130.046,
+          "spreadKm": 80.6
         },
         {
           "leadHours": 84,
-          "validTime": "2026-10-21T06:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-21T09:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 2,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
+            "CMA": "forecast-to-forecast-interpolation",
             "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 18.725,
-          "consensusLon": 129.475,
-          "spreadKm": 86.4
+          "consensusLat": 18.871,
+          "consensusLon": 129.021,
+          "spreadKm": 94.1
         },
         {
           "leadHours": 90,
-          "validTime": "2026-10-21T12:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-21T15:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 2,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
+            "CMA": "forecast-to-forecast-interpolation",
             "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 19.188,
-          "consensusLon": 128.388,
-          "spreadKm": 103.1
+          "consensusLat": 19.313,
+          "consensusLon": 127.996,
+          "spreadKm": 113.2
         },
         {
           "leadHours": 96,
-          "validTime": "2026-10-21T18:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-21T21:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 0,
+          "interpolatedAgencyCount": 2,
           "provenanceByAgency": {
-            "CWA": "exact-forecast",
-            "JMA": "exact-forecast"
+            "CMA": "exact-forecast",
+            "CWA": "forecast-to-forecast-interpolation",
+            "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 19.65,
-          "consensusLon": 127.3,
-          "spreadKm": 124.1
+          "consensusLat": 19.713,
+          "consensusLon": 127.154,
+          "spreadKm": 127.3
         },
         {
           "leadHours": 102,
-          "validTime": "2026-10-22T00:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-22T03:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 2,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
+            "CMA": "forecast-to-forecast-interpolation",
             "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 19.988,
-          "consensusLon": 126.763,
-          "spreadKm": 130.9
+          "consensusLat": 20.088,
+          "consensusLon": 126.562,
+          "spreadKm": 134.8
         },
         {
           "leadHours": 108,
-          "validTime": "2026-10-22T06:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-22T09:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 2,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
+            "CMA": "forecast-to-forecast-interpolation",
             "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 20.325,
-          "consensusLon": 126.225,
-          "spreadKm": 139.1
+          "consensusLat": 20.463,
+          "consensusLon": 125.971,
+          "spreadKm": 143.6
         },
         {
           "leadHours": 114,
-          "validTime": "2026-10-22T12:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-22T15:00:00.000Z",
+          "agencyCount": 3,
           "agencies": [
+            "CMA",
             "CWA",
             "JMA"
           ],
-          "interpolatedAgencyCount": 2,
+          "interpolatedAgencyCount": 3,
           "provenanceByAgency": {
+            "CMA": "forecast-to-forecast-interpolation",
             "CWA": "forecast-to-forecast-interpolation",
             "JMA": "forecast-to-forecast-interpolation"
           },
-          "consensusLat": 20.663,
-          "consensusLon": 125.688,
-          "spreadKm": 148.5
+          "consensusLat": 20.838,
+          "consensusLon": 125.379,
+          "spreadKm": 153.5
         },
         {
           "leadHours": 120,
-          "validTime": "2026-10-22T18:00:00.000Z",
-          "agencyCount": 2,
+          "validTime": "2026-10-22T21:00:00.000Z",
+          "agencyCount": 1,
           "agencies": [
-            "CWA",
-            "JMA"
+            "CMA"
           ],
           "interpolatedAgencyCount": 0,
           "provenanceByAgency": {
-            "CWA": "exact-forecast",
-            "JMA": "exact-forecast"
+            "CMA": "exact-forecast"
           },
-          "consensusLat": 21,
-          "consensusLon": 125.15,
-          "spreadKm": 158.8
+          "consensusLat": null,
+          "consensusLon": null,
+          "spreadKm": null
         }
       ]
     }
