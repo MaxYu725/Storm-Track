@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '3.3.13';
+const VERSION = '3.3.14';
 const CACHE_PREFIX = 'storm-track-';
 const SHELL_CACHE = `${CACHE_PREFIX}shell-${VERSION}`;
 const STATIC_CACHE = `${CACHE_PREFIX}static-${VERSION}`;
@@ -79,22 +79,24 @@ self.addEventListener('fetch', event => {
 
 async function networkFirstNavigation(request) {
   try {
-    // Do not let the browser HTTP cache pin an older index.html after a new PWA release.
+    // Navigation is always network-first; avoid stale browser HTTP cache.
     const response = await fetch(new Request(request, { cache: 'no-store' }));
-    if (response?.ok) {
+    if (response?.ok && new URL(request.url).origin === self.location.origin) {
       const cache = await caches.open(SHELL_CACHE);
-      cache.put('./index.html', response.clone()).catch(() => {});
+      // Cache the actual requested page, never overwrite index.html with observation/consensus HTML.
+      await cache.put(request, response.clone()).catch(() => {});
     }
     return response;
   } catch {
     const cache = await caches.open(SHELL_CACHE);
-    return (await cache.match(request))
-      || (await cache.match('./index.html'))
-      || (await cache.match('./'))
-      || new Response('Storm Track 暫時離線。', {
-        status: 503,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-      });
+    // Query parameters select frontend modes; the cached HTML belongs to the same pathname.
+    const cached = await cache.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+    // Missing secondary pages must not silently become the Storm Track homepage.
+    return new Response('Storm Track 暫時離線。', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    });
   }
 }
 
