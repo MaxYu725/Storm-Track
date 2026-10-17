@@ -10,7 +10,9 @@ function extractFunction(name) {
   const marker = 'function ' + name + '(';
   const start = html.indexOf(marker);
   assert.notEqual(start, -1, name + ' must exist');
-  const brace = html.indexOf('{', start);
+  const closingSignature = html.indexOf(') {', start);
+  assert.ok(closingSignature > start, name + ' function body must exist');
+  const brace = closingSignature + 2;
   let depth = 0;
   for (let i=brace; i<html.length; i++) {
     if (html[i] === '{') depth++;
