@@ -62,8 +62,9 @@ test('hidden, offline, archive, pending PWA update, or active request blocks aut
 test('ticker attaches once and manual refresh resets the five-minute clock', () => {
   assert.match(html, /if \(liveAutoRefreshTimer === null\) \{/);
   assert.match(html, /liveAutoRefreshTimer = window\.setInterval\(\(\) => \{/);
-  assert.match(html, /if \(shouldAutoRefreshLive\(\)\) refreshData\(\);/);
+  assert.match(html, /if \(shouldAutoRefreshLive\(\)\) refreshData\(\{ preserveMapView: true \}\);/);
   assert.match(html, /}, LIVE_AUTO_REFRESH_TICK_MS\);/);
   assert.match(extractFunction('refreshData'), /lastLiveRefreshStartedAt = Date\.now\(\);/);
+  assert.match(extractFunction('refreshData'), /if \(!options\.preserveMapView\) autoFitCompleted = false;/);
   assert.match(html, /const LIVE_AUTO_REFRESH_TICK_MS = 60 \* 1000;/);
 });
