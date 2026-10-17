@@ -722,9 +722,12 @@
                     <input id="archive-search" class="archive-search" type="search" placeholder="搜尋名稱或編號" autocomplete="off">
                 </div>
                 <div id="archive-storm-list" class="archive-list"><div class="archive-list-empty">讀取歷史風暴…</div></div>
+                <button id="archive-more-storms" class="metro-btn hidden" type="button" onclick="WeatherApp.loadMoreArchiveStorms()" style="width:100%;margin-top:7px">載入更多歷史風暴</button>
+                <div id="archive-storm-coverage" class="archive-status" role="status"></div>
                 <div id="archive-detail" class="archive-detail hidden">
                     <div id="archive-selected-name" class="archive-selected-name">--</div>
                     <div id="archive-selected-meta" class="archive-selected-meta">--</div>
+                    <div id="archive-advisory-coverage" class="archive-status" role="status"></div>
                     <div id="archive-agencies" class="archive-agencies"></div>
                     <div class="archive-frame-row">
                         <button id="archive-play" class="archive-play" type="button" onclick="WeatherApp.toggleArchivePlayback()" aria-label="播放公報">▶</button>
@@ -825,6 +828,7 @@
 <script src="./analysis/hk-threat-assessment.js"></script>
 <script src="./analysis/basic-hk-signal-forecast.js"></script>
 <script src="./analysis/frontend-hk-threat-ui.js"></script>
+<script src="./analysis/archive-pagination.js"></script>
 <script>
 const WeatherApp = (() => {
     'use strict';
@@ -851,6 +855,8 @@ const WeatherApp = (() => {
     const DB_HISTORY_STORE = 'history-cache';
     const DB_VERSION = 2;
     const FETCH_TIMEOUT_MS = 16000;
+    const ARCHIVE_STORM_PAGE_SIZE = StormArchivePagination.STORM_PAGE_SIZE;
+    const ARCHIVE_ADVISORY_PAGE_SIZE = StormArchivePagination.ADVISORY_PAGE_SIZE;
     const FOREGROUND_REFRESH_AFTER_MS = 5 * 60 * 1000;
     const LIVE_AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
     const LIVE_AUTO_REFRESH_TICK_MS = 60 * 1000;
@@ -897,7 +903,8 @@ const WeatherApp = (() => {
         loaded: false, loading: false, storms: [], filteredStorms: [],
         selectedStormId: null, stormDetail: null, advisories: [], filteredAdvisories: [],
         agency: 'ALL', index: 0, timer: null, playing: false, playbackSpeed: 1, listSerial: 0, stormSerial: 0, frameSerial: 0,
-        detailCache: new Map(), currentBounds: null, fitOnNext: true
+        detailCache: new Map(), currentBounds: null, fitOnNext: true,
+        stormHasMore: false, stormIncomplete: false, stormPagingPending: false, stormPagingMessage: ''
     };
 
     const agencyStorms = { HKO: [], CMA: [], JMA: [], CWA: [] };
@@ -3054,11 +3061,21 @@ const WeatherApp = (() => {
         setArchiveStatus('正在讀取 D1 歷史風暴…');
         document.getElementById('archive-panel').classList.add('archive-loading');
 
+        archiveState.stormHasMore = false;
+        archiveState.stormIncomplete = false;
+        archiveState.stormPagingMessage = '';
         if (!force && !archiveState.loaded) {
             const cached = await loadHistoryCache('storms');
             if (serial !== archiveState.listSerial) return;
             if (Array.isArray(cached?.value?.storms)) {
                 archiveState.storms = cached.value.storms;
+                const cachedPaging = cached.value.archivePaging;
+                archiveState.stormHasMore = cachedPaging?.hasMore === true
+                    || (cachedPaging == null && cached.value.storms.length === ARCHIVE_STORM_PAGE_SIZE
+                        && cached.value.pagination?.offset === 0);
+                archiveState.stormIncomplete = cachedPaging?.incomplete === true
+                    || (cachedPaging == null && cached.value.storms.length === ARCHIVE_STORM_PAGE_SIZE
+                        && cached.value.pagination?.offset !== 0);
                 populateArchiveYears();
                 applyArchiveFilters();
                 setArchiveStatus(`先顯示裝置快取 · ${formatHkt(cached.savedAt)}`);
@@ -3066,11 +3083,16 @@ const WeatherApp = (() => {
         }
 
         try {
-            const data = await fetchHistoryJson('/storms?limit=100');
+            const data = await fetchHistoryJson(`/storms?limit=${ARCHIVE_STORM_PAGE_SIZE}&offset=0`);
             if (serial !== archiveState.listSerial) return;
-            archiveState.storms = Array.isArray(data.storms) ? data.storms : [];
+            const page = StormArchivePagination.appendStormPage([], data, 0, ARCHIVE_STORM_PAGE_SIZE);
+            archiveState.storms = page.storms;
+            archiveState.stormHasMore = page.hasMore;
+            archiveState.stormIncomplete = page.incomplete;
+            archiveState.stormPagingMessage = '';
             archiveState.loaded = true;
-            await saveHistoryCache('storms', data);
+            await saveHistoryCache('storms', { storms: page.storms,
+                archivePaging: { hasMore: page.hasMore, incomplete: page.incomplete } });
             populateArchiveYears();
             applyArchiveFilters();
             setArchiveStatus(`D1 已載入 ${archiveState.storms.length} 個風暴 · ${formatNow()}`);
@@ -3085,7 +3107,53 @@ const WeatherApp = (() => {
         } finally {
             archiveState.loading = false;
             document.getElementById('archive-panel').classList.remove('archive-loading');
+            renderArchiveStormPaging();
         }
+    }
+
+    async function loadMoreArchiveStorms() {
+        if (!archiveState.stormHasMore || archiveState.stormPagingPending || archiveState.loading) return;
+        archiveState.stormPagingPending = true;
+        const serial = archiveState.listSerial;
+        const offset = archiveState.storms.length;
+        renderArchiveStormPaging();
+        try {
+            const data = await fetchHistoryJson(`/storms?limit=${ARCHIVE_STORM_PAGE_SIZE}&offset=${offset}`);
+            if (serial !== archiveState.listSerial) return;
+            const page = StormArchivePagination.appendStormPage(archiveState.storms, data, offset, ARCHIVE_STORM_PAGE_SIZE);
+            archiveState.storms = page.storms;
+            archiveState.stormHasMore = page.hasMore;
+            archiveState.stormIncomplete = page.incomplete;
+            archiveState.stormPagingMessage = '';
+            await saveHistoryCache('storms', { storms: page.storms,
+                archivePaging: { hasMore: page.hasMore, incomplete: page.incomplete } });
+            populateArchiveYears();
+            applyArchiveFilters();
+            setArchiveStatus(`D1 已載入 ${archiveState.storms.length} 個風暴 · ${formatNow()}`);
+        } catch (error) {
+            if (serial !== archiveState.listSerial) return;
+            archiveState.stormHasMore = false;
+            archiveState.stormIncomplete = true;
+            archiveState.stormPagingMessage = error.message;
+            setArchiveStatus(`更多歷史風暴未能安全載入：${error.message}`);
+        } finally {
+            archiveState.stormPagingPending = false;
+            renderArchiveStormPaging();
+        }
+    }
+
+    function renderArchiveStormPaging() {
+        const button = document.getElementById('archive-more-storms');
+        const coverage = document.getElementById('archive-storm-coverage');
+        button.classList.toggle('hidden', !archiveState.stormHasMore);
+        button.disabled = archiveState.loading || archiveState.stormPagingPending;
+        button.textContent = archiveState.stormPagingPending ? '正在載入更多風暴…' : '載入更多歷史風暴';
+        coverage.textContent = archiveState.stormPagingMessage
+            || (archiveState.stormIncomplete
+                ? `目前只顯示 ${archiveState.storms.length} 個風暴；正式 API 分頁能力未確認，清單可能未齊全。`
+                : archiveState.stormHasMore
+                    ? `已載入 ${archiveState.storms.length} 個風暴，可繼續載入其他年份。`
+                    : (archiveState.loaded ? `目前 API 已返回 ${archiveState.storms.length} 個風暴。` : ''));
     }
 
     function populateArchiveYears() {
@@ -3106,6 +3174,7 @@ const WeatherApp = (() => {
             return haystack.includes(query);
         });
         renderArchiveStormList();
+        renderArchiveStormPaging();
     }
 
     function renderArchiveStormList() {
@@ -3134,6 +3203,12 @@ const WeatherApp = (() => {
     async function selectArchiveStorm(stormId) {
         if (!stormId) return;
         stopArchivePlayback();
+        archiveState.frameSerial += 1;
+        archiveState.advisories = [];
+        archiveState.filteredAdvisories = [];
+        archiveState.stormDetail = null;
+        historyLayer.clearLayers();
+        document.getElementById('archive-advisory-coverage').textContent = '正在讀取公報清單…';
         archiveState.selectedStormId = stormId;
         archiveState.agency = 'ALL';
         archiveState.index = 0;
@@ -3154,7 +3229,7 @@ const WeatherApp = (() => {
         try {
             const [detail, list] = await Promise.all([
                 fetchHistoryJson(`/storms/${encodeURIComponent(stormId)}`),
-                fetchHistoryJson(`/storms/${encodeURIComponent(stormId)}/advisories?limit=200`)
+                fetchHistoryJson(`/storms/${encodeURIComponent(stormId)}/advisories?limit=${ARCHIVE_ADVISORY_PAGE_SIZE}`)
             ]);
             if (serial !== archiveState.stormSerial) return;
             const advisories = Array.isArray(list.advisories) ? list.advisories : [];
@@ -3176,6 +3251,12 @@ const WeatherApp = (() => {
         const storm = detail?.storm || archiveState.storms.find(item => item.id === archiveState.selectedStormId) || {};
         document.getElementById('archive-selected-name').textContent = archiveStormName(storm);
         document.getElementById('archive-selected-meta').textContent = `${storm.id || archiveState.selectedStormId} · ${storm.first_seen_at ? formatHkt(storm.first_seen_at) : '--'} 至 ${storm.last_seen_at ? formatHkt(storm.last_seen_at) : '--'}${cached ? ' · 快取' : ''}`;
+        const summary = archiveState.storms.find(item => item.id === archiveState.selectedStormId);
+        const coverage = StormArchivePagination.advisoryCoverage(archiveState.advisories,
+            summary?.advisory_count ?? storm.advisory_count, ARCHIVE_ADVISORY_PAGE_SIZE);
+        document.getElementById('archive-advisory-coverage').textContent = coverage.incomplete
+            ? `注意：只載入最新 ${coverage.loaded} 份公報${coverage.reported == null ? '' : `（資料庫統計 ${coverage.reported} 份）`}；較早公報可能未包含在重播中。正式 API 分頁功能仍待確認。`
+            : `已載入 ${coverage.loaded} 份公報${cached ? '（快取）' : ''}。`;
         renderArchiveAgencyButtons();
         rebuildArchiveFrames(true);
     }
@@ -3450,7 +3531,7 @@ const WeatherApp = (() => {
     }
 
     return {
-        init, refreshData, toggleStormPanel, resetView,
+        init, refreshData, toggleStormPanel, resetView, loadMoreArchiveStorms,
         toggleBasemap, toggleFullscreen, toggleMeasure, showSourceStatus,
         toggleComparisonPanel, focusComparison, installPwa, applyPwaUpdate, clearTrackHighlight,
         switchMode, toggleArchivePlayback, setArchivePlaybackSpeed, focusArchiveTrack, refreshArchive
