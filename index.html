@@ -852,6 +852,8 @@ const WeatherApp = (() => {
     const DB_VERSION = 2;
     const FETCH_TIMEOUT_MS = 16000;
     const FOREGROUND_REFRESH_AFTER_MS = 5 * 60 * 1000;
+    const LIVE_AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+    const LIVE_AUTO_REFRESH_TICK_MS = 60 * 1000;
     const LIVE_SOURCE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
     const LIVE_SOURCE_FUTURE_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 
@@ -886,6 +888,8 @@ const WeatherApp = (() => {
     let historyLayer = null;
     let backgroundedAt = null;
     let lifecycleRefreshAt = 0;
+    let lastLiveRefreshStartedAt = 0;
+    let liveAutoRefreshTimer = null;
     let pendingControllerReload = false;
     let mapResizeTimer = null;
 
@@ -998,7 +1002,21 @@ const WeatherApp = (() => {
         else refreshData();
     }
 
+    function shouldAutoRefreshLive(nowMs = Date.now()) {
+        return currentMode === 'live'
+            && document.visibilityState === 'visible'
+            && navigator.onLine !== false
+            && !pendingControllerReload
+            && activeFetchCount === 0
+            && nowMs - lastLiveRefreshStartedAt >= LIVE_AUTO_REFRESH_INTERVAL_MS;
+    }
+
     function bindAppLifecycle() {
+        if (liveAutoRefreshTimer === null) {
+            liveAutoRefreshTimer = window.setInterval(() => {
+                if (shouldAutoRefreshLive()) refreshData();
+            }, LIVE_AUTO_REFRESH_TICK_MS);
+        }
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') {
                 backgroundedAt = Date.now();
@@ -1213,6 +1231,7 @@ const WeatherApp = (() => {
 
     async function refreshData() {
         if (currentMode === 'archive') return refreshArchive();
+        lastLiveRefreshStartedAt = Date.now();
         const serial = ++requestSerial;
         activeFetchCount = 4;
         autoFitCompleted = false;
