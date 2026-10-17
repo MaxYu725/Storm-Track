@@ -12,8 +12,11 @@
   const MAX_CURSOR_LENGTH = 2048;
 
   function isStrictlyOlder(newer, older) {
-    return older.issued_at < newer.issued_at
-      || (older.issued_at === newer.issued_at && older.id < newer.id);
+    // Compare instants, not ISO text: the source may express the same cycle
+    // with a UTC Z suffix or an explicit time-zone offset.
+    const newerMs = Date.parse(newer.issued_at);
+    const olderMs = Date.parse(older.issued_at);
+    return olderMs < newerMs || (olderMs === newerMs && older.id < newer.id);
   }
 
   function validateRows(rows, stormId, ordered) {
