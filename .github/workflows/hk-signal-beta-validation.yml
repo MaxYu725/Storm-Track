@@ -57,6 +57,7 @@ jobs:
           node --check analysis/hk-signal-observation-board.js
           node --check analysis/consensus-track-observation-board.js
           node --check analysis/consensus-track-observation-ui.js
+          node --check analysis/archive-pagination.js
           node --check scripts/reconcile-beta-case-identities.mjs
           node --check scripts/validate-consensus-track-observation-ui.mjs
           node --check scripts/build-hk-situation-analysis-shadow-packets.mjs
@@ -121,6 +122,7 @@ jobs:
           set -euo pipefail
           tests=(
             tests/service-worker-cache-policy.test.cjs
+            tests/archive-pagination.test.cjs
             tests/storm-analysis-core.test.cjs
             tests/consensus-track-dateline.test.cjs
             tests/hk-impact-engine.test.cjs

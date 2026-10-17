@@ -6,12 +6,13 @@ const path = require('node:path');
 
 const source = fs.readFileSync(path.resolve(__dirname, '..', 'sw.js'), 'utf8');
 
-assert.match(source, /const VERSION = '3\.3\.14';/);
+assert.match(source, /const VERSION = '3\.3\.15';/);
 assert.match(source, /'\.\/analysis\/hk-signal-forecast-v2\.js'/);
 assert.match(source, /'\.\/analysis\/frontend-hk-threat-ui\.js'/);
 assert.match(source, /'\.\/analysis\/hko-signal-statement\.js'/);
 assert.match(source, /'\.\/analysis\/settings-panel-ui\.js'/);
 assert.match(source, /'\.\/analysis\/consensus-track-overlay\.js'/);
+assert.match(source, /'\.\/analysis\/archive-pagination\.js'/);
 assert.match(source, /if \(url\.pathname\.endsWith\('\.js'\)\) \{\s*event\.respondWith\(networkFirstStatic\(request, SHELL_CACHE\)\);/s);
 assert.match(source, /async function networkFirstStatic\(request, cacheName\)/);
 assert.match(source, /fetch\(new Request\(request, \{ cache: 'no-store' \}\)\)/);

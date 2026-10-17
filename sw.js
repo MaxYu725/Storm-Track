@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '3.3.14';
+const VERSION = '3.3.15';
 const CACHE_PREFIX = 'storm-track-';
 const SHELL_CACHE = `${CACHE_PREFIX}shell-${VERSION}`;
 const STATIC_CACHE = `${CACHE_PREFIX}static-${VERSION}`;
@@ -14,6 +14,7 @@ const APP_SHELL = [
   './analysis/settings-panel-ui.js',
   './analysis/wind-field-overlay.js',
   './analysis/consensus-track-overlay.js',
+  './analysis/archive-pagination.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png'
