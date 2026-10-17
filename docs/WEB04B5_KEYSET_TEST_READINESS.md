@@ -44,6 +44,68 @@ The HTTP 400 is **likely** the pattern-limit bug, but is not conclusively
 attributed until the new Production read-only retry succeeds or exposes
 an error category. No Worker/D1/index modifications or deployments.
 
+## WEB-04B-5 real Production D1 full-history aggregate — completed
+
+The owner successfully reran the corrected **read-only** tool and provided
+`storm-web04b5-full-history-readonly/v1` output, recorded
+`2026-10-17T15:57:21.122Z`. This is an aggregate-only report. The private
+JSON, account/database identifiers, secret token and raw advisory records
+are **not** copied to GitHub.
+
+- Reported D1 database name: `storm-track-db`; account/database hash
+  prefixes match the earlier read-only sample audit. **This proves
+  continuity of the queried D1 target, not independently that the active
+  Worker `DB` binding points to it.**
+- `completeRows = 2061` for `ingest_status='complete'`, comfortably
+  below the bounded 50,000-row audit threshold.
+- Full-table SQLite/GLOB aggregate: `invalidTime=0`,
+  `nonCanonicalShape=0`, `invalidId=0`,
+  `invalidStormId=0`.
+  The 24-char timestamp shape and `julianday()` check are not a
+  byte-by-byte validation with `Date.toISOString()`, and the audit
+  was not a transactional snapshot during concurrent ingestion.
+- All-source counts: JMA=802, CMA=636, CWA=347, HKO=276;
+  total sums to 2061.
+- Same-storm, same-`issued_at` tie groups: `159`.
+  Extra records beyond one per time group: `159`; consequently
+  each of those 159 groups contains **exactly two** complete
+  advisories under the query's grouping. All 159 groups contained
+  more than one agency. These are legitimate cross-agency ties,
+  **not** evidence of duplicated advisory IDs.
+- Production `EXPLAIN QUERY PLAN` detail:
+  - base: `SEARCH ... USING INDEX idx_advisories_storm_time (storm_id=?)`,
+    then `USE TEMP B-TREE FOR LAST TERM OF ORDER BY`;
+  - agency: `SEARCH ... USING INDEX
+    sqlite_autoindex_advisories_2 (storm_id=? AND agency=?)`,
+    with **no** temporary sort reported;
+  - cursor: same storm/time index plus temp B-tree for the final
+    order term.
+- 8 Cloudflare API requests were reported; `writesAttempted: 0`,
+  outcome `aggregates-read-no-snapshot`. The result still declares
+  `releaseGate: BLOCKED_NO_PRODUCTION_CHANGES`.
+
+### Revised gate decision
+
+- **Full-table aggregate data-quality screen: PASS (qualified).**
+  The known `issued_at` textual representation is compatible with
+  the candidate keyset ordering at the level of the aggregate screen,
+  but there is no immutable snapshot guarantee.
+- **Stable ID tie-break is REQUIRED, not just a precaution.** It
+  must preserve ordering across 159 two-agency/time tie groups.
+- **No urgent schema change follows from this evidence alone.**
+  One composite index remains a good staging candidate. Production
+  has only 2061 complete advisories and the existing queries search
+  indexes already; a temp sort is not proof of unacceptable latency.
+  Benchmark read cost/latency and ingestion overhead before a
+  separate reviewed migration.
+- **Real production release: BLOCKED** pending verified
+  `storm` Worker `DB` binding identity, authoritative
+  traffic-serving Version-17/source association, reviewed
+  additive backend implementation, legacy-compatibility tests and
+  rollback verification.
+- Preserve PR #118 as Draft; do not enable Archive cursor integration
+  or alter Worker, D1 or R2 from this readiness phase.
+
 ## Verified starting point (2026-10-17)
 
 - Public Production API probe: `legacy-no-cursor-contract`. First-page
