@@ -18,6 +18,8 @@ on:
       - analysis/hk-signal-closeout.js
       - analysis/hk-signal-evidence-coverage.js
       - scripts/evaluate-hk-signal.mjs
+      - scripts/persist-hk-signal-evaluation-shard.cjs
+      - tests/hk-signal-evaluation-index-shards.test.cjs
       - scripts/apply-hk-signal-closeouts.mjs
       - tests/hk-signal-evaluator.test.cjs
       - tests/hk-signal-closeout.test.cjs
@@ -33,6 +35,8 @@ on:
       - analysis/hk-signal-closeout.js
       - analysis/hk-signal-evidence-coverage.js
       - scripts/evaluate-hk-signal.mjs
+      - scripts/persist-hk-signal-evaluation-shard.cjs
+      - tests/hk-signal-evaluation-index-shards.test.cjs
       - scripts/apply-hk-signal-closeouts.mjs
       - tests/hk-signal-evaluator.test.cjs
       - tests/hk-signal-closeout.test.cjs
@@ -79,6 +83,8 @@ jobs:
           node --check analysis/hk-signal-closeout.js
           node --check analysis/hk-signal-evidence-coverage.js
           node --check scripts/evaluate-hk-signal.mjs
+          node --check scripts/persist-hk-signal-evaluation-shard.cjs
+          node --test tests/hk-signal-evaluation-index-shards.test.cjs
           node --check scripts/apply-hk-signal-closeouts.mjs
           node tests/hk-signal-evaluator.test.cjs
           node tests/hk-signal-closeout.test.cjs
@@ -157,6 +163,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Data branch contains evidence only; preserve writer before git switch.
+          cp scripts/persist-hk-signal-evaluation-shard.cjs /tmp/persist-hk-signal-evaluation-shard.cjs
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -177,7 +185,9 @@ jobs:
           fi
 
           cp /tmp/hk-signal-evaluation.json latest.json
-          jq -c '{schemaVersion,generatedAt,evaluationFingerprint,sourceCommit,status,rubricVersion,eventPolicyVersion,evidenceCoveragePolicyVersion,closeoutPolicyVersion,prospective,hkoTruth,awaiting:{status:.awaiting.status,activeHkoCaseIds:.awaiting.activeHkoCaseIds,pendingSignalsByCase:.awaiting.pendingSignalsByCase},closeoutSummary,closeouts:[.closeouts[]|{caseId,signal,closedAt,closeoutReason,forecastOutcome,evidenceCoverage}],evaluations:[.evaluations[]|{status,signal,caseId,truth,grades,lifecycle,evidenceCoverage}]}' /tmp/hk-signal-evaluation.json >> index.ndjson
+          # Preserve the near-100-MiB legacy index.ndjson unchanged.
+          # Write a bounded, immutable JSON entry per new evaluation fingerprint.
+          node /tmp/persist-hk-signal-evaluation-shard.cjs /tmp/hk-signal-evaluation.json "$PWD"
 
           while IFS= read -r evaluation; do
             case_id="$(jq -r '.caseId' <<<"$evaluation")"
@@ -207,7 +217,7 @@ jobs:
               /tmp/hk-signal-evaluation.json > "cases/$case_id/${signal}-closeout-$stamp.json"
           done < <(jq -c '.closeouts[]' /tmp/hk-signal-evaluation.json)
 
-          git add latest.json index.ndjson cases 2>/dev/null || git add latest.json index.ndjson
+          git add -- latest.json index-shards cases
           git commit -m "Evaluate HK signal Beta ${fingerprint:0:12}"
           git push origin "HEAD:${EVALUATION_BRANCH}"
           echo "HK_SIGNAL_EVALUATION_STORED=true"
