@@ -1,0 +1,28 @@
+name: WEB-04B-5 D1 glob hotfix smoke (one-shot)
+on:
+  push:
+    branches:
+      - feature/web-04b-advisory-cursor-readiness
+    paths:
+      - .github/workflows/web04b5-glob-hotfix-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Check aggregate audit JS
+        run: node --check scripts/audit-web04b5-full-history.mjs
+      - name: Test mocked aggregate audit and Cloudflare 50-byte GLOB cap
+        run: node --test tests/web04b5-full-history.test.mjs
+      - name: Run independent keyset fixture
+        run: node --test tests/web04b-keyset-proposal.test.cjs
+      - name: Recheck isolated SQLite index fixture
+        run: python3 scripts/web04b5-sqlite-index-fixture.py > /dev/null
