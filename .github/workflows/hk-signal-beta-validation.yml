@@ -15,6 +15,7 @@ on:
       - sw.js
       - analysis/**
       - scripts/audit-web04b-production-api.mjs
+      - scripts/audit-web04b-worker-provenance.mjs
       - scripts/reconcile-beta-case-identities.mjs
       - scripts/validate-consensus-track-observation-ui.mjs
       - scripts/build-hk-situation-analysis-shadow-packets.mjs
@@ -61,6 +62,7 @@ jobs:
           node --check analysis/archive-pagination.js
           node --check analysis/archive-advisory-cursor.js
           node --check scripts/audit-web04b-production-api.mjs
+          node --check scripts/audit-web04b-worker-provenance.mjs
           node --check scripts/reconcile-beta-case-identities.mjs
           node --check scripts/validate-consensus-track-observation-ui.mjs
           node --check scripts/build-hk-situation-analysis-shadow-packets.mjs
@@ -128,6 +130,7 @@ jobs:
             tests/archive-pagination.test.cjs
             tests/archive-advisory-cursor.test.cjs
             tests/web04b-production-api-audit.test.mjs
+            tests/web04b-worker-provenance.test.mjs
             tests/storm-analysis-core.test.cjs
             tests/consensus-track-dateline.test.cjs
             tests/hk-impact-engine.test.cjs
