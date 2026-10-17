@@ -3,6 +3,47 @@
 Status: **isolated implementation/tests PASS; Production release BLOCKED**.
 Scope: browser Archive history advisory replay only. No Android changes.
 
+## WEB-04B-5 aggregate audit HTTP 400 diagnostic/fix (2026-10-17)
+
+The owner reported `WEB-04B-5 aggregate audit blocked: Cloudflare D1 read request HTTP 400`.
+The original CLI did not show which query failed, so **the exact failing
+statement and Cloudflare error code were not captured**.
+
+Static source review found a **confirmed client-side defect**: the
+`formats` statement used a 92-byte `GLOB` pattern while Cloudflare
+D1 documents a 50-byte maximum LIKE/GLOB pattern length:
+https://developers.cloudflare.com/d1/platform/limits/
+
+Resolution committed on the same feature branch (not on Production):
+- Split a 92-byte timestamp shape GLOB into three `substr(issued_at,...)`
+  fragments of **42**, **33**, and **17** bytes. The three fragments
+  collectively screen the exact same 24-character canonical UTC
+  timestamp shape (yyyy-mm-ddThh:mm:ss.sssZ) as before.
+- Keep SQL pre-defined, read-only, bounded by the existing 50,000-row
+  preflight, at most 8 API requests, and no D1 mutations.
+- On HTTP error, safely report `stage=` (e.g. `formats`), numeric
+  Cloudflare error codes and a **fixed allowlisted category**.
+  No arbitrary API error text, SQL, credentials, UUID or raw advisory
+  records are displayed.
+- Add regression assertions that all GLOB fragments stay within D1's
+  50-byte cap and a mocked HTTP 400 returns sanitized stage and error code.
+- Isolated GitHub Actions rerun:
+  https://github.com/MaxYu725/Storm-Track/actions/runs/39047088236
+  (Node syntax, all synthetic mock tests, keyset replay and SQLite
+  indexing fixture passed). This CI **did not query Production D1**.
+
+**User next action:** download the updated
+`scripts/audit-web04b5-full-history.mjs` into the existing
+`Desktop/Storm-WEB04B` folder (retain
+`audit-web04b-d1-readonly.mjs` in the same folder), then rerun with
+a D1 Read-only token. If HTTP 400 persists, share ONLY the safe
+`stage=`, HTTP status, numeric CF codes and category string from the
+new output, not the token or original response.
+
+The HTTP 400 is **likely** the pattern-limit bug, but is not conclusively
+attributed until the new Production read-only retry succeeds or exposes
+an error category. No Worker/D1/index modifications or deployments.
+
 ## Verified starting point (2026-10-17)
 
 - Public Production API probe: `legacy-no-cursor-contract`. First-page
