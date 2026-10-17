@@ -2,6 +2,35 @@
 
 Status: DRAFT, not enabled on production.
 
+## WEB-04B-2 public production API verification — 2026-10-17
+
+A one-shot branch-only GitHub Actions Runner successfully executed
+`node scripts/audit-web04b-production-api.mjs` against
+`https://storm.max-yu.workers.dev`. The original execution environment
+could not resolve this host; the hosted Runner could reach it.
+
+- Evidence: https://github.com/MaxYu725/Storm-Track/actions/runs/39036021074
+- Run commit: `3b469c480760ac8b45fd52372436b5fb503fad81`
+- Result: `legacy-no-cursor-contract` (the probe itself exited successfully).
+- Production history list supplied `reportedCount: 748` for the selected
+  storm. This is an API-reported count, **not** a verification of 748 records
+  retrieved, or complete 748-frame replay.
+- First advisory sample: `firstPageCount: 2` with request `limit=2`.
+- `cursorSupported: false` for the proposed contract
+  `storm-history-advisory-cursor/v1`.
+- Only **2 HTTP GET** requests were made (history list, first advisory page);
+  no next-page cursor was guessed and no writes or credentials were used.
+- Production API is reachable from GitHub Runner; no verified versioned cursor
+  contract is present in the sampled response. This is **not** proof that no
+  other pagination mechanism exists, and is not deployment-source verification.
+- Deployed Worker script source, deployment/version identity and SHA256
+  remain **unverified**. Require user-authorized Cloudflare read-only export
+  before proposing any Worker changes. Keep Archive cursor UI disabled and
+  PR #118 in Draft.
+
+The temporary, branch-only one-shot workflow is removed after capturing
+the completed run in Actions history; nothing new is installed into `main`.
+
 ## Safety boundary
 
 Production Cloudflare Worker: https://storm.max-yu.workers.dev
@@ -14,9 +43,9 @@ modifications are included.
 
 The web Archive requests only the latest 200 advisories. WEB-04A now warns
 users when the capped response may be incomplete. Old repository Worker code
-supports a per-storm limit but not advisory cursor/offset paging. The actual
-production API could not be reached from this execution environment, so its
-current contract remains unverified.
+supports a per-storm limit but not advisory cursor/offset paging. The GitHub Actions Runner probed the actual production API on 2026-10-17;
+its sampled response lacked the proposed versioned cursor contract. Source
+provenance and any other possible pagination mechanisms remain unverified.
 
 ## Proposed additive API contract (requires source review)
 
