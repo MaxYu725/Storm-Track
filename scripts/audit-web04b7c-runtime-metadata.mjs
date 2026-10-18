@@ -79,9 +79,12 @@ function normalizedDate(v) {
   return Number.isFinite(ms)?v.slice(0,10):null;
 }
 function safeFlags(value) {
+  // Cloudflare declares version script_runtime.compatibility_flags optional.
+  // Missing is not the same as malformed or explicitly configured empty [].
+  if(value===undefined||value===null)return {state:'NOT_RETURNED',values:[]};
   if(!Array.isArray(value)||value.length>40
     ||value.some(s=>typeof s!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(s)))
-    return {state:'UNKNOWN_OR_MALFORMED',values:[]};
+    return {state:'MALFORMED',values:[]};
   return {state:'PRESENT',values:[...new Set(value)].sort()};
 }
 function scheduleInfo(v) {
