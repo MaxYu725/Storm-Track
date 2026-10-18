@@ -13,6 +13,7 @@ on:
       - index.html
       - observation.html
       - sw.js
+      - backend/worker.js
       - analysis/**
       - scripts/reconcile-beta-case-identities.mjs
       - scripts/validate-consensus-track-observation-ui.mjs
@@ -41,6 +42,7 @@ jobs:
       - name: Check frontend module syntax
         run: |
           node --check sw.js
+          node --check backend/worker.js
           node --check analysis/storm-analysis-core.js
           node --check analysis/hk-impact-engine.js
           node --check analysis/hko-signal-risk-inputs.js
@@ -123,6 +125,7 @@ jobs:
           tests=(
             tests/service-worker-cache-policy.test.cjs
             tests/archive-pagination.test.cjs
+            tests/web04b7-worker-cursor.test.cjs
             tests/storm-analysis-core.test.cjs
             tests/consensus-track-dateline.test.cjs
             tests/hk-impact-engine.test.cjs
