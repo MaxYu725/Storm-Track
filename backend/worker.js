@@ -1647,7 +1647,7 @@ function historyCursorEncode(ctx, last) {
 }
 function historyCursorDecode(token, ctx) {
   if (typeof token !== 'string' || token.length > HISTORY_CURSOR_MAX_BYTES ||
-      !/^v1\\.[A-Za-z0-9_-]+$/.test(token) ||
+      !/^v1\.[A-Za-z0-9_-]+$/.test(token) ||
       (token.length - 3) % 4 === 1) throw new Error('bad-cursor');
   let body;
   try {
