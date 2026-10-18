@@ -1,10 +1,75 @@
 # WEB-04B-7D — Version-17 flags, Zone Routes and Staging isolation (review only)
 
-**State: 20/20 mock/offline regression tests PASSED; owner-run scoped Cloudflare GET evidence PENDING. Production and Staging deployment BOTH BLOCKED.**
+**State: owner-run Cloudflare 4-GET Version-17 flags audit COMPLETE but both version APIs OMITTED optional flags; ZERO zones checked; mock/CI tests PASS; Production and Staging deployment BOTH BLOCKED.**
 
 Scope: Storm Track web Archive historical advisories only. Keep
 PR #118 and PR #119 Draft. This task **does not deploy or create** a Worker,
 D1 database, R2 bucket, route, secret, Cron Trigger or rollback.
+
+## Owner-run WEB-04B-7D flags/routes report — 2026-10-18
+
+The owner submitted the metadata-only
+`storm-web04b7d-flag-routes-readonly/v1` report recorded at
+`2026-10-18T04:45:45.568Z`. It is not checked into GitHub.
+The report confirms:
+
+- Script `storm`, deployment
+  `895652c2-06b3-4cd9-afbb-d886cac7f0fe`, Version-17 UUID
+  `320a390b-315e-494c-a135-eb242adc340d`, still a single
+  **100% traffic** deployment at the moment of the read-only audit.
+- Both version-scoped APIs explicitly reported **the field was
+  not returned**: `scriptVersion.state=NOT_RETURNED` and
+  `immutableBetaVersion.state=NOT_RETURNED`. Their respective
+  `values: []` fields are tool placeholders accompanying
+  `NOT_RETURNED`; they are **not proof of explicitly configured
+  empty compatibility flags**. The authoritative result remains
+  `flags.status=NOT_VERIFIED`, `effectiveFlags=null`.
+- Both independent version-specific compatibility dates reported
+  `2026-08-05`: `dateStatus=MATCHED_BOTH`.
+  This is stronger evidence for the compatibility date, not the
+  missing optional flags.
+- `zonesChecked=0`, `zoneRoutes=[]`,
+  `routesStatus=NOT_CHECKED_NO_ZONE_IDS`. The user did
+  **not** provide any Zone ID. No findings can be drawn about
+  Zone Routes, Custom Domains or global routing coverage.
+- Exactly **4 GET**, zero writes attempted, no Production or
+  Staging deployment. The tool did not call any Zone Routes API
+  endpoint. `releaseGate=BLOCKED_PENDING_ISOLATED_STAGING_AND_ROLLBACK_REHEARSAL`.
+- GitHub head prior to documentation-only update:
+  `e9a75b16cdcea6a5ac9a022dec78715c8279986b`;
+  full `validate` CI succeeded:
+  https://github.com/MaxYu725/Storm-Track/actions/runs/39097617047
+
+### Decision and proportionate next checks
+
+**Flags:** neither official version response provided an explicit
+array. Because the field is optional, this alone is **not**
+evidence of malformed production configuration. Do not repeat the
+same API calls expecting a new result and do not change version
+flags or require a higher-privilege token without new independent
+evidence. Keep `VERSION_EXPLICIT_FLAGS=NOT_VERIFIED` in the risk
+register and separately validate actual Staging runtime at the
+already-proven date and required functional behavior.
+
+**Routes:** determine in the Cloudflare dashboard whether the
+production `storm` Worker serves any **Zone Routes** (and if so
+which Zone IDs). If none exist and only `workers.dev` is used,
+record the dashboard evidence and independently check Custom
+Domains. If routes do exist, run the existing tool with the relevant
+zone ID(s) and only a `Workers Routes Read` scoped token.
+Do not claim complete coverage from a zero-zone report.
+
+**Stage:** Staging resources are not created. The separate
+`backend/web04b7-staging-readonly.js` wrapper is source-only
+and its declaration-level binding check cannot verify actual
+Cloudflare D1 UUID isolation. Staging deployment requires a
+separate explicit owner authorization and a pre-deploy resource/
+route/cron diff with proven nonproduction identifiers.
+
+**Gate statuses:** `VERSION_17_SOURCE=PASS`;
+`COMPATIBILITY_DATE=PASS`; `EXPLICIT_FLAGS=NOT_VERIFIED`;
+`ROUTES=NOT_VERIFIED`; `STAGING_ISOLATION=NOT_PROVEN`;
+`ROLLBACK_REHEARSAL=NOT_PERFORMED`; `PRODUCTION_RELEASE=BLOCKED`.
 
 ## Confirmed evidence and remaining uncertainty
 
