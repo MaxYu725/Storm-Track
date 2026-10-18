@@ -114,7 +114,7 @@ test('no version/date/flags proof if missing or malformed fields',async()=>{
   const report=await auditRuntime({...inputs,fetchImpl});
   assert.equal(report.readiness.versionRuntimeMetadata,'INCOMPLETE');
   assert.equal(report.versionRuntime.compatibilityDate,null);
-  assert.equal(report.versionRuntime.compatibilityFlags.state,'UNKNOWN_OR_MALFORMED');
+  assert.equal(report.versionRuntime.compatibilityFlags.state,'NOT_RETURNED');
 });
 test('version ID, ETag and deployment drift hard-stop',async()=>{
   const a=mock({etagChanged:true});
@@ -131,7 +131,9 @@ test('unknown cron and malformed binding fail without printing confidential valu
   assert.equal(normalizedDate('2025-09-01T00:00:00Z'),'2025-09-01');
   assert.equal(normalizedDate('not-date'),null);
   assert.equal(safeFlags(['nodejs_compat']).state,'PRESENT');
-  assert.equal(safeFlags(['invalid flag']).state,'UNKNOWN_OR_MALFORMED');
+  assert.equal(safeFlags(['invalid flag']).state,'MALFORMED');
+  assert.deepEqual(safeFlags([]),{state:'PRESENT',values:[]});
+  assert.equal(safeFlags(undefined).state,'NOT_RETURNED');
   assert.deepEqual(scheduleInfo({schedules:[{cron:'*/15 * * * *'}]}).crons,['*/15 * * * *']);
   assert.throws(()=>scheduleInfo({schedules:[{cron:'\nNOTSAFE'}]}),/Unrecognized/);
   assert.equal(bindingFrom(null,'DB').state,'absent');
