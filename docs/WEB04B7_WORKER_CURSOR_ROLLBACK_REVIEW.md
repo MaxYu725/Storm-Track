@@ -112,6 +112,25 @@ Additive paginated response:
   Require version-specific source lineage/reproducible-build evidence
   before the first upload/deploy to avoid overwriting unknown changes.
 
+## Isolated test evidence — 2026-10-18
+
+- GitHub Actions one-shot synthetic route verification:
+  https://github.com/MaxYu725/Storm-Track/actions/runs/39092493836
+  **Success: all 7 of 7 Worker route tests passed** after the final
+  cursor prefix-validation refactor. Node syntax check also passed.
+- Covers direct invocation of the actual `backend/worker.js` exported
+  `fetch()` with a **mock D1 read-only executor**. Confirms no SQL
+  writes, stable 0/1/199/200/201/748-record pagination, same-time
+  ordering, canonical storm aliases, scoped agency filters, invalid
+  cursors, strict opt-in-only handling, safe generic 503 errors and
+  legacy reply shape.
+- The synthetic runner is not a real Cloudflare Worker deployment,
+  D1 compatibility benchmark, complete collector test or Production
+  source proof. Main branch does not include this candidate.
+- Reserved `paging` or `cursor` query parameters now activate
+  strict opt-in validation; otherwise the legacy response shape and
+  SQL query remain unchanged.
+
 ## Validation and release preparation
 
 Run in CI with no Cloudflare secrets:
@@ -175,5 +194,5 @@ check:
   backend contract is probed and approved.
 
 **Release status:** SOURCE_VERSION_MATCH=BLOCKED;
-LEGACY_COMPATIBILITY_TEST=PENDING_CI;
+LEGACY_COMPATIBILITY_TEST=PASS_SYNTHETIC;
 BACKEND_DRAFT_ONLY=true; PRODUCTION_DEPLOYMENT=false.
