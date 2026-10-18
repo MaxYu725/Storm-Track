@@ -1,0 +1,28 @@
+name: WEB-04B-7B immutable version and local D1 isolation (one shot)
+on:
+  push:
+    branches:
+      - feature/web-04b7-worker-cursor-review
+    paths:
+      - .github/workflows/web04b7b-isolated-once.yml
+permissions:
+  contents: read
+jobs:
+  isolated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Validate immutable version auditor in synthetic API mode
+        run: |
+          node --check scripts/audit-web04b7b-version-source.mjs
+          node --test tests/web04b7b-version-source.test.mjs
+      - name: Install local Miniflare emulator only
+        run: npm install --no-save miniflare@4
+      - name: Exercise isolated real workerd + local SQLite D1
+        run: node tests/web04b7b-miniflare-d1.mjs
+      - name: Recheck legacy and new Worker API mocks
+        run: node --test tests/web04b7-worker-cursor.test.cjs
