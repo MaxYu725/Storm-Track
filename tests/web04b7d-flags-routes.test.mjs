@@ -69,7 +69,7 @@ test('immutable Beta explicit empty flags and scoped zone routes verified, redac
   assert.equal(result.customDomainsStatus,'NOT_CHECKED_REQUIRES_SEPARATE_REVIEW');
 });
 test('two omitted optional compatibility flags cannot establish an empty array',async()=>{
-  const x=mock({betaFlags:undefined});
+  const x=mock({betaFlags:null});
   const result=await inspect7D({...inputs,zoneIds:[],routesToken:null,
     fetchImpl:x.fetchImpl});
   assert.equal(result.flags.status,'NOT_VERIFIED');
