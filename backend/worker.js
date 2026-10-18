@@ -1671,7 +1671,14 @@ function historyCursorOlder(previous, current) {
 }
 async function historyAdvisoriesCursor(stormId, incoming, env) {
   // Resolve merged-storm aliases before binding the cursor to an identity.
-  stormId = await resolveCanonicalStormId(env.DB, stormId);
+  // Alias lookup is a D1 operation: never leak its error through the
+  // Worker-level generic exception handler, or misclassify it as HTTP 400.
+  try {
+    stormId = await resolveCanonicalStormId(env.DB, stormId);
+  } catch {
+    return jsonResponse({ error: 'Historical advisory paging temporarily unavailable',
+      contract: HISTORY_CURSOR_CONTRACT }, 503);
+  }
   let ctx, cursor;
   try {
     ctx = historyCursorContext(stormId, incoming);
