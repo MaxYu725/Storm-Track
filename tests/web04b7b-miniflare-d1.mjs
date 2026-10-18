@@ -9,8 +9,8 @@ const mf=new Miniflare({
   modules:true,
   scriptPath:'backend/worker.js',
   // The pinned local workerd binary supports at most 2026-08-06.
-  // Emulator parity is a smoke test, NOT proof of the live compatibility date.
-  compatibilityDate:'2026-08-01',
+  // Local engine now uses audited Version 17 date; explicit version flags still unconfirmed.
+  compatibilityDate:'2026-08-05',
   d1Databases:{DB:dbId},
   // No R2 bucket, secrets, production env IDs or upstream requests.
 });
