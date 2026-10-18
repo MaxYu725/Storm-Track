@@ -1,10 +1,41 @@
 # WEB-04B-7B — Immutable Version-17 source evidence and isolated runtime
 
-Status: **Local Worker+D1 runtime validation passed; immutable Production
-Version-17 source check awaits owner-run read-only Cloudflare API request.**
+Status: **Immutable Production Version-17 source MATCHED; local Worker+D1 runtime smoke PASS; staging/release review PENDING.**
 
 Scope: Storm-Track browser Archive only. No `main`, Android, Production
 Worker, D1/R2, PWA, route, settings, secrets or schedule changes.
+
+## Owner's immutable Version-17 source verification — PASS (2026-10-18)
+
+Owner-supplied metadata-only report `storm-web04b7b-immutable-source/v1`
+was recorded at `2026-10-18T03:37:42.933Z` and returned:
+
+- Script `storm`, deployment `895652c2-06b3-4cd9-afbb-d886cac7f0fe`,
+  immutable version `320a390b-315e-494c-a135-eb242adc340d`,
+  number **17**, **100% traffic**.
+- Version-scoped `include=modules` response had **one** main JavaScript
+  module and **zero** extra modules.
+- `comparison.status=VERSION_MAIN_MATCH_TRAILING_LF_ONLY`.
+  Version module SHA256:
+  `333d9405b1c4322ec09815f1d1bb19c8746933dcc18557904dc8f8c913255c80`.
+  Pinned repository baseline SHA256:
+  `c4de8ea57459d4a72eb58067135ea030f68cf8571517521c6638d89bdaaaace1`.
+  The two contents differ by one terminal line-feed only, which is
+  **not** a byte-identical file match.
+- Pinned Git blob SHA1:
+  `8958e6c13a5ea04cf7bcbbbc261ea4689bd8c131`.
+  Prior unversioned `/content/v2` extracted-module SHA256 matches the
+  **version-specific** module SHA256.
+- `versionSourceStatus=MATCHED`,
+  `fullWorkerArtifactStatus=SINGLE_MODULE_SOURCE_MATCHED`.
+  Three Cloudflare **GET-only** requests; `writesAttempted=0`.
+
+**Decision:** `VERSION_17_IMMUTABLE_SOURCE_GATE=PASS`. This
+validates the checked version's original source identity but **does not**
+authorize deploying the additive PR #119 backend patch or demonstrate
+current/runtime/environment/cron/route parity. The owner report
+explicitly retains `BLOCKED_PENDING_ISOLATED_RUNTIME_AND_RELEASE_REVIEW`.
+Do not commit the private JSON or any raw Cloudflare source/credentials.
 
 ## Discovery: Cloudflare version-specific module retrieval
 
