@@ -1,0 +1,28 @@
+name: WEB-04B-7C v17 compatibility-date isolation (one shot)
+on:
+  push:
+    branches:
+      - feature/web-04b7-worker-cursor-review
+    paths:
+      - .github/workflows/web04b7c-v17-local-once.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Validate version runtime metadata inspector and mock security assertions
+        run: |
+          node --check scripts/audit-web04b7c-runtime-metadata.mjs
+          node --test tests/web04b7c-runtime-metadata.test.mjs
+      - name: Install local-only D1 emulator
+        run: npm install --no-save miniflare@4
+      - name: Replay 748 synthetic advisories at exact deployed compatibility date 2026-08-05
+        run: node tests/web04b7b-miniflare-d1.mjs
+      - name: Verify legacy/cursor route mocks
+        run: node --test tests/web04b7-worker-cursor.test.cjs
