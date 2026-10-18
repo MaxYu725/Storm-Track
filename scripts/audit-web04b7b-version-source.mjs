@@ -87,13 +87,14 @@ async function boundedJson(response) {
 }
 async function auditVersionSource({
   accountId,workerName,versionId,deploymentId,referenceFile,token,
-  fetchImpl=fetch,readFileImpl=readFile,persist=saveSummary
+  fetchImpl=fetch,readFileImpl=readFile,persist=saveSummary,
+  pinnedReferenceBlobSha1=PINNED_GIT_BLOB_SHA1
 }={}) {
   validateOptions({accountId,workerName,versionId,deploymentId,referenceFile,token});
   const reference=await readFileImpl(referenceFile);
   if(!Buffer.isBuffer(reference)||reference.length>MAX_LOCAL||reference.length<1000)
     throw Error('Invalid bounded local source file');
-  if(gitBlobSha1(reference)!==PINNED_GIT_BLOB_SHA1)
+  if(gitBlobSha1(reference)!==pinnedReferenceBlobSha1)
     throw Error('Local reference does not match audited GitHub Worker Git blob; STOP');
   const base=API+'/accounts/'+accountId+'/workers';
   const script=base+'/scripts/'+encodeURIComponent(workerName);
@@ -126,7 +127,7 @@ async function auditVersionSource({
     workerName,accountIdSha256Prefix:sha256(Buffer.from(accountId)).slice(0,16),
     deploymentId,activeVersionId:versionId,activeVersionNumber:17,trafficPercentage:100,
     sourceEndpoint:'/workers/workers/{worker_id}/versions/{version_id}?include=modules',
-    pinnedGithubBlobSha1:PINNED_GIT_BLOB_SHA1,
+    pinnedGithubBlobSha1:pinnedReferenceBlobSha1,
     previousScriptExportSha256:PREVIOUS_EXPORTED_MODULE_SHA256,
     comparison:compare,versionSourceStatus:passed?'MATCHED':'NOT_VERIFIED',
     fullWorkerArtifactStatus:passed?'SINGLE_MODULE_SOURCE_MATCHED':'NOT_VERIFIED',
