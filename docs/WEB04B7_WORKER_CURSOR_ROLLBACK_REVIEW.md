@@ -124,11 +124,13 @@ Additive paginated response:
   agencies; time tie-break is operationally necessary.
 - Worker Version 17's `DB` Binding was confirmed against the exact
   D1 UUID previously audited, using four GET-only Cloudflare requests.
-- That proof does **not** establish the Version-17 source byte
-  association. The Cloudflare script ETag is not proven comparable
-  to either the `/content/v2` multipart or extracted script SHA256.
-  Require version-specific source lineage/reproducible-build evidence
-  before the first upload/deploy to avoid overwriting unknown changes.
+- **Subsequently confirmed:** The owner used Cloudflare's immutable
+  version-scoped `include=modules` GET and matched the sole Version-17
+  module to the pinned repository source except one trailing LF.
+  The module SHA256 also matched the previous `/content/v2` extraction.
+  This proves source lineage without assuming script ETag hash semantics.
+  Runtime parity, binding/cron/route inventory and Staging rollback
+  readiness remain separate release gates.
 
 ## Isolated test evidence — 2026-10-18
 
