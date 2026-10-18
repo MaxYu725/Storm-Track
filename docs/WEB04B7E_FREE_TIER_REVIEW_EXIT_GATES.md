@@ -68,6 +68,19 @@ The wrapper uses a mode binding plus a DB handle; it cannot prove
 the latter's real D1 UUID. Declared `NO` permissions are not a
 substitute for Cloudflare binding inspection.
 
+## Final backend review finding (2026-10-18)
+
+The PR #119 backend diff review identified a specific error-path
+risk: a D1 failure while resolving merged storm IDs occurred
+before the Cursor API's main query error handler, potentially
+falling through to the Worker's generic HTTP 500 handler. The
+candidate `historyAdvisoriesCursor` now catches that alias
+lookup failure and returns the same generic 503 contract used
+for other D1 paging failures. A targeted regression test
+`D1 alias-resolution failure is a generic 503` was added
+without exposing raw SQL/driver errors. **Latest CI pending
+at the time of this document amendment.**
+
 ## Remaining to COMPLETE CODE REVIEW (no production deployment)
 
 1. Complete review of PR #119's candidate `backend/worker.js`
