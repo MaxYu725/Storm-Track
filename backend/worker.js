@@ -1591,7 +1591,150 @@ async function historyStormDetail(stormId, env) {
   return jsonResponse({ version: VERSION, storm, aliases: aliases.results || [], latestAdvisories: latest.results || [] });
 }
 
+
+/*
+ * WEB-04B-7 review-only public archive cursor (not authorized for deployment).
+ * The legacy advisory handler remains byte-for-byte compatible unless the
+ * client explicitly opts in with paging=cursor. No D1 migrations needed.
+ */
+const HISTORY_CURSOR_CONTRACT = 'storm-history-advisory-cursor/v1';
+const HISTORY_CURSOR_ORDER = 'issued_at_desc,id_desc';
+const HISTORY_CURSOR_MAX_BYTES = 2048;
+const HISTORY_CURSOR_TIME = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
+const HISTORY_CURSOR_ID = /^[\x21-\x7e]{1,512}$/;
+
+function historyCursorUtcTime(value) {
+  if (typeof value !== 'string' || !HISTORY_CURSOR_TIME.test(value)) throw new Error('invalid-time');
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) throw new Error('invalid-time');
+  return value;
+}
+function historyCursorId(value) {
+  if (typeof value !== 'string' || !HISTORY_CURSOR_ID.test(value)) throw new Error('invalid-id');
+  return value;
+}
+function historyCursorContext(stormId, incoming) {
+  const params = incoming.searchParams;
+  if (params.getAll('paging').length !== 1 || params.get('paging') !== 'cursor') {
+    throw new Error('bad-mode');
+  }
+  for (const key of params.keys()) {
+    if (!['paging', 'limit', 'agency', 'cursor'].includes(key) || params.getAll(key).length !== 1) {
+      throw new Error('bad-parameter');
+    }
+  }
+  if (typeof stormId !== 'string' || !stormId.length || stormId.length > 256) throw new Error('bad-storm');
+  const limitText = params.get('limit');
+  const limit = limitText == null ? 50 : /^\d{1,3}$/.test(limitText) ? Number(limitText) : NaN;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) throw new Error('bad-limit');
+  const rawAgency = params.get('agency');
+  const agency = rawAgency == null ? null : rawAgency.toUpperCase();
+  if (agency !== null && !['HKO', 'CMA', 'JMA', 'CWA'].includes(agency)) throw new Error('bad-agency');
+  return { stormId, agency, limit };
+}
+function historyCursorData(ctx, issuedAt, id) {
+  return { v: 1, s: ctx.stormId, a: ctx.agency, l: ctx.limit,
+    t: historyCursorUtcTime(issuedAt), i: historyCursorId(id) };
+}
+function historyCursorEncode(ctx, last) {
+  const json = JSON.stringify(historyCursorData(ctx, last.issued_at, last.id));
+  const bytes = new TextEncoder().encode(json);
+  let latin = '';
+  for (const byte of bytes) latin += String.fromCharCode(byte);
+  const encoded = 'v1.' + btoa(latin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  if (encoded.length > HISTORY_CURSOR_MAX_BYTES) throw new Error('oversized-cursor');
+  return encoded;
+}
+function historyCursorDecode(token, ctx) {
+  if (typeof token !== 'string' || token.length > HISTORY_CURSOR_MAX_BYTES ||
+      !/^v1\.[A-Za-z0-9_-]+$/.test(token) || token.length % 4 === 0) {
+    // Full canonical comparison after decoding remains authoritative.
+    if (typeof token !== 'string' || !/^v1\.[A-Za-z0-9_-]+$/.test(token) ||
+        token.length > HISTORY_CURSOR_MAX_BYTES) throw new Error('bad-cursor');
+  }
+  let body;
+  try {
+    let base64 = token.slice(3).replace(/-/g, '+').replace(/_/g, '/');
+    base64 += '='.repeat((4 - base64.length % 4) % 4);
+    const ascii = atob(base64);
+    const bytes = Uint8Array.from(ascii, item => item.charCodeAt(0));
+    body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  } catch { throw new Error('bad-cursor'); }
+  if (!body || typeof body !== 'object' || Array.isArray(body) ||
+      Object.keys(body).sort().join(',') !== 'a,i,l,s,t,v' ||
+      body.v !== 1 || body.s !== ctx.stormId ||
+      body.a !== ctx.agency || body.l !== ctx.limit) throw new Error('cursor-context');
+  const row = { issued_at: historyCursorUtcTime(body.t), id: historyCursorId(body.i) };
+  if (historyCursorEncode(ctx, row) !== token) throw new Error('noncanonical-cursor');
+  return row;
+}
+function historyCursorOlder(previous, current) {
+  return current.issued_at < previous.issued_at ||
+    (current.issued_at === previous.issued_at && current.id < previous.id);
+}
+async function historyAdvisoriesCursor(stormId, incoming, env) {
+  // Resolve merged-storm aliases before binding the cursor to an identity.
+  stormId = await resolveCanonicalStormId(env.DB, stormId);
+  let ctx, cursor;
+  try {
+    ctx = historyCursorContext(stormId, incoming);
+    const raw = incoming.searchParams.get('cursor');
+    cursor = raw == null ? null : historyCursorDecode(raw, ctx);
+  } catch {
+    return jsonResponse({ error: 'Invalid advisory pagination request',
+      contract: HISTORY_CURSOR_CONTRACT }, 400);
+  }
+
+  const where = ["storm_id=?", "ingest_status='complete'"];
+  const values = [ctx.stormId];
+  if (ctx.agency) { where.push('agency=?'); values.push(ctx.agency); }
+  if (cursor) {
+    where.push('(issued_at < ? OR (issued_at = ? AND id < ?))');
+    values.push(cursor.issued_at, cursor.issued_at, cursor.id);
+  }
+  values.push(ctx.limit + 1);
+  const sql = 'SELECT id, storm_id, agency, issued_at, fetched_at, source_code, source_url, ' +
+    'raw_object_key, parser_version, point_count FROM advisories WHERE ' +
+    where.join(' AND ') + ' ORDER BY issued_at DESC, id DESC LIMIT ?';
+  try {
+    const result = await env.DB.prepare(sql).bind(...values).all();
+    const rows = result?.results;
+    if (!Array.isArray(rows) || rows.length > ctx.limit + 1) throw new Error('bad-db-page');
+    const used = new Set();
+    for (let i = 0; i < rows.length; i += 1) {
+      const row = rows[i];
+      if (!row || historyCursorId(row.id) == null ||
+          historyCursorUtcTime(row.issued_at) == null ||
+          row.storm_id !== ctx.stormId || used.has(row.id) ||
+          !['HKO', 'CMA', 'JMA', 'CWA'].includes(row.agency) ||
+          (ctx.agency && row.agency !== ctx.agency) ||
+          (cursor && !historyCursorOlder(cursor, row)) ||
+          (i > 0 && !historyCursorOlder(rows[i-1], row))) {
+        throw new Error('bad-db-row');
+      }
+      used.add(row.id);
+    }
+    const advisories = rows.slice(0, ctx.limit);
+    const hasMore = rows.length > ctx.limit;
+    const nextCursor = hasMore ? historyCursorEncode(ctx, advisories[advisories.length - 1]) : null;
+    return jsonResponse({
+      version: VERSION, stormId: ctx.stormId, advisories,
+      pagination: {
+        contract: HISTORY_CURSOR_CONTRACT, order: HISTORY_CURSOR_ORDER,
+        limit: ctx.limit, count: advisories.length, hasMore, nextCursor
+      }
+    });
+  } catch {
+    // Fail closed and avoid leaking D1 errors, query fragments or private data.
+    return jsonResponse({ error: 'Historical advisory paging temporarily unavailable',
+      contract: HISTORY_CURSOR_CONTRACT }, 503);
+  }
+}
+
 async function historyAdvisories(stormId, incoming, env) {
+  if (incoming.searchParams.has('paging') || incoming.searchParams.has('cursor')) {
+    return historyAdvisoriesCursor(stormId, incoming, env);
+  }
   stormId = await resolveCanonicalStormId(env.DB, stormId);
   const agency = String(incoming.searchParams.get('agency') || '').toUpperCase();
   const limit = clampInteger(incoming.searchParams.get('limit'), 1, 200, 50);
