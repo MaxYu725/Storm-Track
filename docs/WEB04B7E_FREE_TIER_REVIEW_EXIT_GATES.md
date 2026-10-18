@@ -75,11 +75,13 @@ substitute for Cloudflare binding inspection.
    stable ordering, invalid input and no accidental fallback to
    collector/admin code. Document any unresolved security or
    backwards compatibility regression.
-2. Complete PR #118 ↔ PR #119 API-contract alignment. At present
-   PR #118 is **analysis/scripts/tests/readiness only**, not a
-   deployed web Archive UI change. Its readiness probe must
-   explicitly request `?paging=cursor` before claiming cursor
-   support. Do not report full Archive UI integration as done.
+2. **Updated in separate Draft PR #118:** the read-only production
+   audit probe now explicitly requests `?paging=cursor` on the first
+   and second advisory pages; synthetic tests assert the mode, limit
+   and safe legacy fallback. PR #118 is still
+   **analysis/scripts/tests/readiness only**, not a deployed web
+   Archive UI change. Do not report full Archive UI integration as done.
+   Full CI for the new PR #118 head is still pending until verified.
 3. Document the optional missing `compatibility_flags` field as a
    **known metadata uncertainty**, not a malformed deployment.
    At matching live compatibility date, local workerd simulations
