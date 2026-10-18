@@ -42,6 +42,8 @@ test('probe selects a high-count storm then validates two cursor pages with GET 
       {id:'LOW',advisory_count:3},{id:STORM,advisory_count:235}
     ]});
     assert.match(url.pathname,/\/storms\/STC-2026-TEST\/advisories$/);
+    assert.equal(url.searchParams.get('paging'),'cursor');
+    assert.equal(url.searchParams.get('limit'),'2');
     if(!url.searchParams.has('cursor'))return response(page([row('Z',0),row('Y',1)],true,'opaque-cursor'));
     assert.equal(url.searchParams.get('cursor'),'opaque-cursor');
     return response(page([row('X',2)],false,null));
@@ -63,6 +65,8 @@ test('legacy API is recognized without ever guessing a cursor',async()=>{
   const fetchImpl=async (_url,opts)=>{
     calls++;
     assert.equal(opts.method,'GET');
+    const url=new URL(_url);
+    assert.equal(url.searchParams.get('paging'),'cursor');
     return response({stormId:STORM,advisories:[row('A',0),row('B',1)]});
   };
   const result=await probeArchiveAdvisoryApi({stormId:STORM,fetchImpl});
