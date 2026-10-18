@@ -166,8 +166,8 @@ local, ephemeral D1 SQLite instance.
 
 ## Remaining release gates
 
-1. Owner-run immutable Version-17 module report `MATCHED`.
-2. Recheck the exact *live* version's compatibility_date,
+1. **PASS:** Owner-run immutable Version-17 module report returned `MATCHED`.
+2. **PENDING:** Recheck the exact *live* version's compatibility_date,
    compatibility_flags, bindings, cron schedule, D1 and R2 identity,
    and ascertain any additional modules/build artefacts.
 3. Rebase/update Draft PR #119 against the definitive source only
