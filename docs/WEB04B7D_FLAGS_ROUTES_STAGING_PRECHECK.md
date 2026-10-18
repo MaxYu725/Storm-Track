@@ -188,6 +188,75 @@ https://github.com/MaxYu725/Storm-Track/actions/runs/39096553971
   `ROUTE_COVERAGE`, `STAGING_ISOLATION` or `ROLLBACK_REHEARSAL`
   release gates without new owner-provided evidence.
 
+## Additional source-level Staging isolation guard (proposed, un-deployed)
+
+The candidate `backend/worker.js` includes an actual
+`scheduled()` collector and write-capable `POST /api/admin/collect`
+and `POST /api/admin/repair-identities` routes. A declaration of
+zero Cron Triggers does **not** remove these capabilities.
+
+For future review, `backend/web04b7-staging-readonly.js` is a
+**separate proposed entrypoint**, not deployed in Production or
+Staging. It imports the candidate Worker logic but exports **only
+`fetch()`**, never `scheduled()`.
+
+The proposed wrapper:
+
+- Accepts exactly two bindings: `DB` and
+  `STAGING_REVIEW_MODE=storm-web04b7d-synthetic-readonly`. Any
+  additional bindings, including `RAW_BUCKET`,
+  `ADMIN_TOKEN`, `CWA_AUTHORIZATION` or unknown values,
+  cause HTTP 503 before a database query.
+- Allows only `GET /api/history/storms/{id}/advisories` and a
+  minimal `GET /__staging__/health`. Rejects every mutating
+  HTTP method and all admin, repair, proxy, collector, diagnostics
+  and unrelated routes.
+- Delegates allowed history GETs to the reviewed candidate Worker
+  handler. This restricts exposed entrypoints but cannot establish
+  which physical D1 UUID the `DB` object targets or the Worker
+  preview/host name. Those must be confirmed against separately
+  created disposable resources.
+- Does not include `wrangler deploy`, a `wrangler.toml`
+  production binding, Cron, a Zone Route or any secret.
+- Requires `tests/web04b7d-staging-readonly.test.cjs` to
+  verify the export surface, forbidden paths/bindings and allowed
+  SELECT-only synthetic history. Passing mocked tests does not
+  prove a remote environment is isolated.
+- The underlying candidate `backend/worker.js` remains unchanged;
+  no consumer or production route points to this wrapper.
+
+### Staging rollback rehearsal: exact prerequisites
+
+A rollback rehearsal is **not conducted** in this phase. For a
+future specifically approved staging-only test, an operator must
+first capture the immutable staging version/deployment identifiers,
+the staging `DB` UUID, the absence of R2/secret bindings, verified
+zero Cron, no Zone Routes or Custom Domains, and the synthetic
+first/last-page baseline. Deploy only the separate, gated staging
+entrypoint using isolated resources and no production access.
+After a future replacement, restore the known-good immutable
+staging version, recheck the same isolated D1 UUID and zero
+Cron/routes, then retest legacy response shape and keyset
+ordering; never roll back by changing Production version or
+binding. The rehearsal must be observable and approved before a
+Production deployment can be considered.
+
+### Metadata tooling limits and conservative statuses
+
+- Cloudflare's Worker Beta version GET defines
+  `compatibility_flags` as **optional**. A reported explicit
+  flags array without either version-scoped compatibility date
+  proving the pinned date is **not a release PASS**.
+- When Zone Routes API output lacks a trustworthy
+  `result_info.total_count`, the tool now labels route-list
+  completeness **NOT_CONFIRMED**. If a list reaches the
+  bounded 500-item threshold, completeness is likewise
+  unconfirmed. A returned list must never be silently called a
+  complete account-wide inventory.
+- Even complete results cover only owner-specified Zone IDs.
+  Custom Domains, other Zones and workers.dev configuration
+  require separate review.
+
 ## No-go gates before any Staging deployment
 
 - Real Zone Routes scope (for relevant Zones) and Custom Domain
