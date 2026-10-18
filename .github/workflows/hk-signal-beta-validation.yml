@@ -19,6 +19,7 @@ on:
       - scripts/audit-web04b-d1-readonly.mjs
       - scripts/web04b5-sqlite-index-fixture.py
       - scripts/audit-web04b5-full-history.mjs
+      - scripts/audit-web04b6-worker-db-binding.mjs
       - scripts/reconcile-beta-case-identities.mjs
       - scripts/validate-consensus-track-observation-ui.mjs
       - scripts/build-hk-situation-analysis-shadow-packets.mjs
@@ -69,6 +70,7 @@ jobs:
           node --check scripts/audit-web04b-worker-provenance.mjs
           node --check scripts/audit-web04b-d1-readonly.mjs
           node --check scripts/audit-web04b5-full-history.mjs
+          node --check scripts/audit-web04b6-worker-db-binding.mjs
           node --check scripts/reconcile-beta-case-identities.mjs
           node --check scripts/validate-consensus-track-observation-ui.mjs
           node --check scripts/build-hk-situation-analysis-shadow-packets.mjs
@@ -143,6 +145,7 @@ jobs:
             tests/web04b-d1-readonly.test.mjs
             tests/web04b-keyset-proposal.test.cjs
             tests/web04b5-full-history.test.mjs
+            tests/web04b6-worker-db-binding.test.mjs
             tests/storm-analysis-core.test.cjs
             tests/consensus-track-dateline.test.cjs
             tests/hk-impact-engine.test.cjs
