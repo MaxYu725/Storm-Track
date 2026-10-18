@@ -54,7 +54,8 @@ function compareFlagEvidence(scriptVersion,betaVersion){
   let status='NOT_VERIFIED';
   if(inconsistent)status='CONFLICTING_VERSION_FIELDS';
   else if(first.state==='MALFORMED'||second.state==='MALFORMED')status='MALFORMED_VERSION_FIELDS';
-  else if(explicit)status='VERSION_EXPLICIT_FLAGS_REPORTED';
+  else if(explicit)status=(firstDate===EXPECTED_DATE || betaDate===EXPECTED_DATE)
+    ? 'VERSION_EXPLICIT_FLAGS_REPORTED' : 'VERSION_FLAGS_DATE_NOT_VERIFIED';
   return {
     status,scriptVersion: first, immutableBetaVersion:second,
     scriptVersionDate:firstDate,betaVersionDate:betaDate,
@@ -81,13 +82,17 @@ function summarizeRoutes(zoneId,body,scriptName){
     }
   }
   const meta=body.result_info;
+  let completeness='NOT_CONFIRMED_NO_PAGINATION_METADATA';
   if(meta!=null){
     const total=Number(meta.total_count??routes.length);
-    if(!Number.isSafeInteger(total)||total<routes.length||total>routes.length)
+    if(!Number.isSafeInteger(total)||total!==routes.length)
       throw Error('Truncated or paginated Worker route list; manual review');
+    completeness='TOTAL_COUNT_CONFIRMED';
   }
+  if(routes.length===500)completeness='NOT_CONFIRMED_RESULT_SIZE_AT_GUARD';
   return {
     zoneIdSha256Prefix:prefix(zoneId),routesCount:routes.length,
+    completeness,
     matchedScriptRouteCount:matched.length,
     matchedRoutePatterns:matched.slice(0,16),
     matchLimitExceeded:matched.length>16,
@@ -154,7 +159,10 @@ async function inspect7D({accountId,scriptName='storm',zoneIds=[],
     deploymentId:ACTIVE_DEPLOYMENT,versionId:ACTIVE_VERSION,
     flags,
     zonesChecked:zoneIds.length,zoneRoutes:routes,
-    routesStatus:zoneIds.length?'CHECKED_SUPPLIED_ZONES_ONLY':'NOT_CHECKED_NO_ZONE_IDS',
+    routesStatus:zoneIds.length
+      ?routes.every(r=>r.completeness==='TOTAL_COUNT_CONFIRMED')
+        ?'CHECKED_SUPPLIED_ZONES_WITH_TOTALS':'CHECKED_SUPPLIED_ZONES_COMPLETENESS_UNVERIFIED'
+      :'NOT_CHECKED_NO_ZONE_IDS',
     customDomainsStatus:'NOT_CHECKED_REQUIRES_SEPARATE_REVIEW',
     allZoneCoverageStatus:'NOT_VERIFIED_ONLY_OWNER_SUPPLIED_ZONES',
     stagingStatus:'NOT_DEPLOYED',
