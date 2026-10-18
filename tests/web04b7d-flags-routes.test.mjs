@@ -23,7 +23,7 @@ function mock({scriptFlags=undefined,betaFlags=[],drift=false,zoneError=false,
     assert.equal(opts.method,'GET');
     assert.equal(opts.redirect,'error');
     assert.equal(opts.headers.Authorization,
-      url.includes('/zones/')?ROUTES_TOKEN:WORKER_TOKEN);
+      'Bearer '+(url.includes('/zones/')?ROUTES_TOKEN:WORKER_TOKEN));
     if(url.endsWith('/deployments?per_page=1')){
       const n=calls.filter(x=>x.url.endsWith('/deployments?per_page=1')).length;
       return reply({deployments:[{
