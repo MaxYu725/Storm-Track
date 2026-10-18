@@ -1647,11 +1647,8 @@ function historyCursorEncode(ctx, last) {
 }
 function historyCursorDecode(token, ctx) {
   if (typeof token !== 'string' || token.length > HISTORY_CURSOR_MAX_BYTES ||
-      !/^v1\.[A-Za-z0-9_-]+$/.test(token) || token.length % 4 === 0) {
-    // Full canonical comparison after decoding remains authoritative.
-    if (typeof token !== 'string' || !/^v1\.[A-Za-z0-9_-]+$/.test(token) ||
-        token.length > HISTORY_CURSOR_MAX_BYTES) throw new Error('bad-cursor');
-  }
+      !/^v1\\.[A-Za-z0-9_-]+$/.test(token) ||
+      (token.length - 3) % 4 === 1) throw new Error('bad-cursor');
   let body;
   try {
     let base64 = token.slice(3).replace(/-/g, '+').replace(/_/g, '/');
