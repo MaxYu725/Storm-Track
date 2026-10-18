@@ -58,14 +58,14 @@
   },
   "prospective": {
     "caseIdentitySchemaVersion": "storm-case-identity/v1",
-    "reconciledThrough": "2026-10-18T21:53:55.377Z",
+    "reconciledThrough": "2026-10-18T23:45:58.661Z",
     "trustedRecorderSchema": "beta-prospective-recorder/v2",
-    "trustedRecordCount": 4755,
-    "healthRecordCount": 4733,
-    "latestHealthCapturedAt": "2026-10-18T21:53:55.377Z",
+    "trustedRecordCount": 4756,
+    "healthRecordCount": 4734,
+    "latestHealthCapturedAt": "2026-10-18T23:45:58.661Z",
     "recorderSchemaCounts": {
       "beta-prospective-recorder/v1": 1,
-      "beta-prospective-recorder/v2": 4755
+      "beta-prospective-recorder/v2": 4756
     },
     "excludedRecordCount": 1,
     "excludedAmbiguousCaseCaptureCount": 8,
@@ -143,8 +143,8 @@
         ]
       }
     ],
-    "coverageRecordCount": 4873,
-    "coverageGapCount": 75,
+    "coverageRecordCount": 4874,
+    "coverageGapCount": 76,
     "coverageGaps": [
       {
         "from": "2026-08-22T02:23:35.353Z",
@@ -520,16 +520,21 @@
         "from": "2026-10-18T19:41:14.832Z",
         "to": "2026-10-18T21:53:55.377Z",
         "gapMinutes": 132.67575
+      },
+      {
+        "from": "2026-10-18T21:53:55.377Z",
+        "to": "2026-10-18T23:45:58.661Z",
+        "gapMinutes": 112.05473333333333
       }
     ],
     "coverageMaxGapMinutes": 60,
     "caseCount": 15
   },
   "hkoTruth": {
-    "latestRetrievedAt": "2026-10-18T21:40:45.443Z",
+    "latestRetrievedAt": "2026-10-18T23:44:06.614Z",
     "latestTruthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
-    "healthRecordCount": 2172,
-    "latestHealthRetrievedAt": "2026-10-18T21:40:45.443Z",
+    "healthRecordCount": 2173,
+    "latestHealthRetrievedAt": "2026-10-18T23:44:06.614Z",
     "eventCount": 4,
     "initialTc1IssueCount": 1,
     "signalEventCounts": {
@@ -541,11 +546,67 @@
   "status": "evaluated",
   "awaiting": {
     "status": "monitoring-higher-signals",
-    "activeHkoCaseIds": [],
-    "pendingSignalsByCase": {},
-    "latestPredictions": [],
+    "activeHkoCaseIds": [
+      "STC-2026-JMA-TC2636"
+    ],
+    "pendingSignalsByCase": {
+      "STC-2026-JMA-TC2636": [
+        "T1",
+        "T3",
+        "T8"
+      ]
+    },
+    "latestPredictions": [
+      {
+        "caseId": "STC-2026-JMA-TC2636",
+        "capturedAt": "2026-10-18T23:45:58.661Z",
+        "captureFingerprint": "a742f508a0f566b320790a3eb02c2e9ddd2c0ace37602edc779572c0a69bbe78",
+        "rawGroupKey": "CHAMPI",
+        "displayName": "薔琵 (CHAMPI)",
+        "likelihood": "unlikely",
+        "estimatedWindow": null,
+        "signals": {
+          "T1": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.28435800902899533,
+            "confidenceIndex": 0.37604839861784745,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T3": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.1815890984682622,
+            "confidenceIndex": 0.3196411388251703,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T8": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.16122732487481825,
+            "confidenceIndex": 0.30459920288045644,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          }
+        },
+        "sourceAgencies": [
+          "CMA",
+          "CWA",
+          "HKO",
+          "JMA"
+        ],
+        "engineVersions": {
+          "ui": "frontend-hk-threat-ui/v3",
+          "snapshot": "storm-analysis-snapshot/v1",
+          "impact": "hk-impact/v1",
+          "signalInputs": "hko-signal-risk-inputs/v1",
+          "threatAssessment": "hk-threat-assessment/v1",
+          "basicForecast": "basic-hk-signal-forecast/v1",
+          "shadowForecastV2": "hk-signal-shadow-v2/0.5"
+        }
+      }
+    ],
     "latestHkoTruth": {
-      "retrievedAt": "2026-10-18T21:40:45.443Z",
+      "retrievedAt": "2026-10-18T23:44:06.614Z",
       "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
       "truth": {
         "warningStatementCode": "WTCSGNL",
@@ -3682,8 +3743,8 @@
     }
   ],
   "closeoutBlocked": [],
-  "closeoutCheckedAt": "2026-10-18T22:01:15.493Z",
-  "generatedAt": "2026-10-18T22:01:15.929Z",
+  "closeoutCheckedAt": "2026-10-18T23:50:34.959Z",
+  "generatedAt": "2026-10-18T23:50:35.477Z",
   "sourceCommit": "f6eb9b42677cfa185914fb268b68ec2d0bc194f5",
-  "evaluationFingerprint": "000123f523004dbb474b4274e81d228f98b0701dc96da5ec6cc1bd2781c5eadf"
+  "evaluationFingerprint": "5366460a0a5f0b7870b0095c3b1c3cd525c8cbc2b491896eb9fecf0997a50e6d"
 }
