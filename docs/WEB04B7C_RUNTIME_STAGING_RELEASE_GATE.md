@@ -1,7 +1,6 @@
 # WEB-04B-7C — Production runtime parity and staging/rollback release gate
 
-**State: immutable Version-17 source gate PASS; actual runtime metadata
-read-only audit PENDING; isolated Staging deployment NOT APPROVED or executed.**
+**State: immutable Version-17 source gate PASS; owner-run runtime metadata GET audit COMPLETE with one unresolved optional Flags field; matched-date Miniflare/D1 PASS; Staging deployment NOT APPROVED or executed.**
 
 Scope: Storm-Track **web Archive historical advisory cursor only**.
 No Production Worker, D1, R2, routes, scheduled jobs, PWA, Android or
@@ -28,6 +27,74 @@ Local Miniflare + ephemeral D1 replay of **748 synthetic**
 advisories in 4 pages, with no duplicated IDs, passed. This
 is NOT production latency, not a full Worker collector/cron test,
 and not a real historical D1 replay.
+
+## Owner's production Version-17 runtime audit — 2026-10-18
+
+The owner supplied the redacted `storm-web04b7c-runtime-metadata/v1`
+report recorded `2026-10-18T03:56:05.296Z`. **Report metadata only**
+is recorded below; no private audit JSON, account ID, database UUID, R2
+bucket name or secret values are committed.
+
+- Worker `storm`, pinned deployment `895652c2-06b3-4cd9-afbb-d886cac7f0fe`,
+  immutable Version 17 `320a390b-315e-494c-a135-eb242adc340d`,
+  **100%** traffic, previously proven one-module source identity unchanged.
+- Version-17 **D1 DB binding MATCHED** previously audited database UUID.
+  Version-17 **R2 RAW_BUCKET MATCHED** the expected locally supplied
+  bucket name and `r2_bucket` type. Current settings match both as
+  independent supporting evidence.
+- `ADMIN_TOKEN` and `CWA_AUTHORIZATION` are present as secret-text
+  bindings in Version 17 and current settings; this does not test the
+  secret values or live operation.
+- **Immutable Version 17 compatibility date: 2026-08-05.**
+  Current script settings also report `2026-08-05`.
+- **Important unresolved:** Version-17 `compatibilityFlags.state =
+  UNKNOWN_OR_MALFORMED` and `versionRuntimeMetadata = INCOMPLETE`.
+  In contrast current script settings explicitly report
+  `compatibilityFlags: []` (`PRESENT`). These do **not** prove
+  version-level empty flags. The original v1 audit tool combined a
+  *missing/omitted API field* and an *invalidly typed API field* into
+  one status; the report cannot distinguish which occurred.
+- Cloudflare's version GET documents `compatibility_flags` as
+  **optional**. Missing is not automatically a faulty Worker. The
+  audit script has been updated to distinguish `NOT_RETURNED` from
+  `MALFORMED` on any future read; it **does not retroactively
+  reinterpret this report**. Do not change production flags or widen
+  API permissions solely to satisfy this optional field.
+- Version-17 exported handlers: `fetch` and `scheduled`.
+  One current Cron Trigger: `*/15 * * * *`. This is configuration
+  evidence only, not proof scheduled collection ran successfully.
+- `workers.dev: enabled`; `preview URLs: disabled`.
+  Logpush false; observability enabled. Zone Routes remain
+  `NOT_CHECKED_REQUIRES_ZONE_ID_AND_WORKERS_ROUTES_READ`.
+- Cloudflare audit performed **7 GET** requests, 0 writes, no
+  Production mutations. Report release gate remains
+  `BLOCKED_PENDING_STAGING_ISOLATION_AND_ROLLBACK_APPROVAL`.
+
+### Exact compatibility-date local runtime rerun — PASS
+
+The prior local workerd/Miniflare smoke used 2026-08-01. After the
+owner's report, `tests/web04b7b-miniflare-d1.mjs` was updated to
+**2026-08-05**, the exact immutable Version-17 compatibility date.
+
+- https://github.com/MaxYu725/Storm-Track/actions/runs/39095527275
+- All 8 revised read-only runtime auditor mock tests passed, including
+  distinguishing optional missing flags from malformed and explicit
+  empty arrays.
+- Real local workerd + disposable D1 SQLite replayed 748 synthetic
+  advisories in **4 pages** with no duplicated IDs; canonical stable
+  ordering, storm separation, agency filtering, invalid Cursor rejection
+  and legacy response were verified.
+- All 7 Worker API route regression mocks passed.
+- Still **not** a live Cloudflare staging run, runtime-flag proof,
+  collector functional test or production performance/rollback exercise.
+  No Cloudflare API credentials or Production D1/R2 resources were used.
+
+**Gate record:** `SOURCE=PASS`; `D1_BINDING=PASS`;
+`R2_BINDING=PASS`; `COMPAT_DATE=PASS`;
+`VERSION_EXPLICIT_FLAGS=NOT_VERIFIED`;
+`MATCHED_DATE_LOCAL_D1=PASS`; `CRON_CONFIGURATION=REPORTED`;
+`ROUTES=NOT_VERIFIED`; `ISOLATED_STAGING=NOT_PERFORMED`;
+`RELEASE=BLOCKED`.
 
 ## Separate Worker runtime metadata preflight (read-only)
 
