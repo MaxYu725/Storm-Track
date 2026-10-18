@@ -1,7 +1,6 @@
 # WEB-04B-7D — Version-17 flags, Zone Routes and Staging isolation (review only)
 
-**State: tools written and offline tests required; owner-run scoped Cloudflare
-GET evidence pending. Production and Staging deployment BOTH BLOCKED.**
+**State: 20/20 mock/offline regression tests PASSED; owner-run scoped Cloudflare GET evidence PENDING. Production and Staging deployment BOTH BLOCKED.**
 
 Scope: Storm Track web Archive historical advisories only. Keep
 PR #118 and PR #119 Draft. This task **does not deploy or create** a Worker,
@@ -166,6 +165,28 @@ deployment review are essential **before** any remote test.
 The validator asserts only **planned identifiers/policies**,
 never Cloudflare resource existence, runtime enforcement or
 rollback readiness.
+
+## Verified isolated CI evidence (2026-10-18)
+
+The final one-shot workflow succeeded:
+https://github.com/MaxYu725/Storm-Track/actions/runs/39096553971
+
+- 7/7 synthetic Worker version flags + Zone Routes API tests passed;
+  confirms source-specific flags, omitted values, route scoping, masked
+  patterns, permission errors and deployment-drift handling.
+- 6/6 offline **declaration-only** Staging plan tests passed;
+  production/staging Worker/D1/R2 collisions, Cron/DNS/custom routes,
+  production secrets and collection modes are rejected.
+- 7/7 existing actual Worker `fetch()` route + mocked D1 regressions
+  passed. No remote Cloudflare API request, production data, admin
+  token or deployment actions were used.
+- First two failed one-shot attempts were due to test assumptions
+  (missing `Bearer` prefix in a header assertion, and a default
+  mock `[]` overriding intended optional-field absence); both
+  were corrected. The green run is the accepted CI evidence.
+- These results **do not** clear `VERSION_FLAGS`,
+  `ROUTE_COVERAGE`, `STAGING_ISOLATION` or `ROLLBACK_REHEARSAL`
+  release gates without new owner-provided evidence.
 
 ## No-go gates before any Staging deployment
 
