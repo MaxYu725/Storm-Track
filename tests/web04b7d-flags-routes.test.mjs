@@ -131,3 +131,23 @@ test('CLI only accepts explicit read-only identifiers',()=>{
   assert.throws(()=>active({deployments:[{id:DEPLOYMENT,
     versions:[{version_id:VERSION,percentage:50}]}]}),/changed/);
 });
+
+test('explicit flags without a verified pinned compatibility date cannot clear the gate',()=>{
+  const sameId='320a390b-315e-494c-a135-eb242adc340d';
+  const v=compareFlagEvidence({
+    id:sameId,number:17,resources:{script_runtime:{
+      compatibility_flags:['nodejs_compat']
+    }}
+  },{id:sameId,number:17,compatibility_flags:['nodejs_compat']});
+  assert.equal(v.status,'VERSION_FLAGS_DATE_NOT_VERIFIED');
+  assert.equal(v.dateStatus,'NOT_VERIFIED');
+  assert.equal(v.effectiveFlags,null);
+});
+test('route count is explicitly incomplete when Cloudflare omits pagination metadata',()=>{
+  const zone='abcdefabcdefabcdefabcdefabcdefab';
+  const local=summarizeRoutes(zone,{result:[{id:'X',pattern:'x.example/*',script:'storm'}]},'storm');
+  assert.equal(local.completeness,'NOT_CONFIRMED_NO_PAGINATION_METADATA');
+  const withMeta=summarizeRoutes(zone,{result:[{id:'X',pattern:'x.example/*',script:'storm'}],
+    result_info:{total_count:1}},'storm');
+  assert.equal(withMeta.completeness,'TOTAL_COUNT_CONFIRMED');
+});
