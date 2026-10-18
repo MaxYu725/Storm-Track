@@ -12,6 +12,8 @@ const compatibilityDate='2026-08-05';
 const mf=new Miniflare({
   scriptPath:WORKER_ENTRY,
   modules:true,
+  // Included backend/worker.js is ESM even without package.json "type": "module".
+  modulesRules:[{type:'ESModule',include:['**/*.js']}],
   compatibilityDate,
   d1Databases:{DB:STAGING_DB},
   bindings:{STAGING_REVIEW_MODE:MODE}
