@@ -5,9 +5,27 @@
 This is an independent backend review proposal based on `main:backend/worker.js`
 (version constant `3.3.0-alpha.4`). Previous owner-exported
 `/content/v2` source matched that repository file except its final LF,
-but independent proof tying the downloaded source bytes to the exact
-100%-traffic Cloudflare Version 17 is still **NOT_VERIFIED**.
-That missing proof is a **hard block on merging or deploying this PR**.
+and the owner's version-specific immutable module audit has now verified
+that the exact 100%-traffic Cloudflare Version 17 contains the same single
+JavaScript module, differing only by a terminal LF. **SOURCE GATE: PASS**.
+Deployment remains **BLOCKED** pending runtime settings, routing, staging
+and rollback readiness review, and separate owner authorization.
+
+## Version-17 source gate resolved — 2026-10-18
+
+The owner independently ran the immutable `include=modules` Worker
+version API audit against version 17. The one-module result matches the
+pinned GitHub Worker source apart from exactly one terminal line-feed.
+The module SHA256 exactly matches the prior unversioned Worker export.
+The 100%-traffic deployment ID and version ID are unchanged; 3
+GET-only Cloudflare requests and zero writes were reported.
+
+`SOURCE_VERSION_MATCH=PASS`, `BACKEND_PATCH=REVIEW_ONLY`,
+`RUNTIME_CONFIG_PARITY=PENDING`, `STAGING_DEPLOYMENT=PENDING`,
+`PRODUCTION_DEPLOYMENT=BLOCKED`.
+
+This finding updates source provenance only; no changes are made to
+the original immutable deployed version, bindings or Worker runtime.
 
 ## Scope and explicit non-goals
 
@@ -193,6 +211,6 @@ check:
 - Keep the web frontend on legacy mode until the confirmed live
   backend contract is probed and approved.
 
-**Release status:** SOURCE_VERSION_MATCH=BLOCKED;
+**Release status:** SOURCE_VERSION_MATCH=PASS; RUNTIME_PARITY=PENDING; STAGING_RELEASE=BLOCKED;
 LEGACY_COMPATIBILITY_TEST=PASS_SYNTHETIC;
 BACKEND_DRAFT_ONLY=true; PRODUCTION_DEPLOYMENT=false.
