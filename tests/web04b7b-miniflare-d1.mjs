@@ -25,21 +25,16 @@ async function fetchArchive(path){
 }
 try{
   const db=await mf.getD1Database('DB');
-  await db.exec(`CREATE TABLE storms(id TEXT PRIMARY KEY,merged_into_id TEXT);
-CREATE TABLE advisories(
-  id TEXT PRIMARY KEY,
-  storm_id TEXT NOT NULL,
-  agency TEXT NOT NULL,
-  issued_at TEXT NOT NULL,
-  fetched_at TEXT,
-  source_code TEXT,
-  source_url TEXT,
-  raw_object_key TEXT,
-  parser_version TEXT,
-  point_count INTEGER,
-  ingest_status TEXT NOT NULL
-);
-CREATE INDEX idx_advisories_storm_time ON advisories(storm_id, issued_at DESC);`);
+  // Cloudflare D1 exec() splits input by lines, so use discrete statements.
+  await db.prepare('CREATE TABLE storms(id TEXT PRIMARY KEY,merged_into_id TEXT)').run();
+  await db.prepare(`CREATE TABLE advisories(
+    id TEXT PRIMARY KEY, storm_id TEXT NOT NULL, agency TEXT NOT NULL,
+    issued_at TEXT NOT NULL, fetched_at TEXT, source_code TEXT,
+    source_url TEXT, raw_object_key TEXT, parser_version TEXT,
+    point_count INTEGER, ingest_status TEXT NOT NULL)`).run();
+  await db.prepare(
+    'CREATE INDEX idx_advisories_storm_time ON advisories(storm_id, issued_at DESC)'
+  ).run();
   await db.prepare('INSERT INTO storms(id,merged_into_id) VALUES (?,?)')
     .bind(STORM,null).run();
   await db.prepare('INSERT INTO storms(id,merged_into_id) VALUES (?,?)')
