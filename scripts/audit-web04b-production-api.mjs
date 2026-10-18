@@ -52,7 +52,7 @@ async function probeArchiveAdvisoryApi({base = DEFAULT_ORIGIN, stormId = null, f
   }
   if (typeof chosenId !== 'string' || !chosenId.trim()) throw new Error('A storm ID is required');
   const path = '/api/history/storms/' + encodeURIComponent(chosenId) + '/advisories';
-  const firstData = await getJson(origin, path + '?limit=' + LIMIT, fetchImpl);
+  const firstData = await getJson(origin, path + '?paging=cursor&limit=' + LIMIT, fetchImpl);
   const first = cursorApi.appendAdvisoryPage([], firstData, {stormId:chosenId,limit:LIMIT});
   const summary = {
     mode:'read-only',
@@ -68,7 +68,7 @@ async function probeArchiveAdvisoryApi({base = DEFAULT_ORIGIN, stormId = null, f
   if (!first.supported || !first.hasMore) return summary;
 
   const secondData = await getJson(origin,
-    path + '?limit=' + LIMIT + '&cursor=' + encodeURIComponent(first.nextCursor), fetchImpl);
+    path + '?paging=cursor&limit=' + LIMIT + '&cursor=' + encodeURIComponent(first.nextCursor), fetchImpl);
   const second = cursorApi.appendAdvisoryPage(first.advisories, secondData, {
     stormId:chosenId,limit:LIMIT,cursor:first.nextCursor,seenCursors:first.seenCursors
   });
