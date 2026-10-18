@@ -8,7 +8,9 @@ const dbId='11111111-1111-4111-8111-111111111111';
 const mf=new Miniflare({
   modules:true,
   scriptPath:'backend/worker.js',
-  compatibilityDate:'2026-10-18',
+  // The pinned local workerd binary supports at most 2026-08-06.
+  // Emulator parity is a smoke test, NOT proof of the live compatibility date.
+  compatibilityDate:'2026-08-01',
   d1Databases:{DB:dbId},
   // No R2 bucket, secrets, production env IDs or upstream requests.
 });
