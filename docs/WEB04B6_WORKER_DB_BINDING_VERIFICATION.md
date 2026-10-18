@@ -1,9 +1,60 @@
 # WEB-04B-6 — Production Worker version + D1 Binding proof
 
-**State: tooling and synthetic tests PASS; Cloudflare owner-run verification PENDING.**
+**State: Cloudflare owner-run Worker/D1 Binding VERIFIED; deployed-version source association PENDING.**
 Scope: Storm-Track web Archive historical advisory cursor, not Android.
 Do not deploy Worker, update D1/R2, run schema migrations, change Archive UI,
 or enable the new cursor endpoint in this stage.
+
+## WEB-04B-6 — Owner read-only production verification completed (2026-10-18)
+
+The owner uploaded a privately retained
+`storm-web04b6-worker-db-binding/v1` JSON report recorded at
+`2026-10-18T02:32:10.757Z`. The report itself, credentials, raw
+Cloudflare response, account ID and D1 UUID are **not** committed.
+
+**Verified:**
+- Live Cloudflare Worker script: `storm`.
+- Latest active deployment ID:
+  `895652c2-06b3-4cd9-afbb-d886cac7f0fe`.
+- Active Worker version:
+  `320a390b-315e-494c-a135-eb242adc340d` (version number 17),
+  carrying **100%** of traffic.
+- `versionDBBinding: {sourceState: 'present', matchesExpected: true}`.
+- `currentSettingsDBBinding: {sourceState: 'present', matchesExpected: true}`.
+- Result: `TRAFFIC_VERSION_DB_MATCH_CURRENT_SETTINGS_MATCH`.
+- The requested database identifier hash prefix matched the prior
+  owner-run `storm-track-db` D1 audit. This joins evidence for the
+  previously checked 2,061 completed advisories and this traffic-serving
+  version's exact `DB` binding.
+- Exactly 4 GET-only requests, 0 Worker or D1 mutations reported.
+
+**Not verified (hard release gate remains):**
+- `versionSourceMatch: NOT_VERIFIED`: the earlier `/content/v2`
+  export matches GitHub `backend/worker.js` except terminal newline,
+  but the exported response was not independently bound to the exact
+  traffic-serving Version 17 script payload. The 64-character
+  `resources.script.etag` is marked as hashed script content by
+  Cloudflare, yet is not directly equal to the exported multipart or
+  extracted JS SHA-256. Do **not** assume byte-level identity.
+- The real `storm` Worker remains deployed without the versioned cursor
+  endpoint. PR #118 is still Draft and has no production Worker, DB,
+  R2, Archive HTML or Android modifications.
+- Passing Binding proof does **not** grant approval to deploy a
+  Worker, run index migrations, change Production, or merge PR #118.
+
+**Gate outcome:**
+`WEB-04B-6 DB_BINDING_GATE=PASS`,
+`WORKER_VERSION_SOURCE_GATE=PENDING`,
+`RELEASE_GATE=BLOCKED`.
+
+**WEB-04B-7 review proposal:** locate an independently verifiable
+version-specific artifact/source reference, or an approved Cloudflare
+version download where available. Then prepare a separate additive
+backend patch with strict `issued_at DESC, id DESC` stable cursor
+pagination, legacy response compatibility, D1 query plans, and rollback
+and live probe criteria. Keep the index optional unless staging
+benchmarks justify it. No source or Production change before the
+remaining gate is resolved and reviewed.
 
 ## Prior verified evidence
 
