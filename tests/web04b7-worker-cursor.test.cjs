@@ -211,3 +211,12 @@ test('Newer bulletin is not reintroduced mid-replay; older backfill may appear',
   assert.ok(next.body.advisories.every(x=>x.id!=='adv-newer'));
   // This does not establish a repeatable-read transactional snapshot.
 });
+
+test('D1 alias-resolution failure is a generic 503 and does not leak internal SQL errors',async()=>{
+  const db={prepare(){throw Error('Sensitive D1 driver error: internal-state-abcdef');}};
+  const response=await get(firstUrl({limit:25}),db);
+  assert.equal(response.status,503);
+  assert.equal(response.body.contract,'storm-history-advisory-cursor/v1');
+  assert.equal(response.body.error,'Historical advisory paging temporarily unavailable');
+  assert.equal(JSON.stringify(response.body).includes('internal-state-abcdef'),false);
+});
