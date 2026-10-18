@@ -1,0 +1,28 @@
+name: WEB-04B-7C runtime audit smoke (one shot)
+on:
+  push:
+    branches:
+      - feature/web-04b7-worker-cursor-review
+    paths:
+      - .github/workflows/web04b7c-one-shot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Syntax check read-only runtime inspector
+        run: node --check scripts/audit-web04b7c-runtime-metadata.mjs
+      - name: Exercise seven-stage mock Cloudflare read-only API and security
+        run: node --test tests/web04b7c-runtime-metadata.test.mjs
+      - name: Recheck current Worker legacy and cursor endpoints
+        run: node --test tests/web04b7-worker-cursor.test.cjs
+      - name: Recheck source-immutability mock audit
+        run: node --test tests/web04b7b-version-source.test.mjs
