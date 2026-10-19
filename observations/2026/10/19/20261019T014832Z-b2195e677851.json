@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "hko-warning-truth/v1",
+  "retrievedAt": "2026-10-19T01:48:32.148Z",
+  "sourceCommit": "f6eb9b42677cfa185914fb268b68ec2d0bc194f5",
+  "authority": "Hong Kong Observatory Open Data API",
+  "truth": {
+    "warningStatementCode": "WTCSGNL",
+    "present": false,
+    "code": null,
+    "level": null,
+    "type": null,
+    "actionCode": null,
+    "issueTime": null,
+    "updateTime": null,
+    "expireTime": null,
+    "details": []
+  },
+  "context": {
+    "pre8": [],
+    "specialWeatherTips": [
+      {
+        "desc": "天氣炎熱可能影響健康，市民應保持警惕，多補充水分。",
+        "updateTime": "2026-10-19T08:30:00+08:00"
+      }
+    ]
+  },
+  "sourceHashes": {
+    "warnsum": "3e8a605c1b26e235c576a392e9d4a65b033142e96110ae9d4181723dd7fa55af",
+    "warningInfo": "af27ca7343de2b03835ec28205c0c329719f845c6dbf40ae96a79af043e68c60",
+    "swt": "76d820d4a31ae1fc0ab6f6b268010ee0dca42d96851c869226af784719ac6a88"
+  },
+  "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
+  "contextFingerprint": "bac4d62c638ccc358337bab0089fc98cff8daf928e1fc506f3a8a47c8aac1d99",
+  "captureFingerprint": "b2195e677851c52d00c2609fb41ed55235533f5935a97432947be2b092906f9d",
+  "sources": [
+    {
+      "name": "warnsum",
+      "url": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc",
+      "sha256": "3e8a605c1b26e235c576a392e9d4a65b033142e96110ae9d4181723dd7fa55af",
+      "bytes": 173
+    },
+    {
+      "name": "warningInfo",
+      "url": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warningInfo&lang=tc",
+      "sha256": "af27ca7343de2b03835ec28205c0c329719f845c6dbf40ae96a79af043e68c60",
+      "bytes": 191
+    },
+    {
+      "name": "swt",
+      "url": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=swt&lang=tc",
+      "sha256": "76d820d4a31ae1fc0ab6f6b268010ee0dca42d96851c869226af784719ac6a88",
+      "bytes": 137
+    }
+  ],
+  "sourcePayloads": {
+    "warnsum": {
+      "WFIRE": {
+        "name": "火災危險警告",
+        "code": "WFIREY",
+        "type": "黃色",
+        "actionCode": "ISSUE",
+        "issueTime": "2026-10-19T06:00:00+08:00",
+        "updateTime": "2026-10-19T06:00:00+08:00"
+      }
+    },
+    "warningInfo": {
+      "details": [
+        {
+          "contents": [
+            "現時之火災危險警告為黃色，表示火災危險性頗高。"
+          ],
+          "warningStatementCode": "WFIRE",
+          "subtype": "WFIREY",
+          "updateTime": "2026-10-19T06:00:00+08:00"
+        }
+      ]
+    },
+    "swt": {
+      "swt": [
+        {
+          "desc": "天氣炎熱可能影響健康，市民應保持警惕，多補充水分。",
+          "updateTime": "2026-10-19T08:30:00+08:00"
+        }
+      ]
+    }
+  }
+}
