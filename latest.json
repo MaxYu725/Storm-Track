@@ -58,14 +58,14 @@
   },
   "prospective": {
     "caseIdentitySchemaVersion": "storm-case-identity/v1",
-    "reconciledThrough": "2026-10-27T08:23:16.374Z",
+    "reconciledThrough": "2026-10-27T14:43:59.492Z",
     "trustedRecorderSchema": "beta-prospective-recorder/v2",
-    "trustedRecordCount": 4806,
-    "healthRecordCount": 4784,
-    "latestHealthCapturedAt": "2026-10-27T08:23:16.374Z",
+    "trustedRecordCount": 4807,
+    "healthRecordCount": 4785,
+    "latestHealthCapturedAt": "2026-10-27T14:43:59.492Z",
     "recorderSchemaCounts": {
       "beta-prospective-recorder/v1": 1,
-      "beta-prospective-recorder/v2": 4806
+      "beta-prospective-recorder/v2": 4807
     },
     "excludedRecordCount": 1,
     "excludedAmbiguousCaseCaptureCount": 8,
@@ -143,8 +143,8 @@
         ]
       }
     ],
-    "coverageRecordCount": 4924,
-    "coverageGapCount": 126,
+    "coverageRecordCount": 4925,
+    "coverageGapCount": 127,
     "coverageGaps": [
       {
         "from": "2026-08-22T02:23:35.353Z",
@@ -775,16 +775,21 @@
         "from": "2026-10-27T02:33:26.264Z",
         "to": "2026-10-27T08:23:16.374Z",
         "gapMinutes": 349.8351666666667
+      },
+      {
+        "from": "2026-10-27T08:23:16.374Z",
+        "to": "2026-10-27T14:43:59.492Z",
+        "gapMinutes": 380.71863333333334
       }
     ],
     "coverageMaxGapMinutes": 60,
     "caseCount": 16
   },
   "hkoTruth": {
-    "latestRetrievedAt": "2026-10-27T08:22:28.541Z",
+    "latestRetrievedAt": "2026-10-27T14:45:15.936Z",
     "latestTruthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
-    "healthRecordCount": 2223,
-    "latestHealthRetrievedAt": "2026-10-27T08:22:28.541Z",
+    "healthRecordCount": 2224,
+    "latestHealthRetrievedAt": "2026-10-27T14:45:15.936Z",
     "eventCount": 4,
     "initialTc1IssueCount": 1,
     "signalEventCounts": {
@@ -853,7 +858,7 @@
       }
     ],
     "latestHkoTruth": {
-      "retrievedAt": "2026-10-27T08:22:28.541Z",
+      "retrievedAt": "2026-10-27T14:45:15.936Z",
       "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
       "truth": {
         "warningStatementCode": "WTCSGNL",
@@ -1570,7 +1575,7 @@
   },
   "closeoutSummary": {
     "closeoutCount": 26,
-    "blockedCount": 0,
+    "blockedCount": 3,
     "classifications": {
       "transient-false-alarm": 1,
       "correct-negative": 23,
@@ -3989,9 +3994,52 @@
       }
     }
   ],
-  "closeoutBlocked": [],
-  "closeoutCheckedAt": "2026-10-27T08:28:59.343Z",
-  "generatedAt": "2026-10-27T08:28:59.800Z",
+  "closeoutBlocked": [
+    {
+      "caseId": "STC-2026-JMA-TC2636",
+      "signal": "T1",
+      "reason": "evidence-coverage-incomplete",
+      "detail": "joint-coverage-shorter-than-grace",
+      "afterAt": "2026-10-26T07:06:18.767Z",
+      "checkedAt": "2026-10-27T14:51:18.662Z",
+      "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
+      "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
+      "prospectiveHealthRecordCount": 4785,
+      "truthHealthRecordCount": 2224,
+      "prospectiveMaxGapMinutes": 60,
+      "truthHealthMaxGapMinutes": 90
+    },
+    {
+      "caseId": "STC-2026-JMA-TC2636",
+      "signal": "T3",
+      "reason": "evidence-coverage-incomplete",
+      "detail": "joint-coverage-shorter-than-grace",
+      "afterAt": "2026-10-26T07:06:18.767Z",
+      "checkedAt": "2026-10-27T14:51:18.662Z",
+      "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
+      "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
+      "prospectiveHealthRecordCount": 4785,
+      "truthHealthRecordCount": 2224,
+      "prospectiveMaxGapMinutes": 60,
+      "truthHealthMaxGapMinutes": 90
+    },
+    {
+      "caseId": "STC-2026-JMA-TC2636",
+      "signal": "T8",
+      "reason": "evidence-coverage-incomplete",
+      "detail": "joint-coverage-shorter-than-grace",
+      "afterAt": "2026-10-26T07:06:18.767Z",
+      "checkedAt": "2026-10-27T14:51:18.662Z",
+      "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
+      "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
+      "prospectiveHealthRecordCount": 4785,
+      "truthHealthRecordCount": 2224,
+      "prospectiveMaxGapMinutes": 60,
+      "truthHealthMaxGapMinutes": 90
+    }
+  ],
+  "closeoutCheckedAt": "2026-10-27T14:51:18.662Z",
+  "generatedAt": "2026-10-27T14:51:19.090Z",
   "sourceCommit": "f6eb9b42677cfa185914fb268b68ec2d0bc194f5",
-  "evaluationFingerprint": "8e2276b8d0889699c0c9627d1ff104364d6145d8d5a4bcc5f57e370d0bcaefd2"
+  "evaluationFingerprint": "034559d861f5cc983d1586998f68337b6b94a2675f3f4c34f9008c52301db732"
 }
