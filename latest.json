@@ -58,14 +58,14 @@
   },
   "prospective": {
     "caseIdentitySchemaVersion": "storm-case-identity/v1",
-    "reconciledThrough": "2026-11-07T19:46:16.715Z",
+    "reconciledThrough": "2026-11-07T23:12:58.346Z",
     "trustedRecorderSchema": "beta-prospective-recorder/v2",
-    "trustedRecordCount": 4856,
-    "healthRecordCount": 4834,
-    "latestHealthCapturedAt": "2026-11-07T19:46:16.715Z",
+    "trustedRecordCount": 4857,
+    "healthRecordCount": 4835,
+    "latestHealthCapturedAt": "2026-11-07T23:12:58.346Z",
     "recorderSchemaCounts": {
       "beta-prospective-recorder/v1": 1,
-      "beta-prospective-recorder/v2": 4856
+      "beta-prospective-recorder/v2": 4857
     },
     "excludedRecordCount": 1,
     "excludedAmbiguousCaseCaptureCount": 8,
@@ -143,8 +143,8 @@
         ]
       }
     ],
-    "coverageRecordCount": 4974,
-    "coverageGapCount": 176,
+    "coverageRecordCount": 4975,
+    "coverageGapCount": 177,
     "coverageGaps": [
       {
         "from": "2026-08-22T02:23:35.353Z",
@@ -1025,6 +1025,11 @@
         "from": "2026-11-07T15:50:54.772Z",
         "to": "2026-11-07T19:46:16.715Z",
         "gapMinutes": 235.36571666666666
+      },
+      {
+        "from": "2026-11-07T19:46:16.715Z",
+        "to": "2026-11-07T23:12:58.346Z",
+        "gapMinutes": 206.69385
       }
     ],
     "coverageMaxGapMinutes": 60,
@@ -1047,9 +1052,15 @@
   "awaiting": {
     "status": "monitoring-higher-signals",
     "activeHkoCaseIds": [
+      "STC-2026-JMA-TC2638",
       "STC-2026-JMA-TC2637"
     ],
     "pendingSignalsByCase": {
+      "STC-2026-JMA-TC2638": [
+        "T1",
+        "T3",
+        "T8"
+      ],
       "STC-2026-JMA-TC2637": [
         "T1",
         "T3",
@@ -1057,6 +1068,53 @@
       ]
     },
     "latestPredictions": [
+      {
+        "caseId": "STC-2026-JMA-TC2638",
+        "capturedAt": "2026-11-07T23:12:58.346Z",
+        "captureFingerprint": "bf0fbbe5b20ff187a80267cbf6ad9ffc6410747984fae0d22fc45f8e1e77bf4c",
+        "rawGroupKey": "CEMPAKA",
+        "displayName": "查帕卡 (CEMPAKA)",
+        "likelihood": "unlikely",
+        "estimatedWindow": null,
+        "signals": {
+          "T1": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.18067097735597704,
+            "confidenceIndex": 0.6359359583183379,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T3": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.09617491083584939,
+            "confidenceIndex": 0.5405455645705872,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          },
+          "T8": {
+            "likelihood": "unlikely",
+            "riskIndex": 0.10049702127311187,
+            "confidenceIndex": 0.5151081262378537,
+            "persistenceHours": 0,
+            "estimatedWindow": null
+          }
+        },
+        "sourceAgencies": [
+          "CMA",
+          "CWA",
+          "HKO",
+          "JMA"
+        ],
+        "engineVersions": {
+          "ui": "frontend-hk-threat-ui/v3",
+          "snapshot": "storm-analysis-snapshot/v1",
+          "impact": "hk-impact/v1",
+          "signalInputs": "hko-signal-risk-inputs/v1",
+          "threatAssessment": "hk-threat-assessment/v1",
+          "basicForecast": "basic-hk-signal-forecast/v1",
+          "shadowForecastV2": "hk-signal-shadow-v2/0.5"
+        }
+      },
       {
         "caseId": "STC-2026-JMA-TC2637",
         "capturedAt": "2026-11-06T03:47:20.853Z",
@@ -4246,10 +4304,10 @@
       "reason": "evidence-coverage-incomplete",
       "detail": "joint-coverage-shorter-than-grace",
       "afterAt": "2026-10-26T07:06:18.767Z",
-      "checkedAt": "2026-11-07T21:54:56.242Z",
+      "checkedAt": "2026-11-07T23:18:53.603Z",
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
       "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
-      "prospectiveHealthRecordCount": 4834,
+      "prospectiveHealthRecordCount": 4835,
       "truthHealthRecordCount": 2272,
       "prospectiveMaxGapMinutes": 60,
       "truthHealthMaxGapMinutes": 90
@@ -4260,10 +4318,10 @@
       "reason": "evidence-coverage-incomplete",
       "detail": "joint-coverage-shorter-than-grace",
       "afterAt": "2026-10-26T07:06:18.767Z",
-      "checkedAt": "2026-11-07T21:54:56.242Z",
+      "checkedAt": "2026-11-07T23:18:53.603Z",
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
       "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
-      "prospectiveHealthRecordCount": 4834,
+      "prospectiveHealthRecordCount": 4835,
       "truthHealthRecordCount": 2272,
       "prospectiveMaxGapMinutes": 60,
       "truthHealthMaxGapMinutes": 90
@@ -4274,10 +4332,10 @@
       "reason": "evidence-coverage-incomplete",
       "detail": "joint-coverage-shorter-than-grace",
       "afterAt": "2026-10-26T07:06:18.767Z",
-      "checkedAt": "2026-11-07T21:54:56.242Z",
+      "checkedAt": "2026-11-07T23:18:53.603Z",
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
       "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
-      "prospectiveHealthRecordCount": 4834,
+      "prospectiveHealthRecordCount": 4835,
       "truthHealthRecordCount": 2272,
       "prospectiveMaxGapMinutes": 60,
       "truthHealthMaxGapMinutes": 90
@@ -4288,10 +4346,10 @@
       "reason": "evidence-coverage-incomplete",
       "detail": "joint-coverage-shorter-than-grace",
       "afterAt": "2026-11-06T03:47:20.853Z",
-      "checkedAt": "2026-11-07T21:54:56.242Z",
+      "checkedAt": "2026-11-07T23:18:53.603Z",
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
       "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
-      "prospectiveHealthRecordCount": 4834,
+      "prospectiveHealthRecordCount": 4835,
       "truthHealthRecordCount": 2272,
       "prospectiveMaxGapMinutes": 60,
       "truthHealthMaxGapMinutes": 90
@@ -4302,10 +4360,10 @@
       "reason": "evidence-coverage-incomplete",
       "detail": "joint-coverage-shorter-than-grace",
       "afterAt": "2026-11-06T03:47:20.853Z",
-      "checkedAt": "2026-11-07T21:54:56.242Z",
+      "checkedAt": "2026-11-07T23:18:53.603Z",
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
       "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
-      "prospectiveHealthRecordCount": 4834,
+      "prospectiveHealthRecordCount": 4835,
       "truthHealthRecordCount": 2272,
       "prospectiveMaxGapMinutes": 60,
       "truthHealthMaxGapMinutes": 90
@@ -4316,17 +4374,17 @@
       "reason": "evidence-coverage-incomplete",
       "detail": "joint-coverage-shorter-than-grace",
       "afterAt": "2026-11-06T03:47:20.853Z",
-      "checkedAt": "2026-11-07T21:54:56.242Z",
+      "checkedAt": "2026-11-07T23:18:53.603Z",
       "evidenceCoveragePolicyVersion": "hk-signal-evidence-coverage/v1",
       "evidenceCoverageEffectiveAt": "2026-08-28T09:01:55.696Z",
-      "prospectiveHealthRecordCount": 4834,
+      "prospectiveHealthRecordCount": 4835,
       "truthHealthRecordCount": 2272,
       "prospectiveMaxGapMinutes": 60,
       "truthHealthMaxGapMinutes": 90
     }
   ],
-  "closeoutCheckedAt": "2026-11-07T21:54:56.242Z",
-  "generatedAt": "2026-11-07T21:54:56.796Z",
+  "closeoutCheckedAt": "2026-11-07T23:18:53.603Z",
+  "generatedAt": "2026-11-07T23:18:54.067Z",
   "sourceCommit": "eebfca488c6fde27c5db54797e5cbc11e88d3354",
-  "evaluationFingerprint": "df621df8c6fc1df3e2e9ca84496969d089d93a926f0d793ac07515c0c91800d1"
+  "evaluationFingerprint": "78ac55f631b05acb2cf34bfe9f863375eb92a4db427aa72c59a78b824d4d67b3"
 }
