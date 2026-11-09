@@ -1,0 +1,105 @@
+{
+  "schemaVersion": "hko-warning-truth/v1",
+  "retrievedAt": "2026-11-09T16:05:37.939Z",
+  "sourceCommit": "eebfca488c6fde27c5db54797e5cbc11e88d3354",
+  "authority": "Hong Kong Observatory Open Data API",
+  "truth": {
+    "warningStatementCode": "WTCSGNL",
+    "present": false,
+    "code": null,
+    "level": null,
+    "type": null,
+    "actionCode": null,
+    "issueTime": null,
+    "updateTime": null,
+    "expireTime": null,
+    "details": []
+  },
+  "context": {
+    "pre8": [],
+    "specialWeatherTips": [
+      {
+        "desc": "預料本港吹偏北強風。市民應提防海面大浪可能帶來的危險。",
+        "updateTime": "2026-11-09T22:45:00+08:00"
+      }
+    ]
+  },
+  "sourceHashes": {
+    "warnsum": "189fc225d0b50749fdec784c8407325d3155cb79929ee0cf7a8eb9c7c7e532e7",
+    "warningInfo": "d88d4cf3fb6758ba546b6ea6ddbc797880d6c9322057b129147e1c8c0217803a",
+    "swt": "bb0f5ce985744958eeacbf6c7a1e3d3ff962b9c1ade0181e3f7f33dbdb1ec905"
+  },
+  "truthFingerprint": "57af32e9873d906f8393fb9079b067fd1f6ec1c34625e376100e9fb0a5c1723c",
+  "contextFingerprint": "a250a79d3c70bc4b6d50ce24c39f23fec83c180e3ef7771d7a8baff86ab801e1",
+  "captureFingerprint": "810842f3a059ce06f11b6a42c9d078bfc0af1f6565241056506e7e9dd0d073e4",
+  "sources": [
+    {
+      "name": "warnsum",
+      "url": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc",
+      "sha256": "189fc225d0b50749fdec784c8407325d3155cb79929ee0cf7a8eb9c7c7e532e7",
+      "bytes": 333
+    },
+    {
+      "name": "warningInfo",
+      "url": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warningInfo&lang=tc",
+      "sha256": "d88d4cf3fb6758ba546b6ea6ddbc797880d6c9322057b129147e1c8c0217803a",
+      "bytes": 1002
+    },
+    {
+      "name": "swt",
+      "url": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=swt&lang=tc",
+      "sha256": "bb0f5ce985744958eeacbf6c7a1e3d3ff962b9c1ade0181e3f7f33dbdb1ec905",
+      "bytes": 143
+    }
+  ],
+  "sourcePayloads": {
+    "warnsum": {
+      "WMSGNL": {
+        "name": "強烈季候風信號",
+        "code": "WMSGNL",
+        "actionCode": "ISSUE",
+        "issueTime": "2026-11-09T06:10:00+08:00",
+        "updateTime": "2026-11-09T06:10:00+08:00"
+      },
+      "WFIRE": {
+        "name": "火災危險警告",
+        "code": "WFIRER",
+        "type": "紅色",
+        "actionCode": "ISSUE",
+        "issueTime": "2026-11-09T06:10:00+08:00",
+        "updateTime": "2026-11-09T06:10:00+08:00"
+      }
+    },
+    "warningInfo": {
+      "details": [
+        {
+          "contents": [
+            "強烈季候風信號現正生效。預料本港吹偏北強風，平均風速每小時超過四十公里。陣風間中達烈風程度。",
+            "在下午10時30分的過去一小時，橫瀾島及長洲分別錄得的最高持續風速為每小時65及53公里，最高陣風分別為每小時75及75公里。",
+            "1. 如果你身在當風地方，會受到偏北風的正面吹襲，請採取預防措施，以防強勁陣風帶來損害。花盆及可能被風吹倒的物件應搬入室內。",
+            "2. 小艇艇戶應採取預防措施，確保小艇安全。檢查甲板上的物件是否綁緊。",
+            "3. 因為海面可能會有大浪，市民應該遠離岸邊及停止所有水上活動。在離岸海域，風浪尤其大。"
+          ],
+          "warningStatementCode": "WMSGNL",
+          "updateTime": "2026-11-09T22:45:00+08:00"
+        },
+        {
+          "contents": [
+            "現時之火災危險警告為紅色，表示火災危險性極高。"
+          ],
+          "warningStatementCode": "WFIRE",
+          "subtype": "WFIRER",
+          "updateTime": "2026-11-09T06:10:00+08:00"
+        }
+      ]
+    },
+    "swt": {
+      "swt": [
+        {
+          "desc": "預料本港吹偏北強風。市民應提防海面大浪可能帶來的危險。",
+          "updateTime": "2026-11-09T22:45:00+08:00"
+        }
+      ]
+    }
+  }
+}
